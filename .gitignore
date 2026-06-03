@@ -1,0 +1,63 @@
+# ─── Instruksi lokal per-developer (tidak di-share) ──────────────────────────
+CLAUDE.local.md
+.claude/settings.local.json
+
+# ─── Dependency (di-bundle saat packaging, bukan di-commit) ───────────────────
+/vendor/
+/node_modules/
+# composer.json & composer.lock TETAP di-commit (jangan di-ignore)
+
+# ─── Build output frontend (Vite/Tailwind — di-generate) ─────────────────────
+/assets/dist/
+*.min.js.map
+*.min.css.map
+
+# ─── Environment & rahasia ───────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ─── Log & cache ─────────────────────────────────────────────────────────────
+*.log
+debug.log
+error_log
+.cache/
+*.cache
+.phpunit.result.cache
+.php-cs-fixer.cache
+.phpcs-cache
+
+# ─── Test & coverage ─────────────────────────────────────────────────────────
+/coverage/
+/.phpunit.cache/
+clover.xml
+
+# ─── Artefak packaging plugin ────────────────────────────────────────────────
+*.zip
+*.tar.gz
+/build/
+/dist/
+
+# ─── Upload runtime (jangan masuk repo) ──────────────────────────────────────
+# Foto selfie disimpan di wp-content/uploads, di luar plugin — abaikan jika ada lokal
+/uploads/
+
+# ─── OS ──────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+Desktop.ini
+ehthumbs.db
+$RECYCLE.BIN/
+
+# ─── Editor / IDE ────────────────────────────────────────────────────────────
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.swp
+*.swo
+*~
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
