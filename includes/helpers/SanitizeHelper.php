@@ -27,6 +27,44 @@ class SanitizeHelper {
     }
 
     /**
+     * Sanitasi data kelas untuk INSERT/UPDATE.
+     * Kolom: nama_kelas (≤100), tingkat (1–99), guru_id (WP user, nullable).
+     */
+    public static function kelas( array $data ): array {
+        $clean = [];
+        if ( isset( $data['nama_kelas'] ) ) $clean['nama_kelas'] = substr( sanitize_text_field( $data['nama_kelas'] ), 0, 100 );
+        if ( isset( $data['tingkat'] ) )    $clean['tingkat']    = max( 1, min( 99, absint( $data['tingkat'] ) ) );
+        if ( isset( $data['guru_id'] ) )    $clean['guru_id']    = absint( $data['guru_id'] ) ?: null;
+        return $clean;
+    }
+
+    /**
+     * Sanitasi data jadwal untuk INSERT/UPDATE.
+     * Kolom: kelas_id, hari (1–7), jam_masuk/jam_keluar (TIME, dinormalisasi H:i:s).
+     * Jam tak valid → '' (endpoint menolak dengan 422).
+     */
+    public static function jadwal( array $data ): array {
+        $clean = [];
+        if ( isset( $data['kelas_id'] ) )   $clean['kelas_id']   = absint( $data['kelas_id'] );
+        if ( isset( $data['hari'] ) )       $clean['hari']       = absint( $data['hari'] );
+        if ( isset( $data['jam_masuk'] ) )  $clean['jam_masuk']  = self::normalize_time( $data['jam_masuk'] );
+        if ( isset( $data['jam_keluar'] ) ) $clean['jam_keluar'] = self::normalize_time( $data['jam_keluar'] );
+        return $clean;
+    }
+
+    /**
+     * Normalisasi jam ke format MySQL TIME 'H:i:s'.
+     * Terima 'H:i' atau 'H:i:s'. Return '' jika tak valid.
+     */
+    public static function normalize_time( $value ): string {
+        $value = trim( (string) $value );
+        if ( ! preg_match( '/^([01]?\d|2[0-3]):([0-5]\d)(?::([0-5]\d))?$/', $value, $m ) ) {
+            return '';
+        }
+        return sprintf( '%02d:%02d:%02d', (int) $m[1], (int) $m[2], (int) ( $m[3] ?? 0 ) );
+    }
+
+    /**
      * Sanitasi UID RFID – hanya hex dan strip leading/trailing whitespace.
      * RFID HID keyboard sering mengirim newline di akhir.
      */
@@ -53,9 +91,12 @@ class SanitizeHelper {
         if ( isset( $data['waktu_masuk'] ) )  $clean['waktu_masuk']  = sanitize_text_field( $data['waktu_masuk'] );
         if ( isset( $data['waktu_keluar'] ) ) $clean['waktu_keluar'] = sanitize_text_field( $data['waktu_keluar'] );
         if ( isset( $data['status'] ) )       $clean['status']       = in_array( $data['status'], $allowed_status, true ) ? $data['status'] : 'hadir';
-        if ( isset( $data['mode'] ) )         $clean['mode']         = in_array( $data['mode'], $allowed_mode, true ) ? $data['mode'] : 'manual';
+        if ( isset( $data['mode'] ) )          $clean['mode']          = in_array( $data['mode'], $allowed_mode, true ) ? $data['mode'] : 'manual';
+        if ( isset( $data['metode_masuk'] ) )  $clean['metode_masuk']  = in_array( $data['metode_masuk'], $allowed_mode, true ) ? $data['metode_masuk'] : 'manual';
+        if ( isset( $data['metode_keluar'] ) ) $clean['metode_keluar'] = in_array( $data['metode_keluar'], $allowed_mode, true ) ? $data['metode_keluar'] : 'manual';
         if ( isset( $data['lat'] ) )          $clean['lat']          = (float) $data['lat'];
         if ( isset( $data['lng'] ) )          $clean['lng']          = (float) $data['lng'];
+        if ( isset( $data['jarak_meter'] ) )  $clean['jarak_meter']  = absint( $data['jarak_meter'] );
         if ( isset( $data['foto_path'] ) )    $clean['foto_path']    = sanitize_text_field( $data['foto_path'] );
         if ( isset( $data['catatan'] ) )      $clean['catatan']      = sanitize_textarea_field( $data['catatan'] );
         if ( isset( $data['guru_id'] ) )      $clean['guru_id']      = absint( $data['guru_id'] ) ?: null;
