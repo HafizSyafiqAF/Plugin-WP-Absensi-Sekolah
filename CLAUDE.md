@@ -10,7 +10,7 @@ Plugin WordPress untuk absensi sekolah, MVP. Dua mode absen:
 1. **Selfie + GPS** — siswa absen mandiri via browser HP (validasi radius haversine).
 2. **RFID USB scanner** — guru tap kartu siswa (scanner = HID keyboard, "ketik" UID + Enter).
 
-Plus dashboard admin (WP admin) + laporan rekap. Stack: PHP 8.0+, WordPress 6.0+, custom table `$wpdb` (bukan CPT), REST API, **vanilla JS** (tanpa framework/build tool).
+Plus dashboard admin (WP admin) + laporan rekap. Stack: PHP 8.0+, WordPress 6.0+, custom table `$wpdb` (bukan CPT), REST API, **Alpine.js + Tailwind CSS (via CDN)** (tanpa Vite/build tool).
 
 ---
 
@@ -90,10 +90,11 @@ Namespace `absensi/v1` (`/wp-json/absensi/v1/`). Konstanta `NAMESPACE` diulang d
 
 ## Frontend
 
-**Vanilla JS, tanpa Alpine/Tailwind/Vite/build step.** (Plan menyebut Alpine+Tailwind+Vite — TIDAK dipakai.)
+**Alpine.js + Tailwind CSS via CDN — TANPA Vite/build step.** (Plan menyebut Vite — TIDAK dipakai; Alpine & Tailwind dimuat dari CDN, bukan di-bundle.)
 
-- Public: [public/js/public.js](public/js/public.js) + `public/css/public.css`, enqueue global di `wp_enqueue_scripts`, config var `AbsensiConfig`.
-- Admin: `admin/js/admin.js` (depend jQuery) + `admin/css/admin.css`, enqueue hanya di halaman plugin (`str_contains($hook,'absensi')`), config var `AbsensiAdmin`.
+- Public: [public/js/public.js](public/js/public.js) + `public/css/public.css`, enqueue global di `wp_enqueue_scripts`, config var `AbsensiConfig`. Alpine + Tailwind dari CDN.
+- Admin: `admin/js/admin.js` + `admin/css/admin.css`, enqueue hanya di halaman plugin (`str_contains($hook,'absensi')`), config var `AbsensiAdmin`.
+- **Catatan migrasi:** sebagian file JS lama masih bergaya vanilla/jQuery; arah resmi = Alpine.js (CDN). Tambah/ubah interaksi baru pakai Alpine, jangan jQuery.
 - Shortcode ([includes/class/Shortcodes.php](includes/class/Shortcodes.php)): `[absensi_selfie]`, `[absensi_status]`. Render via `ob_start()` + `include` view, gate `is_user_logged_in()`.
 - Admin menu ([includes/Admin/Menu.php](includes/Admin/Menu.php)): menu "Absensi" + 6 submenu (Dashboard, Siswa, Kelas, Absen RFID, Laporan, Pengaturan). Render `admin/views/{slug}.php`, fallback "View belum tersedia" jika file tak ada.
 
@@ -115,11 +116,11 @@ Namespace `absensi/v1` (`/wp-json/absensi/v1/`). Konstanta `NAMESPACE` diulang d
 
 > ⚠️ **WAJIB: setiap selesai mengerjakan fitur apa pun, Claude harus mengetesnya dulu sebelum melapor selesai.** Jangan klaim "selesai" tanpa bukti jalan. Minimal: PHP lint (`php -l`) file yang diubah, lalu uji perilaku nyata sesuai fitur — panggil endpoint REST (`curl`/`wp eval`), buka halaman shortcode/admin, atau jalankan query untuk verifikasi data tersimpan. Sertakan output/hasil sebagai bukti. Jika tak bisa dites di lingkungan ini, sebutkan eksplisit apa yang belum terverifikasi.
 
-- **Tidak ada build step.** Edit PHP/JS/CSS langsung, refresh.
+- **Tidak ada build step (no Vite/npm).** Edit PHP/JS/CSS langsung, refresh. Alpine.js + Tailwind dimuat dari CDN di view/enqueue.
 - Lingkungan: Local (Flywheel) di `c:\Users\hafiz\Local Sites\absensi-sekolah\`.
 - Aktivasi plugin men-trigger `Installer::activate()` (buat tabel + seed options). Setelah ubah skema DB → deactivate + activate ulang.
 - HTTPS wajib di produksi (Geolocation API + kamera). Local biasanya jalan via domain `.local`.
-- Belum ada PHPUnit/Composer/CI terpasang. Tidak ada `vendor/`, `composer.json`, `package.json`.
+- **Composer + PHPUnit sudah terpasang** (`composer.json`, `vendor/`, `phpunit.xml.dist`, `tests/unit/` Brain Monkey). Belum ada CI. **Tidak ada `package.json`/npm** (Alpine+Tailwind via CDN, bukan build).
 
 ---
 
@@ -138,15 +139,22 @@ Namespace `absensi/v1` (`/wp-json/absensi/v1/`). Konstanta `NAMESPACE` diulang d
 
 `plugins/includes/plans/` (di luar folder plugin) memuat `01_BACKEND_PLAN.md`, `02_FRONTEND_PLAN.md`, `03_UIUX_PLAN.md` — desain target yang **lebih ambisius** dari yang dibangun. Perbedaan utama:
 
+### Divergensi inti yang TETAP (sengaja beda dari plan, ikuti kode)
+
 | Aspek | Plan | Kode nyata |
 |---|---|---|
-| Tabel absensi | `absensi_log`, 2 baris/sesi (masuk+pulang), UNIQUE `(siswa,tanggal,sesi)` | `absensi_rekap`, 1 baris/hari, kolom `waktu_masuk`+`waktu_keluar` |
-| Relasi ortu | tabel `absensi_wali`, endpoint `/child/logs` | belum ada |
-| Settings | 1 option serialized `absensi_settings` | option individual `absensi_*` |
-| Endpoint | `/checkin/*`, `/rfid/resolve`, `/rfid/enroll`, `/wali`, `/settings` | `/absen/*`, `/siswa/*`, `/laporan/*` |
-| Auth | capability granular (`absensi_submit_self` dll) | role check `array_intersect` |
-| Autoload | Composer PSR-4 + `vendor/` bundled | `spl_autoload` manual, no vendor |
-| Frontend | Alpine.js + Tailwind + Vite | vanilla JS, no build |
-| Arsitektur | Controller→Service→Repository | query `$wpdb` langsung di endpoint |
+| Tabel absensi | `absensi_log`, 2 baris/sesi (masuk+pulang), UNIQUE `(siswa,tanggal,sesi)` | `absensi_rekap`, **1 baris/hari**, kolom `waktu_masuk`+`waktu_keluar` |
+| Settings | 1 option serialized `absensi_settings` | option **individual** `absensi_*` |
+| Arsitektur | Controller→Service→Repository | query `$wpdb` **langsung** di endpoint (no Service/Repo) |
+| Frontend | Alpine.js + Tailwind + **Vite** | Alpine.js + Tailwind **via CDN, no Vite/build** |
+
+### Konvergensi sejak brief (plan SUDAH tercapai — jangan bikin ulang)
+
+Per 2026-06-08, fitur ini sudah dibangun (dulu tercatat "belum ada"):
+
+- **Relasi ortu** — tabel `absensi_wali` + endpoint `/wali`, `/child/logs` **ada**. Lihat [WaliEndpoint](includes/api/WaliEndpoint.php), [ChildEndpoint](includes/api/ChildEndpoint.php).
+- **Endpoint resolve/enroll/wali/settings/kelas/jadwal/export** — semua **ada**. Penamaan pakai prefix `/absen/*` (mis. `/absen/rfid/resolve`, `/absen/rfid/enroll`), bukan `/checkin/*` / `/rfid/*` ala plan.
+- **Capability** — CAPS (`absensi_submit_self` dll) **di-seed** saat aktivasi (`Installer::seed_roles`). Auth **hybrid**: sebagian endpoint pakai `current_user_can(cap)` (enroll/export/child), sisanya masih role-check `array_intersect`.
+- **Composer/vendor** — `composer.json` + `vendor/` **ada** (PhpSpreadsheet/Dompdf untuk export + PHPUnit/Brain Monkey dev). `spl_autoload` manual tetap **autoloader utama**; vendor dimuat kondisional bila ada.
 
 **Saat menambah fitur:** ikuti pola kode yang ADA sekarang, bukan plan — kecuali user eksplisit minta refactor ke arah plan. Plan berguna sebagai referensi niat/edge-case, bukan kontrak struktur.
