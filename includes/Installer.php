@@ -10,16 +10,119 @@ defined( 'ABSPATH' ) || exit;
 class Installer {
 
     /** Versi skema DB – naikkan setiap ada perubahan tabel. */
-    const DB_VERSION = '1.0.0';
+    const DB_VERSION = '1.3.1';
+
+    /**
+     * Capability custom plugin. Dipakai sebagai permission_callback di REST.
+     * Administrator WP otomatis diberi semua cap ini.
+     */
+    const CAPS = [
+        'absensi_submit_self',   // Siswa absen selfie + GPS
+        'absensi_submit_rfid',   // Guru absen via tap RFID
+        'absensi_enroll_rfid',   // Daftar/bind kartu RFID ke siswa
+        'absensi_view_reports',  // Lihat & export laporan
+        'absensi_view_child',    // Orang tua lihat absensi anak
+    ];
 
     public static function activate(): void {
         self::create_tables();
         self::seed_default_options();
+        self::seed_roles();
+        Retensi::schedule();
         flush_rewrite_rules();
     }
 
     public static function deactivate(): void {
+        self::remove_roles();
+        Retensi::unschedule();
         flush_rewrite_rules();
+    }
+
+    /**
+     * Migration runner — dipanggil di plugins_loaded (Plugin::boot()).
+     * Murah & idempotent: hanya jalankan dbDelta saat versi skema tersimpan < DB_VERSION,
+     * jadi tak perlu deactivate+activate ulang setelah update skema. dbDelta aman dijalankan
+     * berulang (CREATE/ALTER hanya untuk selisih). Return true bila upgrade dijalankan.
+     */
+    public static function maybe_upgrade(): bool {
+        $installed = (string) get_option( 'absensi_db_version', '0' );
+        if ( version_compare( $installed, self::DB_VERSION, '>=' ) ) {
+            return false; // skema sudah terkini
+        }
+        self::create_tables(); // dbDelta + update_option( 'absensi_db_version', DB_VERSION )
+        // Re-seed role/cap & option default (idempotent) supaya upgrade lewat maybe_upgrade
+        // tetap sinkron tanpa harus deactivate+activate ulang. Tanpa ini, role custom
+        // (absensi_admin/guru/orang_tua) bisa hilang/stale di situs yang hanya upgrade skema.
+        self::seed_roles();
+        self::seed_default_options();
+        // Langkah migrasi per-versi berikutnya (backfill data) ditambah di sini.
+        return true;
+    }
+
+    // ─── Role & Capability ───────────────────────────────────────────────────
+
+    /**
+     * Definisi role plugin → daftar capability.
+     * Slug role dipertahankan sesuai yang dirujuk permission_callback existing
+     * (guru, absensi_admin, orang_tua) + absensi_siswa untuk pemegang cap submit_self.
+     */
+    private static function role_definitions(): array {
+        return [
+            'absensi_admin' => [
+                'name' => 'Admin Absensi',
+                'caps' => [ 'read', ...self::CAPS ], // admin sekolah: semua cap absensi
+            ],
+            'guru' => [
+                'name' => 'Guru',
+                'caps' => [ 'read', 'absensi_submit_rfid', 'absensi_enroll_rfid', 'absensi_view_reports' ],
+            ],
+            'absensi_siswa' => [
+                'name' => 'Siswa',
+                'caps' => [ 'read', 'absensi_submit_self' ],
+            ],
+            'orang_tua' => [
+                'name' => 'Orang Tua',
+                'caps' => [ 'read', 'absensi_view_child' ],
+            ],
+        ];
+    }
+
+    /** Seed role custom + berikan semua cap absensi ke administrator. Idempotent. */
+    private static function seed_roles(): void {
+        foreach ( self::role_definitions() as $slug => $def ) {
+            $role = get_role( $slug );
+            if ( null === $role ) {
+                add_role( $slug, $def['name'], array_fill_keys( $def['caps'], true ) );
+            } else {
+                // Role sudah ada – sinkronkan cap (mis. setelah update versi).
+                foreach ( $def['caps'] as $cap ) {
+                    $role->add_cap( $cap );
+                }
+            }
+        }
+
+        $admin = get_role( 'administrator' );
+        if ( $admin ) {
+            foreach ( self::CAPS as $cap ) {
+                $admin->add_cap( $cap );
+            }
+        }
+    }
+
+    /** Cabut cap dari administrator & hapus role custom. Dipanggil saat deactivate/uninstall. */
+    private static function remove_roles(): void {
+        $admin = get_role( 'administrator' );
+        if ( $admin ) {
+            foreach ( self::CAPS as $cap ) {
+                $admin->remove_cap( $cap );
+            }
+        }
+
+        foreach ( array_keys( self::role_definitions() ) as $slug ) {
+            if ( get_role( $slug ) ) {
+                remove_role( $slug );
+            }
+        }
     }
 
     // ─── Buat Tabel Custom ───────────────────────────────────────────────────
@@ -73,10 +176,13 @@ class Installer {
             tanggal      DATE NOT NULL,
             waktu_masuk  DATETIME DEFAULT NULL,
             waktu_keluar DATETIME DEFAULT NULL,
-            status       ENUM('hadir','telat','izin','sakit','alpha') NOT NULL DEFAULT 'hadir',
-            mode         ENUM('selfie','rfid','manual') NOT NULL DEFAULT 'selfie',
+            status        ENUM('hadir','telat','izin','sakit','alpha') NOT NULL DEFAULT 'hadir',
+            mode          ENUM('selfie','rfid','manual') NOT NULL DEFAULT 'selfie',
+            metode_masuk  ENUM('selfie','rfid','manual') DEFAULT NULL,
+            metode_keluar ENUM('selfie','rfid','manual') DEFAULT NULL,
             lat          DECIMAL(10,7) DEFAULT NULL,
             lng          DECIMAL(10,7) DEFAULT NULL,
+            jarak_meter  INT UNSIGNED DEFAULT NULL COMMENT 'Jarak haversine saat absen (audit)',
             foto_path    VARCHAR(255) DEFAULT NULL,
             catatan      TEXT DEFAULT NULL,
             guru_id      BIGINT UNSIGNED DEFAULT NULL COMMENT 'Guru yang validasi (RFID)',
@@ -85,6 +191,18 @@ class Installer {
             UNIQUE KEY unik_siswa_tanggal (siswa_id, tanggal),
             KEY tanggal (tanggal),
             KEY kelas_id (kelas_id)
+        ) $charset;" );
+
+        // Tabel relasi wali (orang tua) → siswa (1 ortu : N anak)
+        dbDelta( "CREATE TABLE {$wpdb->prefix}absensi_wali (
+            id           BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            wali_user_id BIGINT UNSIGNED NOT NULL,
+            siswa_id     BIGINT UNSIGNED NOT NULL,
+            created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY unik_wali_siswa (wali_user_id, siswa_id),
+            KEY wali_user_id (wali_user_id),
+            KEY siswa_id (siswa_id)
         ) $charset;" );
 
         update_option( 'absensi_db_version', self::DB_VERSION );
@@ -100,6 +218,9 @@ class Installer {
             'absensi_jam_masuk'    => '07:00',
             'absensi_jam_keluar'   => '15:00',
             'absensi_telat_menit'  => 15,       // Menit toleransi keterlambatan
+            'absensi_akurasi_max'  => 100,      // Akurasi GPS maksimum diterima (meter)
+            'absensi_rfid_debounce' => 3,       // Window anti double-tap RFID (detik)
+            'absensi_retensi_hari' => 90,       // Retensi foto selfie (hari)
             'absensi_wa_gateway'   => '',       // URL gateway WA (opsional)
             'absensi_wa_token'     => '',
         ];
