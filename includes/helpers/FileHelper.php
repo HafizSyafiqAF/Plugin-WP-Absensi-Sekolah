@@ -37,21 +37,71 @@ class FileHelper {
             return new \WP_Error( 'foto_terlalu_besar', 'Ukuran foto maksimal 5 MB.' );
         }
 
-        $ext = str_starts_with( $magic, 'ffd8ff' ) ? 'jpg' : 'png';
+        // Validasi gambar SUNGGUHAN (anti-polyglot: magic byte bisa dipalsukan).
+        // getimagesizefromstring gagal kalau bukan struktur gambar valid.
+        $info = @getimagesizefromstring( $binary );
+        if ( false === $info || empty( $info[2] ) ) {
+            return new \WP_Error( 'foto_korup', 'File bukan gambar yang valid.' );
+        }
+        $allowed = [ IMAGETYPE_JPEG => 'jpg', IMAGETYPE_PNG => 'png' ];
+        if ( ! isset( $allowed[ $info[2] ] ) ) {
+            return new \WP_Error( 'foto_tipe_ditolak', 'Hanya JPEG atau PNG yang diizinkan.' );
+        }
+        $ext = $allowed[ $info[2] ]; // ekstensi otoritatif dari tipe gambar nyata
 
         $upload_dir = wp_upload_dir();
-        $folder     = $upload_dir['basedir'] . '/absensi-selfie/' . gmdate( 'Y/m' );
+        $base       = $upload_dir['basedir'] . '/absensi-selfie';
+        $folder     = $base . '/' . gmdate( 'Y/m' );
         wp_mkdir_p( $folder );
 
-        $filename = sprintf( 'selfie-%d-%s.%s', $siswa_id, gmdate( 'Ymd-His' ), $ext );
+        // Pasang guard folder (idempotent): tolak eksekusi script + listing.
+        self::protect_dir( $base );
+
+        // Nama file random (anti-enumerasi/tebak URL). Tetap diawali siswa_id untuk audit.
+        $token    = bin2hex( random_bytes( 16 ) );
+        $filename = sprintf( 'selfie-%d-%s.%s', $siswa_id, $token, $ext );
         $filepath = $folder . '/' . $filename;
 
         if ( false === file_put_contents( $filepath, $binary ) ) {
             return new \WP_Error( 'tulis_file_gagal', 'Gagal menyimpan foto ke server.' );
         }
 
+        // Verifikasi akhir: ekstensi cocok dengan tipe asli (WP filetype sniffing).
+        if ( ! function_exists( 'wp_check_filetype_and_ext' ) ) {
+            require_once ABSPATH . 'wp-includes/functions.php';
+        }
+        $check = wp_check_filetype_and_ext( $filepath, $filename );
+        if ( empty( $check['type'] ) || ! in_array( $check['type'], [ 'image/jpeg', 'image/png' ], true ) ) {
+            @unlink( $filepath );
+            return new \WP_Error( 'foto_tipe_ditolak', 'Tipe file tidak cocok dengan ekstensi.' );
+        }
+
         // Return path relatif dari basedir untuk disimpan di DB
         return str_replace( $upload_dir['basedir'] . '/', '', $filepath );
+    }
+
+    /**
+     * Pasang penjaga folder upload: index.php (anti listing) + .htaccess
+     * (tolak eksekusi script & directory index). Idempotent, hanya tulis jika belum ada.
+     */
+    private static function protect_dir( string $dir ): void {
+        wp_mkdir_p( $dir );
+
+        $index = $dir . '/index.php';
+        if ( ! file_exists( $index ) ) {
+            file_put_contents( $index, "<?php\n// Silence is golden.\n" );
+        }
+
+        $htaccess = $dir . '/.htaccess';
+        if ( ! file_exists( $htaccess ) ) {
+            $rules  = "# Folder upload selfie: hanya gambar, tolak eksekusi script.\n";
+            $rules .= "<FilesMatch \"\\.(?i:php|phtml|php[3-7]|phps|pl|py|cgi|asp|aspx|sh|shtml)$\">\n";
+            $rules .= "    <IfModule mod_authz_core.c>\n        Require all denied\n    </IfModule>\n";
+            $rules .= "    <IfModule !mod_authz_core.c>\n        Order allow,deny\n        Deny from all\n    </IfModule>\n";
+            $rules .= "</FilesMatch>\n";
+            $rules .= "Options -Indexes -ExecCGI\n";
+            file_put_contents( $htaccess, $rules );
+        }
     }
 
     /**
