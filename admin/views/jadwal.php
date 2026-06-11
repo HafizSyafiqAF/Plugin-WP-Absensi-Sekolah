@@ -1,19 +1,6 @@
 <?php
 defined( 'ABSPATH' ) || exit;
-if ( ! defined( 'ABSENSI_ADMIN_ASSETS' ) ) :
-    define( 'ABSENSI_ADMIN_ASSETS', true ); ?>
-<link rel="stylesheet" href="<?php echo esc_url( ABSENSI_PLUGIN_URL . 'assets/dist/app.css' ); ?>">
-<script type="module" src="<?php echo esc_url( ABSENSI_PLUGIN_URL . 'assets/dist/admin.js' ); ?>"></script>
-<?php endif; ?>
-<script>
-if (typeof AbsensiAdmin === 'undefined') {
-    window.AbsensiAdmin = {
-        restUrl: <?php echo wp_json_encode( rest_url( 'absensi/v1/' ) ); ?>,
-        nonce:   <?php echo wp_json_encode( wp_create_nonce( 'wp_rest' ) ); ?>
-    };
-}
-</script>
-
+?>
 <div class="wrap absensi-admin-wrap" style="max-width:960px;" x-data="jadwalManager">
   <hr class="wp-header-end" style="margin:0;">
 

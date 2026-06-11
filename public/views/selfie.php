@@ -1,11 +1,6 @@
 <?php
 defined( 'ABSPATH' ) || exit;
-if ( ! defined( 'ABSENSI_PUBLIC_ASSETS' ) ) :
-    define( 'ABSENSI_PUBLIC_ASSETS', true ); ?>
-<link rel="stylesheet" href="<?php echo esc_url( ABSENSI_PLUGIN_URL . 'assets/dist/app.css' ); ?>">
-<script type="module" src="<?php echo esc_url( ABSENSI_PLUGIN_URL . 'assets/dist/siswa.js' ); ?>"></script>
-<?php endif; ?>
-
+?>
 <div x-data="absensiSiswa" class="absensi-selfie-wrap">
   <div class="absensi-selfie-container">
 

@@ -4,47 +4,13 @@ Panduan untuk Claude Code saat bekerja di plugin ini. **Kode = sumber kebenaran.
 
 ---
 
-## Peran & Batasan
-
-Pekerjaan saat ini: **Frontend Developer**. Backend dikerjakan oleh developer terpisah.
-
-**Claude DILARANG menyentuh file Backend**, termasuk:
-
-- `absensi-sekolah.php` (entry point plugin)
-- `includes/` — semua file PHP di dalamnya:
-  - `includes/Plugin.php`
-  - `includes/Installer.php`
-  - `includes/api/` (REST endpoint)
-  - `includes/class/Shortcodes.php`
-  - `includes/helpers/`
-  - `includes/Admin/Menu.php`
-
-Jika permintaan membutuhkan perubahan Backend → **tolak dan sampaikan ke Backend developer**.
-
-**Lingkup file yang boleh disentuh:**
-
-| Folder / File | Keterangan |
-|---|---|
-| `assets/src/` | Source JS & CSS sebelum build |
-| `assets/dist/` | Output Vite (ter-generate otomatis, jangan edit manual) |
-| `admin/views/` | View PHP halaman admin (render HTML template saja, tanpa logika DB) |
-| `public/views/` | View PHP publik / shortcode output |
-| `vite.config.js` | Konfigurasi Vite |
-| `package.json` | Dependensi npm (Alpine, Tailwind, Vite, Leaflet) |
-| `tailwind.config.js` | Konfigurasi Tailwind |
-| `postcss.config.js` | Konfigurasi PostCSS |
-
-> View PHP di `admin/views/` dan `public/views/` boleh disentuh karena fungsinya **hanya render HTML/template** — bukan logika bisnis atau query DB.
-
----
-
 ## Ringkasan
 
 Plugin WordPress untuk absensi sekolah, MVP. Dua mode absen:
 1. **Selfie + GPS** — siswa absen mandiri via browser HP (validasi radius haversine).
 2. **RFID USB scanner** — guru tap kartu siswa (scanner = HID keyboard, "ketik" UID + Enter).
 
-Plus dashboard admin (WP admin) + laporan rekap. Stack: PHP 8.0+, WordPress 6.0+, custom table `$wpdb` (bukan CPT), REST API, **Alpine.js + Tailwind + Vite** (dibangun sebagai FE terpisah di `assets/`).
+Plus dashboard admin (WP admin) + laporan rekap. Stack: PHP 8.0+, WordPress 6.0+, custom table `$wpdb` (bukan CPT), REST API, **Alpine.js + Tailwind CSS (via CDN)** (tanpa Vite/build tool).
 
 ---
 
@@ -124,224 +90,71 @@ Namespace `absensi/v1` (`/wp-json/absensi/v1/`). Konstanta `NAMESPACE` diulang d
 
 ## Frontend
 
-### Tech Stack
+**Alpine.js + Tailwind CSS via CDN — TANPA Vite/build step.** (Plan menyebut Vite — TIDAK dipakai; Alpine & Tailwind dimuat dari CDN, bukan di-bundle.)
 
-| Item | Pilihan |
-|---|---|
-| Framework JS | **Alpine.js** ^3 — bundled via Vite, BUKAN CDN |
-| Styling | **Tailwind CSS** — build-time (purge), BUKAN CDN |
-| Build tool | **Vite** |
-| HTTP | `fetch` native + wrapper `apiClient.js` (inject nonce otomatis) |
-| Ikon | **Lucide** (outline), **Leaflet** (map picker settings) |
-
-### Struktur Asset
-
-```
-assets/
-├── src/
-│   ├── siswa.js        # Alpine: kamera, GPS, pilih sesi, submit selfie
-│   ├── guru.js         # Alpine: RFID listener, resolve, submit, toggle ENROLL
-│   ├── admin.js        # filter tanggal/kelas/sesi, export, enroll, settingsMap
-│   ├── ortu.js         # Alpine: view-only absensi anak
-│   ├── rfid.js         # shared HID buffer/parser (dipakai guru.js & admin enroll)
-│   ├── apiClient.js    # fetch + X-WP-Nonce wrapper + retry nonce
-│   └── app.css         # Tailwind entry + design tokens + Leaflet CSS
-└── dist/               # output Vite (enqueue di PHP oleh Backend)
-```
-
-### Empat Surface
-
-| Surface | Pengguna | Konteks | Shortcode / Halaman |
-|---|---|---|---|
-| **Siswa** | Siswa | HP, selfie+GPS | `[absensi_siswa]` (alias `[absensi_selfie]`) |
-| **Guru** | Guru | Laptop, RFID scanner | `[absensi_guru]` |
-| **Admin** | Admin | WP admin dashboard | WP admin menu |
-| **Orang tua** | Ortu | HP, view-only | `[absensi_ortu]` |
-
-### Design Tokens (ikuti saat menulis CSS/Tailwind)
-
-```css
-:root {
-  --c-primary:        #2563EB;  /* blue-600  tombol utama */
-  --c-primary-hover:  #1D4ED8;  /* blue-700 */
-  --c-primary-soft:   #DBEAFE;  /* blue-100 */
-
-  --c-success:        #16A34A;  /* hadir / valid */
-  --c-success-soft:   #DCFCE7;
-  --c-warning:        #D97706;  /* telat */
-  --c-warning-soft:   #FEF3C7;
-  --c-danger:         #DC2626;  /* ditolak / luar radius / UID tak dikenal */
-  --c-danger-soft:    #FEE2E2;
-  --c-info:           #0891B2;  /* izin / sakit / sesi pulang */
-
-  --c-bg:             #F8FAFC;
-  --c-surface:        #FFFFFF;
-  --c-border:         #E2E8F0;
-  --c-text:           #0F172A;
-  --c-text-muted:     #64748B;
-}
-```
-
-Pemetaan status → warna:
-| Status | Token |
-|---|---|
-| Hadir | success (hijau) |
-| Telat | warning (oranye) |
-| Alpha / ditolak | danger (merah) |
-| Izin / Sakit | info (cyan) |
-| Sesi Masuk | primary (biru) |
-| Sesi Pulang | info (cyan) |
-
-### Komponen per Surface
-
-**Siswa (HP)**
-- `SesiSwitcher` — segmented Masuk/Pulang (auto-suggest by jam, bisa override)
-- `CameraView` — `<video>` live + frame guide oval wajah
-- `GpsStatusChip` — chip kecil akurasi GPS (hijau/oranye/merah)
-- `CapturePreview` — foto + tombol Ulangi/Kirim
-- `ResultCard` — hasil absen: ikon ✓/✗ + sesi + status + jam + jarak
-
-**Guru (laptop)**
-- `KelasSelector` — dropdown kelas (sticky atas)
-- `SesiSwitcher` — Masuk/Pulang
-- `ModeSwitcher` — toggle "Absen | Daftar Kartu"
-- `RfidInputPad` — area tap kartu, input hidden auto-focus, pulse animasi
-- `EnrollPad` — search siswa + "Tap kartu untuk [Nama]..." + hasil
-- `ScanResultToast` — toast tiap tap (auto-dismiss 3s)
-- `TodayList` — daftar scan hari ini + counter hadir
-
-**Admin (WP admin)**
-- `FilterBar` — date range + kelas + preset periode + tombol Terapkan
-- `RekapTable` — tabel absensi, kolom Masuk (jam+metode) / Pulang (jam+metode), badge status
-- `SummaryCards` — 4 kartu: Hadir / Telat / Izin-Sakit / Alpha
-- `ExportMenu` — dropdown: Excel · PDF · CSV (server-side) · Cetak
-- `EnrollPanel` — search siswa → tap / input UID manual → status
-- `SettingsForm` — koordinat (map picker Leaflet), radius slider, jam masuk/keluar, window double-tap
-
-**Orang tua (HP, view-only)**
-- `ChildSelector` — pilih anak (kalau >1), inisial nama
-- `AbsensiTimeline` — daftar per tanggal: chip masuk/pulang + status badge + jam
-- `MonthSummary` — ringkasan bulan: hadir/telat/izin-sakit/alpha
-
-### Aturan Storage (data sensitif)
-
-| Data | Storage | Alasan |
-|---|---|---|
-| Foto selfie | **Memory** saja | Privasi, buang setelah submit |
-| Koordinat GPS | **Memory** saja | Sensitif, kirim sekali saat submit |
-| Nonce REST | **Memory** (via `wp_localize_script`) | Per page-load |
-| Buffer RFID (UID) | **Memory** | Transient, clear tiap Enter |
-| Draft guru (kelas/sesi/mode) | **sessionStorage** | Hilang saat tab tutup |
-| Preferensi filter admin | **localStorage** (`absensi_admin_filter`) | Non-sensitif |
-
-**Aturan wajib:**
-1. Data sensitif (foto, GPS, nonce, UID) → **JANGAN localStorage / cookie non-HttpOnly**. Memory only.
-2. Selalu `try/catch` saat akses storage (mode privat browser bisa throw).
+- Public: [public/js/public.js](public/js/public.js) + `public/css/public.css`, enqueue global di `wp_enqueue_scripts`, config var `AbsensiConfig`. Alpine + Tailwind dari CDN.
+- Admin: `admin/js/admin.js` + `admin/css/admin.css`, enqueue hanya di halaman plugin (`str_contains($hook,'absensi')`), config var `AbsensiAdmin`.
+- **Catatan migrasi:** sebagian file JS lama masih bergaya vanilla/jQuery; arah resmi = Alpine.js (CDN). Tambah/ubah interaksi baru pakai Alpine, jangan jQuery.
+- Shortcode ([includes/class/Shortcodes.php](includes/class/Shortcodes.php)): `[absensi_selfie]`, `[absensi_status]`. Render via `ob_start()` + `include` view, gate `is_user_logged_in()`.
+- Admin menu ([includes/Admin/Menu.php](includes/Admin/Menu.php)): menu "Absensi" + 6 submenu (Dashboard, Siswa, Kelas, Absen RFID, Laporan, Pengaturan). Render `admin/views/{slug}.php`, fallback "View belum tersedia" jika file tak ada.
 
 ---
 
-## Konvensi
+## Konvensi (ikuti saat menulis kode)
 
-### Backend (PHP)
 - `defined( 'ABSPATH' ) || exit;` di baris atas tiap file PHP.
 - **Semua** query lewat `$wpdb->prepare()`. Untuk WHERE dinamis: rakit dari fragmen yang sudah di-`prepare` (lihat pola `$where_parts` di LaporanEndpoint), jangan concat raw input.
 - Sanitasi lewat `SanitizeHelper` sebelum DB; output escape `esc_html/esc_attr/esc_url`.
 - String UI lewat i18n `__()/esc_html__()` text domain `absensi-sekolah`.
-- Waktu pakai `current_time()` / `wp_timezone()`, bukan `time()` server langsung untuk tanggal.
+- Waktu pakai `current_time()` / `wp_timezone()`, bukan `time()` server langsung untuk tanggal (perhatikan: kode existing campur `time()` + `current_time()` saat hitung telat).
 - PHP 8: typed properties, `str_contains/str_starts_with`, named args, union return (`string|\WP_Error`).
 - Komentar & identifier domain dalam Bahasa Indonesia (ikuti gaya existing).
-
-### Frontend (JS/CSS/HTML)
-- **Alpine.js** untuk reaktivitas; gunakan `x-data`, `x-bind`, `x-on`, `@click`, dll.
-- **Tailwind** untuk styling; class utility langsung di HTML; jangan tulis CSS custom kecuali untuk design tokens.
-- **`rfid.js`** adalah shared module untuk parsing HID — jangan duplikat logika RFID di file lain.
-- **`apiClient.js`** wajib dipakai untuk semua REST call (bukan raw `fetch`) agar nonce di-inject otomatis.
-- Config REST diambil dari `AbsensiConfig` (publik) dan `AbsensiAdmin` (admin) — di-inject oleh Backend via `wp_localize_script`.
-- Semua string UI lewat `__()` / `esc_html__()` text domain `absensi-sekolah` (siap i18n).
-- Tap target minimal **44px**, kontras teks minimal **4.5:1 (AA)**.
-- Status dan sesi WAJIB ditunjukkan dengan **ikon + label + warna** (jangan andalkan warna saja).
-- `aria-live` untuk hasil scan, hasil absen, hasil enroll (screen reader).
-- Tombol submit WAJIB `disabled` saat `submitting` (cegah double submit).
-- Foto selfie: resize max 1280px sisi panjang, JPEG q0.7 via `<canvas>` sebelum upload.
-- RFID: jangan hardcode panjang UID; gunakan Enter sebagai terminator; anti double-tap window (default 3s).
 
 ---
 
 ## Build / Run / Test
 
-> ⚠️ **WAJIB: setiap selesai mengerjakan fitur apa pun, Claude harus mengetesnya dulu sebelum melapor selesai.** Jangan klaim "selesai" tanpa bukti jalan. Minimal: PHP lint (`php -l`) file yang diubah + `npm run build` bersih, lalu uji perilaku nyata. Sertakan output sebagai bukti.
+> ⚠️ **WAJIB: setiap selesai mengerjakan fitur apa pun, Claude harus mengetesnya dulu sebelum melapor selesai.** Jangan klaim "selesai" tanpa bukti jalan. Minimal: PHP lint (`php -l`) file yang diubah, lalu uji perilaku nyata sesuai fitur — panggil endpoint REST (`curl`/`wp eval`), buka halaman shortcode/admin, atau jalankan query untuk verifikasi data tersimpan. Sertakan output/hasil sebagai bukti. Jika tak bisa dites di lingkungan ini, sebutkan eksplisit apa yang belum terverifikasi.
 
-```bash
-npm run build   # output ke assets/dist/ — wajib dijalankan setelah edit assets/src/
-npm run dev     # watch mode (development)
-```
-
-- Lingkungan: Laragon di `c:\laragon\www\absensi-sekolah\`.
+- **Tidak ada build step (no Vite/npm).** Edit PHP/JS/CSS langsung, refresh. Alpine.js + Tailwind dimuat dari CDN di view/enqueue.
+- Lingkungan: Local (Flywheel) di `c:\Users\hafiz\Local Sites\absensi-sekolah\`.
 - Aktivasi plugin men-trigger `Installer::activate()` (buat tabel + seed options). Setelah ubah skema DB → deactivate + activate ulang.
 - HTTPS wajib di produksi (Geolocation API + kamera). Local biasanya jalan via domain `.local`.
-- Tailwind `content` harus scan semua `.php` dan `.js` agar purge benar.
-
-**Alur kerja FE:**
-1. Identifikasi surface mana yang dikerjakan (Siswa / Guru / Admin / Ortu).
-2. Kerjakan hanya pada file di `assets/src/`, `admin/views/`, atau `public/views/`.
-3. Jalankan `npm run build` setelah selesai, verifikasi di browser.
-4. Jika fitur butuh perubahan Backend (endpoint baru, skema DB, enqueue baru) → **sampaikan ke Backend developer**, jangan ubah sendiri.
-
----
-
-## Error & Edge Case yang Harus Ditangani (FE)
-
-| Kasus | Handling UI |
-|---|---|
-| Browser tolak izin kamera/GPS | Banner instruksi aktifkan izin (persistent) |
-| Bukan HTTPS | Blok form, tampilkan pesan "Absen butuh koneksi aman (HTTPS)" |
-| GPS tidak akurat | Tahan submit, "Tunggu sinyal lebih akurat..." |
-| Nonce expired (403) | Auto refresh nonce → retry sekali; gagal → minta reload |
-| Offline saat submit | Pesan jelas, jangan auto-queue foto (privasi) |
-| RFID double-tap | Abaikan dalam window 3s (client) |
-| Scanner kirim karakter aneh | `rfid.js` normalisasi; UID kosong/invalid → tolak, tetap focus |
-| Enroll: kartu sudah dipakai (409) | Toast merah "Kartu milik [Nama]" |
-| Enroll: siswa sudah punya kartu | Konfirmasi dialog replace sebelum POST |
-| Sudah absen sesi ini (409) | "Sudah absen [masuk/pulang] hari ini" |
-| Di luar radius (422) | ResultCard ✗ merah + jarak meter, izinkan ulang |
+- **Composer + PHPUnit sudah terpasang** (`composer.json`, `vendor/`, `phpunit.xml.dist`, `tests/unit/` Brain Monkey). Belum ada CI. **Tidak ada `package.json`/npm** (Alpine+Tailwind via CDN, bukan build).
 
 ---
 
 ## Gap & TODO yang diketahui (jangan asumsikan sudah ada)
 
-**Backend (perlu dikerjakan BE):**
-- **Export Excel/PDF belum ada** — tidak ada PhpSpreadsheet/Dompdf/`vendor/`. `/laporan` hanya balas JSON; endpoint `/laporan/export?format=xlsx|pdf|csv` belum diimplementasi.
-- **Shortcode belum lengkap:** `[absensi_siswa]`, `[absensi_guru]`, `[absensi_ortu]` belum didaftarkan di `Shortcodes.php`.
-- **Enqueue lama:** `Plugin.php` masih enqueue `public.js`/`admin.js` lama, belum membaca manifest Vite (`assets/dist/`).
-- **Role belum di-seed:** `guru`, `absensi_admin`, `orang_tua` dirujuk di permission check tapi Installer tidak membuatnya.
-- **Endpoint RFID enroll/resolve belum ada:** `POST /absen/rfid/enroll` + `GET /absen/rfid/resolve?uid=` (R1/K8).
+- **Export Excel/PDF belum ada** — tidak ada PhpSpreadsheet/Dompdf/`vendor/`. `/laporan` hanya balas JSON.
+- **View hilang:** admin `dashboard.php`, `siswa.php`, `kelas.php`, `laporan.php` belum ada (hanya `rfid.php` + `settings.php`). Public `status.php` belum ada → shortcode `[absensi_status]` akan `include` file tak ada (warning).
+- **Role belum di-seed:** `guru`, `absensi_admin`, `orang_tua` dirujuk di permission check tapi Installer tidak membuatnya. Buat role/cap saat aktivasi bila diperlukan.
 - **Tidak ada uninstall.php** — drop table belum ditangani; `deactivate()` cuma `flush_rewrite_rules()`.
-- **Tidak ada:** capability granular, WaliLinker (`absensi_wali` tabel + endpoint), `JadwalEndpoint` per kelas.
-- **Inject config:** `rfidDebounce`, `akurasi_max`, `retensi_hari` belum di-inject ke `AbsensiConfig`/`AbsensiAdmin`.
-- **SiswaEndpoint bug:** `create_siswa()` tidak cek `$wpdb->last_error` → tetap balas 201 walau insert duplikat NIS gagal.
-
-**Frontend (sudah dikerjakan):**
-- ✅ Semua view admin + public sudah ada dan di-redesign.
-- ✅ `apiClient.js`, `siswa.js`, `guru.js`, `admin.js`, `ortu.js`, `rfid.js` sudah implementasi penuh.
-- ✅ Enroll endpoint sudah pakai `POST absen/rfid/enroll` (menunggu BE implement).
-- ✅ FilterBar preset periode (Hari Ini/Minggu/Bulan).
-- ✅ ExportMenu mengarah ke server `/laporan/export` (menunggu BE implement).
+- **Tidak ada:** capability granular, anti double-tap RFID (window), cek akurasi GPS, enforce `is_ssl()` di endpoint, tabel relasi ortu→anak, endpoint linking ortu.
+- Param `foto` di `/absen/selfie` `required => false` (absen tanpa foto diperbolehkan saat ini).
 
 ---
 
 ## Divergensi: kode vs plans/README
 
-`plugins/includes/plans/` memuat `01_BACKEND_PLAN.md`, `02_FRONTEND_PLAN.md`, `03_UIUX_PLAN.md` — desain target yang **lebih ambisius** dari yang dibangun. Perbedaan utama:
+`plugins/includes/plans/` (di luar folder plugin) memuat `01_BACKEND_PLAN.md`, `02_FRONTEND_PLAN.md`, `03_UIUX_PLAN.md` — desain target yang **lebih ambisius** dari yang dibangun. Perbedaan utama:
+
+### Divergensi inti yang TETAP (sengaja beda dari plan, ikuti kode)
 
 | Aspek | Plan | Kode nyata |
 |---|---|---|
-| Tabel absensi | `absensi_log`, 2 baris/sesi (masuk+pulang), UNIQUE `(siswa,tanggal,sesi)` | `absensi_rekap`, 1 baris/hari, kolom `waktu_masuk`+`waktu_keluar` |
-| Relasi ortu | tabel `absensi_wali`, endpoint `/child/logs` | belum ada |
-| Settings | 1 option serialized `absensi_settings` | option individual `absensi_*` |
-| Endpoint | `/checkin/*`, `/rfid/resolve`, `/rfid/enroll`, `/wali`, `/settings` | `/absen/*`, `/siswa/*`, `/laporan/*` |
-| Auth | capability granular (`absensi_submit_self` dll) | role check `array_intersect` |
-| Autoload | Composer PSR-4 + `vendor/` bundled | `spl_autoload` manual, no vendor |
-| Frontend | Alpine.js + Tailwind + Vite | **Alpine.js + Tailwind + Vite** ✅ (sudah diimplementasi) |
-| Arsitektur | Controller→Service→Repository | query `$wpdb` langsung di endpoint |
+| Tabel absensi | `absensi_log`, 2 baris/sesi (masuk+pulang), UNIQUE `(siswa,tanggal,sesi)` | `absensi_rekap`, **1 baris/hari**, kolom `waktu_masuk`+`waktu_keluar` |
+| Settings | 1 option serialized `absensi_settings` | option **individual** `absensi_*` |
+| Arsitektur | Controller→Service→Repository | query `$wpdb` **langsung** di endpoint (no Service/Repo) |
+| Frontend | Alpine.js + Tailwind + **Vite** | Alpine.js + Tailwind **via CDN, no Vite/build** |
 
-**Saat menambah fitur:** ikuti pola kode yang ADA sekarang, bukan plan — kecuali user eksplisit minta refactor ke arah plan.
+### Konvergensi sejak brief (plan SUDAH tercapai — jangan bikin ulang)
+
+Per 2026-06-08, fitur ini sudah dibangun (dulu tercatat "belum ada"):
+
+- **Relasi ortu** — tabel `absensi_wali` + endpoint `/wali`, `/child/logs` **ada**. Lihat [WaliEndpoint](includes/api/WaliEndpoint.php), [ChildEndpoint](includes/api/ChildEndpoint.php).
+- **Endpoint resolve/enroll/wali/settings/kelas/jadwal/export** — semua **ada**. Penamaan pakai prefix `/absen/*` (mis. `/absen/rfid/resolve`, `/absen/rfid/enroll`), bukan `/checkin/*` / `/rfid/*` ala plan.
+- **Capability** — CAPS (`absensi_submit_self` dll) **di-seed** saat aktivasi (`Installer::seed_roles`). Auth **hybrid**: sebagian endpoint pakai `current_user_can(cap)` (enroll/export/child), sisanya masih role-check `array_intersect`.
+- **Composer/vendor** — `composer.json` + `vendor/` **ada** (PhpSpreadsheet/Dompdf untuk export + PHPUnit/Brain Monkey dev). `spl_autoload` manual tetap **autoloader utama**; vendor dimuat kondisional bila ada.
+
+**Saat menambah fitur:** ikuti pola kode yang ADA sekarang, bukan plan — kecuali user eksplisit minta refactor ke arah plan. Plan berguna sebagai referensi niat/edge-case, bukan kontrak struktur.

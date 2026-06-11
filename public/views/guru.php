@@ -1,10 +1,5 @@
 <?php
 defined( 'ABSPATH' ) || exit;
-if ( ! defined( 'ABSENSI_GURU_ASSETS' ) ) :
-    define( 'ABSENSI_GURU_ASSETS', true ); ?>
-<link rel="stylesheet" href="<?php echo esc_url( ABSENSI_PLUGIN_URL . 'assets/dist/app.css' ); ?>">
-<script type="module" src="<?php echo esc_url( ABSENSI_PLUGIN_URL . 'assets/dist/guru.js' ); ?>"></script>
-<?php endif;
 global $wpdb;
 $kelas_list = $wpdb->get_results( "SELECT id, nama_kelas FROM {$wpdb->prefix}absensi_kelas ORDER BY nama_kelas" );
 $kelas_json = wp_json_encode( array_map( fn($k) => [ 'id' => $k->id, 'nama_kelas' => $k->nama_kelas ], $kelas_list ) );
