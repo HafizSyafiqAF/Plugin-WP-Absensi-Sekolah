@@ -134,7 +134,8 @@ $kelas_json = wp_json_encode( array_map( fn($k) => [ 'id' => $k->id, 'nama_kelas
                  class="absensi-input" style="padding-left:40px;">
         </div>
 
-        <div x-show="enrollResults.length > 0" style="border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;">
+        <?php // Hindari karakter > / < di nilai atribut: wptexturize memecah tag saat output shortcode dirender di konten page. ?>
+        <div x-show="enrollResults.length !== 0" style="border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;">
           <template x-for="s in enrollResults" :key="s.id">
             <button type="button" @click="selectEnrollTarget(s)" class="absensi-enroll-item">
               <div style="text-align:left;">

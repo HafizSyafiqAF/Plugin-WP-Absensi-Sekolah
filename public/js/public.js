@@ -1,3 +1,20 @@
+/* ─── Bootstrap Alpine.js (lokal) ───────────────────────────────────────────
+ * Cari URL public.js untuk derive path alpine.min.js di folder yang sama.
+ * public.js dijalankan di footer, listener alpine:init sudah terdaftar sebelum
+ * Alpine selesai load (async), sehingga komponen Alpine.data teregistrasi tepat waktu.
+ */
+(function () {
+  if (window.Alpine || document.querySelector('script[src*="alpine"]')) return;
+  var tag = document.querySelector('script[src*="plugin-wp-absensi-sekolah/public/js/public.js"]')
+         || document.querySelector('script[src*="public/js/public.js"]');
+  var src = tag
+    ? tag.src.replace(/public\.js(\?.*)?$/, 'alpine.min.js')
+    : 'https://cdn.jsdelivr.net/npm/alpinejs@3.14.3/dist/cdn.min.js';
+  var s = document.createElement('script');
+  s.src = src;
+  document.head.appendChild(s);
+}());
+
 /* ─── API Client (public) ────────────────────────────────────────────────── */
 (function () {
   'use strict';
@@ -388,37 +405,60 @@ document.addEventListener('alpine:init', function () {
   /* ======================================================================
      absensiOrtu — view-only riwayat anak (shortcode [absensi_ortu])
      ====================================================================== */
-  Alpine.data('absensiOrtu', function () { return {
-    anakList:     (window.AbsensiConfig && window.AbsensiConfig.anakList) || [],
-    selectedAnak: null,
-    bulan:        new Date().toISOString().slice(0, 7),
-    timeline:     [],
-    summary:      { hadir: 0, telat: 0, izin_sakit: 0, alpha: 0 },
-    loading:      false,
-    error:        null,
+  Alpine.data('absensiOrtu', function () {
+    // 'YYYY-MM' dalam waktu lokal (toISOString = UTC, bisa meleset di tanggal 1).
+    function bulanLokal(d) {
+      return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+    }
+    return {
+    anakList:      (window.AbsensiConfig && window.AbsensiConfig.anakList) || [],
+    selectedIndex: 0,
+    bulan:         bulanLokal(new Date()),
+    timeline:      [],
+    summary:       { hadir: 0, telat: 0, izin_sakit: 0, alpha: 0 },
+    loading:       false,
+    error:         null,
 
-    init: function () {
-      if (this.anakList.length === 1) this.selectedAnak = this.anakList[0];
-      if (this.selectedAnak) this.load();
+    get selectedAnak()  { return this.anakList[this.selectedIndex] || null; },
+    get adaAnak()       { return this.anakList.length !== 0; },
+    get banyakAnak()    { return this.anakList.length !== 0 && this.anakList.length !== 1; },
+    get adaTimeline()   { return this.timeline.length !== 0; },
+
+    init: function () { if (this.selectedAnak) this.load(); },
+
+    selectAnak: function (index) {
+      if (index === this.selectedIndex) return;
+      this.selectedIndex = index;
+      this.load();
     },
-
-    selectAnak: function (anak) { this.selectedAnak = anak; this.load(); },
 
     load: async function () {
       if (!this.selectedAnak) return;
       this.loading = true; this.error = null;
       try {
-        var range  = this.bulanRange();
-        var p = new URLSearchParams({ siswa_id: this.selectedAnak.id, dari: range[0], sampai: range[1] });
-        var results = await Promise.all([
-          window.api.get('laporan?' + p),
-          window.api.get('laporan/summary?' + p),
-        ]);
-        var rekap   = results[0], summary = results[1];
-        this.timeline = (rekap && rekap.data)    || rekap    || [];
-        this.summary  = (summary && summary.data) || summary || this.summary;
+        var range = this.bulanRange();
+        var p = new URLSearchParams({
+          siswa_id: this.selectedAnak.siswa_id,
+          dari:     range[0],
+          sampai:   range[1],
+        });
+        var res = await window.api.get('child/logs?' + p);
+        this.timeline = (res && res.data) || [];
+        this.summary  = this.hitungSummary(this.timeline);
       } catch (err) { this.error = err.message; }
       finally { this.loading = false; }
+    },
+
+    // /child/logs tidak punya endpoint summary — rekap dihitung dari baris timeline.
+    hitungSummary: function (rows) {
+      var s = { hadir: 0, telat: 0, izin_sakit: 0, alpha: 0 };
+      rows.forEach(function (r) {
+        if (r.status === 'hadir') s.hadir++;
+        else if (r.status === 'telat') s.telat++;
+        else if (r.status === 'izin' || r.status === 'sakit') s.izin_sakit++;
+        else if (r.status === 'alpha') s.alpha++;
+      });
+      return s;
     },
 
     bulanRange: function () {
@@ -429,16 +469,15 @@ document.addEventListener('alpine:init', function () {
 
     prevBulan: function () {
       var p = this.bulan.split('-').map(Number);
-      this.bulan = new Date(p[0], p[1] - 2, 1).toISOString().slice(0, 7);
+      this.bulan = bulanLokal(new Date(p[0], p[1] - 2, 1));
       this.load();
     },
 
     nextBulan: function () {
+      if (this.isMaxBulan) return;
       var p = this.bulan.split('-').map(Number);
-      var next = new Date(p[0], p[1], 1).toISOString().slice(0, 7);
-      var max  = new Date().toISOString().slice(0, 7);
-      if (next > max) return;
-      this.bulan = next; this.load();
+      this.bulan = bulanLokal(new Date(p[0], p[1], 1));
+      this.load();
     },
 
     get bulanLabel() {
@@ -446,12 +485,22 @@ document.addEventListener('alpine:init', function () {
       return new Date(p[0], p[1] - 1, 1).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
     },
 
-    get isMaxBulan() { return this.bulan >= new Date().toISOString().slice(0, 7); },
+    get isMaxBulan() { return this.bulan === bulanLokal(new Date()) || this.bulan.localeCompare(bulanLokal(new Date())) === 1; },
 
     statusClass: function (status) {
-      var m = { hadir: 'status-hadir', telat: 'status-telat', alpha: 'status-alpha', izin: 'status-izin', sakit: 'status-sakit' };
-      return m[status] || 'badge';
+      var m = { hadir: 'badge-success', telat: 'badge-warning', alpha: 'badge-danger', izin: 'badge-info', sakit: 'badge-info' };
+      return m[status] || 'badge-neutral';
     },
+
+    // 'YYYY-MM-DD HH:MM:SS' → 'HH:MM' (null-safe untuk waktu_keluar kosong).
+    jam: function (waktu) { return waktu ? String(waktu).slice(11, 16) : null; },
+
+    hariLabel: function (tanggal) {
+      var p = String(tanggal).slice(0, 10).split('-').map(Number);
+      return new Date(p[0], p[1] - 1, p[2]).toLocaleDateString('id-ID', { weekday: 'short' });
+    },
+
+    tanggalLabel: function (tanggal) { return String(tanggal).slice(8, 10); },
 
     inisial: function (nama) {
       return ((nama || '?').split(' ').slice(0, 2).map(function (s) { return s[0]; }).join('')).toUpperCase();
