@@ -22,6 +22,15 @@ define( 'ABSENSI_PLUGIN_DIR',  plugin_dir_path( __FILE__ ) );
 define( 'ABSENSI_PLUGIN_URL',  plugin_dir_url( __FILE__ ) );
 define( 'ABSENSI_PLUGIN_BASE', plugin_basename( __FILE__ ) );
 
+// ─── Composer autoload (opsional) ────────────────────────────────────────────
+// Dipakai untuk dependency export laporan (PhpSpreadsheet/Dompdf). vendor/ TIDAK
+// di-commit (lihat .gitignore) — jalankan `composer install` saat dev/packaging.
+// Plugin tetap berfungsi tanpa vendor/ (export Excel/PDF nonaktif sampai di-install);
+// autoloader manual di bawah tetap menangani namespace Absensi\.
+if ( file_exists( __DIR__ . '/vendor/autoload.php' ) ) {
+    require_once __DIR__ . '/vendor/autoload.php';
+}
+
 // ─── Autoloader Sederhana ────────────────────────────────────────────────────
 spl_autoload_register( function ( string $class ): void {
     $prefix = 'Absensi\\';

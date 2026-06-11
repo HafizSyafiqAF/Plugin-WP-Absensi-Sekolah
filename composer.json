@@ -1,0 +1,38 @@
+{
+    "name": "p4-magang/absensi-sekolah",
+    "description": "Plugin WordPress absensi sekolah (selfie+GPS, RFID). Dependency untuk export laporan (Excel/PDF).",
+    "type": "wordpress-plugin",
+    "license": "GPL-2.0-or-later",
+    "require": {
+        "php": ">=8.0",
+        "phpoffice/phpspreadsheet": "^1.29",
+        "dompdf/dompdf": "^2.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^9.6",
+        "brain/monkey": "^2.6",
+        "mockery/mockery": "^1.6"
+    },
+    "autoload": {
+        "psr-4": {
+            "Absensi\\": "includes/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Absensi\\Tests\\": "tests/unit/"
+        }
+    },
+    "scripts": {
+        "test": "phpunit",
+        "test:unit": "phpunit --testsuite unit"
+    },
+    "config": {
+        "optimize-autoloader": true,
+        "sort-packages": true,
+        "platform": {
+            "php": "8.0"
+        }
+    },
+    "minimum-stability": "stable"
+}
