@@ -85,7 +85,7 @@ class SiswaEndpoint {
         ) );
         return $siswa
             ? new \WP_REST_Response( $siswa )
-            : new \WP_REST_Response( [ 'message' => 'Tidak ditemukan.' ], 404 );
+            : new \WP_REST_Response( [ 'code' => 'siswa_tidak_ditemukan', 'message' => 'Tidak ditemukan.', 'data' => [ 'status' => 404 ] ], 404 );
     }
 
     public function create_siswa( \WP_REST_Request $req ): \WP_REST_Response {
@@ -126,7 +126,7 @@ class SiswaEndpoint {
             $uid, (int) $req->get_param( 'id' )
         ) );
         if ( $conflict ) {
-            return new \WP_REST_Response( [ 'message' => 'UID sudah dipakai siswa lain.' ], 409 );
+            return new \WP_REST_Response( [ 'code' => 'kartu_terpakai', 'message' => 'UID sudah dipakai siswa lain.', 'data' => [ 'status' => 409 ] ], 409 );
         }
 
         $wpdb->update(

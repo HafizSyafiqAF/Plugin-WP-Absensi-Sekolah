@@ -95,7 +95,8 @@ Namespace `absensi/v1` (`/wp-json/absensi/v1/`). Konstanta `NAMESPACE` diulang d
 - Public: [public/js/public.js](public/js/public.js) + `public/css/public.css`, enqueue global di `wp_enqueue_scripts`, config var `AbsensiConfig`. Alpine + Tailwind dari CDN.
 - Admin: `admin/js/admin.js` + `admin/css/admin.css`, enqueue hanya di halaman plugin (`str_contains($hook,'absensi')`), config var `AbsensiAdmin`.
 - **Catatan migrasi:** sebagian file JS lama masih bergaya vanilla/jQuery; arah resmi = Alpine.js (CDN). Tambah/ubah interaksi baru pakai Alpine, jangan jQuery.
-- Shortcode ([includes/class/Shortcodes.php](includes/class/Shortcodes.php)): `[absensi_selfie]`, `[absensi_status]`. Render via `ob_start()` + `include` view, gate `is_user_logged_in()`.
+- Shortcode ([includes/class/Shortcodes.php](includes/class/Shortcodes.php)): `[absensi_selfie]`, `[absensi_status]`, `[absensi_siswa]`, `[absensi_guru]` (cap `absensi_submit_rfid`), `[absensi_ortu]` (cap `absensi_view_child`). Render via `ob_start()` + `include` view, gate login/cap; view belum ada → placeholder.
+- **Auto-page:** `Installer::seed_pages()` (dipanggil di `activate()`) buat 3 page publish saat aktivasi — `/absensi-siswa`, `/absensi-guru`, `/absensi-ortu` (isi shortcode masing-masing). ID disimpan di option `absensi_pages` `{siswa,guru,ortu}`. Idempotent (cek option + slug); hormati page user ber-slug sama; **TIDAK** di `maybe_upgrade` (cuma saat aktivasi). Deactivate/uninstall: page dibiarkan.
 - Admin menu ([includes/Admin/Menu.php](includes/Admin/Menu.php)): menu "Absensi" + 6 submenu (Dashboard, Siswa, Kelas, Absen RFID, Laporan, Pengaturan). Render `admin/views/{slug}.php`, fallback "View belum tersedia" jika file tak ada.
 
 ---
