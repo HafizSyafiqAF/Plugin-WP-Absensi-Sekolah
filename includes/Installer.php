@@ -28,6 +28,7 @@ class Installer {
         self::create_tables();
         self::seed_default_options();
         self::seed_roles();
+        self::seed_pages();
         Retensi::schedule();
         flush_rewrite_rules();
     }
@@ -229,5 +230,57 @@ class Installer {
                 add_option( $key, $value );
             }
         }
+    }
+
+    // ─── Auto-buat Page Publik (surface FE) ────────────────────────────────────
+
+    /**
+     * Buat halaman WP berisi shortcode surface saat aktivasi (siswa/guru/ortu),
+     * agar langsung muncul di publik tanpa user membuat manual.
+     *
+     * Idempotent & hormati konten user:
+     * - ID tersimpan di option `absensi_pages` ({siswa,guru,ortu}). Sudah ada & valid → skip.
+     * - Page ber-slug sama yang sudah dibuat user → pakai ID-nya (tak buat dobel).
+     * - HANYA dipanggil di activate() (BUKAN maybe_upgrade) supaya page yang sengaja
+     *   dihapus user tak otomatis muncul lagi.
+     */
+    private static function seed_pages(): void {
+        $defs = [
+            'siswa' => [ 'title' => 'Absensi Siswa',     'slug' => 'absensi-siswa', 'shortcode' => '[absensi_siswa]' ],
+            'guru'  => [ 'title' => 'Absensi Guru',      'slug' => 'absensi-guru',  'shortcode' => '[absensi_guru]' ],
+            'ortu'  => [ 'title' => 'Absensi Orang Tua', 'slug' => 'absensi-ortu',  'shortcode' => '[absensi_ortu]' ],
+        ];
+
+        $pages = (array) get_option( 'absensi_pages', [] );
+
+        foreach ( $defs as $key => $def ) {
+            // Sudah tercatat & page masih ada (bukan trash) → skip.
+            if ( ! empty( $pages[ $key ] ) ) {
+                $existing = get_post( (int) $pages[ $key ] );
+                if ( $existing && 'trash' !== $existing->post_status ) {
+                    continue;
+                }
+            }
+
+            // User mungkin sudah punya page ber-slug sama → pakai itu, jangan dobel.
+            $by_slug = get_page_by_path( $def['slug'] );
+            if ( $by_slug ) {
+                $pages[ $key ] = (int) $by_slug->ID;
+                continue;
+            }
+
+            $id = wp_insert_post( [
+                'post_title'   => $def['title'],
+                'post_name'    => $def['slug'],
+                'post_content' => $def['shortcode'],
+                'post_status'  => 'publish',
+                'post_type'    => 'page',
+            ] );
+            if ( $id && ! is_wp_error( $id ) ) {
+                $pages[ $key ] = (int) $id;
+            }
+        }
+
+        update_option( 'absensi_pages', $pages );
     }
 }
