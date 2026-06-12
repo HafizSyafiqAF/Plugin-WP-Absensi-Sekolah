@@ -35,6 +35,7 @@ class Installer {
 
     public static function deactivate(): void {
         self::remove_roles();
+        self::remove_pages();
         Retensi::unschedule();
         flush_rewrite_rules();
     }
@@ -241,6 +242,9 @@ class Installer {
      * Idempotent & hormati konten user:
      * - ID tersimpan di option `absensi_pages` ({siswa,guru,ortu}). Sudah ada & valid → skip.
      * - Page ber-slug sama yang sudah dibuat user → pakai ID-nya (tak buat dobel).
+     *   Page "adopsi" ini TIDAK dicatat sebagai buatan plugin → tak ikut terhapus
+     *   saat deactivate (lihat remove_pages()).
+     * - ID yang benar-benar dibuat plugin dicatat di option `absensi_pages_created`.
      * - HANYA dipanggil di activate() (BUKAN maybe_upgrade) supaya page yang sengaja
      *   dihapus user tak otomatis muncul lagi.
      */
@@ -251,7 +255,8 @@ class Installer {
             'ortu'  => [ 'title' => 'Absensi Orang Tua', 'slug' => 'absensi-ortu',  'shortcode' => '[absensi_ortu]' ],
         ];
 
-        $pages = (array) get_option( 'absensi_pages', [] );
+        $pages   = (array) get_option( 'absensi_pages', [] );
+        $created = (array) get_option( 'absensi_pages_created', [] );
 
         foreach ( $defs as $key => $def ) {
             // Sudah tercatat & page masih ada (bukan trash) → skip.
@@ -277,10 +282,44 @@ class Installer {
                 'post_type'    => 'page',
             ] );
             if ( $id && ! is_wp_error( $id ) ) {
-                $pages[ $key ] = (int) $id;
+                $pages[ $key ]   = (int) $id;
+                $created[ $key ] = (int) $id;
             }
         }
 
         update_option( 'absensi_pages', $pages );
+        update_option( 'absensi_pages_created', $created );
+    }
+
+    /**
+     * Hapus page surface saat deactivate — HANYA yang dibuat plugin sendiri
+     * (tercatat di `absensi_pages_created`). Page user yang "diadopsi" (slug sama,
+     * dibuat manual) dibiarkan. Safety ganda: konten harus masih memuat shortcode
+     * surface-nya (page yang sudah di-repurpose user tak ikut terhapus).
+     * Kedua option page dihapus → aktivasi berikutnya buat ulang dari bersih.
+     */
+    private static function remove_pages(): void {
+        $shortcodes = [
+            'siswa' => '[absensi_siswa]',
+            'guru'  => '[absensi_guru]',
+            'ortu'  => '[absensi_ortu]',
+        ];
+
+        $created = (array) get_option( 'absensi_pages_created', [] );
+
+        foreach ( $created as $key => $id ) {
+            $page = get_post( (int) $id );
+            if ( ! $page || 'page' !== $page->post_type ) {
+                continue;
+            }
+            $sc = $shortcodes[ $key ] ?? null;
+            if ( $sc && ! str_contains( (string) $page->post_content, $sc ) ) {
+                continue; // sudah di-repurpose user → biarkan
+            }
+            wp_delete_post( (int) $id, true );
+        }
+
+        delete_option( 'absensi_pages' );
+        delete_option( 'absensi_pages_created' );
     }
 }
