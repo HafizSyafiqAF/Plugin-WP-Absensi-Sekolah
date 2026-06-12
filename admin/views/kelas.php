@@ -171,6 +171,7 @@ window._klTingkatOpts = <?php echo $_kl_tingkat_opts; ?>;
        init() {
          this.$watch('search',        () => { this.page = 1; });
          this.$watch('filterTingkat', () => { this.page = 1; });
+         this.$watch('showModal', val => { document.body.style.overflow = val ? 'hidden' : ''; });
        },
      }">
 
@@ -506,7 +507,7 @@ window._klTingkatOpts = <?php echo $_kl_tingkat_opts; ?>;
                 <span x-text="tingkatLabel" :style="!editTingkat ? 'color:#94A3B8' : 'color:#1E293B'"></span>
                 <svg :style="open ? 'transform:rotate(180deg)' : ''" style="transition:transform .2s;flex-shrink:0;color:#64748B;" width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
               </button>
-              <div x-show="open" x-transition.opacity.duration.150ms class="kl-dropdown">
+              <div x-show="open" x-transition.opacity.duration.150ms class="kl-dropdown" style="max-height:220px;overflow-y:auto;overscroll-behavior:contain;">
                 <button type="button" @click="editTingkat=0; open=false" class="kl-dropdown__item" :class="{'kl-dropdown__item--active':!editTingkat}">
                   <?php esc_html_e( '— Pilih Tingkat —', 'absensi-sekolah' ); ?>
                 </button>
@@ -527,7 +528,7 @@ window._klTingkatOpts = <?php echo $_kl_tingkat_opts; ?>;
                 <span x-text="guruLabel" :style="!editGuruId ? 'color:#94A3B8' : 'color:#1E293B'"></span>
                 <svg :style="open ? 'transform:rotate(180deg)' : ''" style="transition:transform .2s;flex-shrink:0;color:#64748B;" width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
               </button>
-              <div x-show="open" x-transition.opacity.duration.150ms class="kl-dropdown" style="max-height:220px;overflow-y:auto;">
+              <div x-show="open" x-transition.opacity.duration.150ms class="kl-dropdown" style="max-height:220px;overflow-y:auto;overscroll-behavior:contain;">
                 <button type="button" @click="editGuruId=''; open=false" class="kl-dropdown__item" :class="{'kl-dropdown__item--active':!editGuruId}">
                   <?php esc_html_e( '— Pilih Wali Kelas —', 'absensi-sekolah' ); ?>
                 </button>
