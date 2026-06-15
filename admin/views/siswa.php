@@ -20,7 +20,7 @@ window._swI18n = {
 };
 </script>
 
-<div class="wrap sw-wrap" x-data="siswaManager">
+<div class="wrap sw-wrap" x-data="siswaManager" x-init="$watch('showModal', val => { document.body.style.overflow = val ? 'hidden' : ''; })">
 
   <!-- Blobs (background accent, sama dengan dashboard) -->
   <div class="sw-bg" aria-hidden="true">
@@ -159,7 +159,7 @@ window._swI18n = {
             <span x-text="filterKelasLabel" :style="!filterKelas ? 'color:#64748B' : 'color:#1E293B'"></span>
             <svg :style="open ? 'transform:rotate(180deg)' : ''" style="transition:transform .2s;flex-shrink:0;color:#64748B;" width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
           </button>
-          <div x-show="open" x-transition.opacity.duration.150ms class="sw-dropdown">
+          <div x-show="open" x-transition.opacity.duration.150ms class="sw-dropdown" style="max-height:220px;overflow-y:auto;overscroll-behavior:contain;">
             <button type="button" @click="filterKelas=''; open=false" class="sw-dropdown__item" :class="{'sw-dropdown__item--active':!filterKelas}">
               <?php esc_html_e( 'Semua Kelas', 'absensi-sekolah' ); ?>
             </button>
@@ -356,7 +356,7 @@ window._swI18n = {
               <span x-text="editKelasLabel" :style="!editData?.kelas_id ? 'color:#94A3B8' : 'color:#1E293B'"></span>
               <svg :style="open ? 'transform:rotate(180deg)' : ''" style="transition:transform .2s;flex-shrink:0;color:#64748B;" width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
-            <div x-show="open" x-transition.opacity.duration.150ms class="sw-dropdown">
+            <div x-show="open" x-transition.opacity.duration.150ms class="sw-dropdown" style="max-height:220px;overflow-y:auto;overscroll-behavior:contain;">
               <button type="button" @click="editData.kelas_id=''; open=false" class="sw-dropdown__item" :class="{'sw-dropdown__item--active':!editData?.kelas_id}">
                 <?php esc_html_e( '— Pilih Kelas —', 'absensi-sekolah' ); ?>
               </button>
