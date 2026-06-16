@@ -1,25 +1,8 @@
 /**
  * Admin JS — Alpine.js components untuk halaman admin plugin.
- * File ini memuat Alpine.js lokal (admin/js/alpine.min.js) dan mendefinisikan komponen.
+ * Alpine.js di-enqueue terpisah oleh PHP (Plugin.php). File ini hanya mendefinisikan komponen.
  * Tidak ada import/export — semua dependency (Alpine, Leaflet) tersedia sebagai global.
  */
-
-/* ─── Bootstrap Alpine.js (lokal) ───────────────────────────────────────────
- * Cari URL admin.js untuk derive path alpine.min.js di folder yang sama.
- * admin.js dijalankan di footer, listener alpine:init sudah terdaftar sebelum
- * Alpine selesai load (async), sehingga komponen Alpine.data teregistrasi tepat waktu.
- */
-(function () {
-  if (window.Alpine || document.querySelector('script[src*="alpine"]')) return;
-  var tag = document.querySelector('script[src*="plugin-wp-absensi-sekolah/admin/js/admin.js"]')
-         || document.querySelector('script[src*="admin/js/admin.js"]');
-  var src = tag
-    ? tag.src.replace(/admin\.js(\?.*)?$/, 'alpine.min.js')
-    : 'https://cdn.jsdelivr.net/npm/alpinejs@3.14.3/dist/cdn.min.js';
-  var s = document.createElement('script');
-  s.src = src;
-  document.head.appendChild(s);
-}());
 
 /* ─── Bootstrap Leaflet 1.9.4 (CDN) ─────────────────────────────────────────
  * Dimuat hanya jika halaman punya kontainer peta (#absensi-map).
@@ -66,12 +49,13 @@
   }
 
   async function refreshNonce() {
+    const ajaxUrl = window.ajaxurl ?? '/wp-admin/admin-ajax.php';
     try {
-      const res = await fetch('/wp-admin/admin-ajax.php?action=rest-nonce');
+      const res = await fetch(`${ajaxUrl}?action=rest-nonce`);
       if (!res.ok) throw new Error('nonce refresh failed');
       _nonce = await res.text();
     } catch {
-      throw new Error('Sesi habis, silakan muat ulang halaman.');
+      throw Object.assign(new Error('Sesi habis, silakan muat ulang halaman.'), { status: 403 });
     }
   }
 
@@ -490,7 +474,8 @@ tr:nth-child(even) td{background:#f9f9f9}
         const msg = err.status === 429 ? 'Tap terlalu cepat, tunggu sebentar.'
                   : err.status === 404 ? `Kartu tidak dikenal (${uid}). Daftarkan di tab Enroll.`
                   : err.status === 409 ? (err.data?.message ?? 'Sudah absen hari ini.')
-                  : `[${err.status ?? '?'}] ${err.message}`;
+                  : err.status === 403 ? (err.message ?? 'Sesi habis, silakan muat ulang halaman.')
+                  : err.message ?? `Gagal menghubungi server (${err.status ?? 'unknown'}).`;
         this.absenStatus = { type: 'err', msg };
       }
     },
@@ -672,13 +657,15 @@ tr:nth-child(even) td{background:#f9f9f9}
     siswaList:    [],
     loading:      false,
     error:        null,
-    search:       '',
-    filterKelas:  '',
-    page:         1,
+    search:          '',
+    filterKelas:   '',
+    filterOpen:    false,
+    editKelasOpen: false,
+    page:            1,
     perPage:      10,
     kelasOptions: [],
     showModal:    false,
-    editData:     null,
+    editData:     { id: null, nama: '', nis: '', kelas_id: '' },
     saving:       false,
     saveError:    null,
     fieldErrors:  {},
@@ -734,17 +721,19 @@ tr:nth-child(even) td{background:#f9f9f9}
     },
 
     openAdd() {
-      this.editData    = { id: null, nama: '', nis: '', kelas_id: '' };
-      this.saveError   = null;
-      this.fieldErrors = {};
-      this.showModal   = true;
+      this.editData      = { id: null, nama: '', nis: '', kelas_id: '' };
+      this.saveError     = null;
+      this.fieldErrors   = {};
+      this.editKelasOpen = false;
+      this.showModal     = true;
     },
 
     openEdit(s) {
-      this.editData    = { id: s.id, nama: s.nama, nis: s.nis, kelas_id: s.kelas_id || '' };
-      this.saveError   = null;
-      this.fieldErrors = {};
-      this.showModal   = true;
+      this.editData      = { id: s.id, nama: s.nama, nis: s.nis, kelas_id: s.kelas_id || '' };
+      this.saveError     = null;
+      this.fieldErrors   = {};
+      this.editKelasOpen = false;
+      this.showModal     = true;
     },
 
     validate() {

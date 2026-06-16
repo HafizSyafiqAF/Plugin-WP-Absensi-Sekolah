@@ -100,6 +100,11 @@ $kelas_list = $wpdb->get_results( "SELECT id, nama_kelas FROM {$wpdb->prefix}abs
                       class="lp-cselect-opt" :class="filter.kelas==='' ? 'lp-cselect-opt--on':''">
                 <?php esc_html_e( 'Semua Kelas', 'absensi-sekolah' ); ?>
               </button>
+              <?php if ( empty( $kelas_list ) ) : ?>
+              <button type="button" disabled class="lp-cselect-opt" style="color:#94A3B8;cursor:not-allowed;font-style:italic;">
+                <?php esc_html_e( 'Belum ada kelas', 'absensi-sekolah' ); ?>
+              </button>
+              <?php else : ?>
               <?php foreach ( $kelas_list as $k ) : ?>
               <button type="button"
                       @click="filter.kelas='<?php echo esc_js( (string) $k->id ); ?>';csOpen=false"
@@ -108,6 +113,7 @@ $kelas_list = $wpdb->get_results( "SELECT id, nama_kelas FROM {$wpdb->prefix}abs
                 <?php echo esc_html( $k->nama_kelas ); ?>
               </button>
               <?php endforeach; ?>
+              <?php endif; ?>
             </div>
           </div>
         </div>
@@ -301,7 +307,7 @@ $kelas_list = $wpdb->get_results( "SELECT id, nama_kelas FROM {$wpdb->prefix}abs
                 : '<?php echo esc_js( __( 'Menampilkan', 'absensi-sekolah' ) ); ?> ' + ((page-1)*perPage+1) + '–' + Math.min(page*perPage, rows.length) + ' <?php echo esc_js( __( 'dari', 'absensi-sekolah' ) ); ?> ' + rows.length + ' <?php echo esc_js( __( 'rekap', 'absensi-sekolah' ) ); ?>'">
         </span>
         <div x-show="totalPages > 1" class="lp-page-controls">
-          <button type="button" @click="page > 1 && page--" :disabled="page === 1"
+          <button type="button" @click="page > 1 && (page = page - 1)" :disabled="page === 1"
                   class="lp-page-btn" aria-label="<?php esc_attr_e( 'Sebelumnya', 'absensi-sekolah' ); ?>">
             <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
           </button>
@@ -313,7 +319,7 @@ $kelas_list = $wpdb->get_results( "SELECT id, nama_kelas FROM {$wpdb->prefix}abs
                     :class="{ 'lp-page-btn--active': p === page, 'lp-page-btn--dots': typeof p !== 'number' }"
                     x-text="p"></button>
           </template>
-          <button type="button" @click="page < totalPages && page++" :disabled="page === totalPages"
+          <button type="button" @click="page < totalPages && (page = page + 1)" :disabled="page === totalPages"
                   class="lp-page-btn" aria-label="<?php esc_attr_e( 'Selanjutnya', 'absensi-sekolah' ); ?>">
             <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
           </button>

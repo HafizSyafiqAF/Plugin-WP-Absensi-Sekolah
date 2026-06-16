@@ -154,20 +154,26 @@ window._swI18n = {
                  placeholder="<?php esc_attr_e( 'Cari…', 'absensi-sekolah' ); ?>"
                  class="sw-input sw-input--pill sw-input--sm">
         </div>
-        <div x-data="{ open: false }" style="min-width:148px;flex-shrink:0;position:relative;" @click.outside="open=false">
-          <button type="button" @click="open=!open" class="sw-input sw-input--pill sw-input--sm sw-select-btn">
+        <div style="min-width:148px;flex-shrink:0;position:relative;" @click.outside="filterOpen=false">
+          <button type="button" @click="filterOpen=!filterOpen" class="sw-input sw-input--pill sw-input--sm sw-select-btn">
             <span x-text="filterKelasLabel" :style="!filterKelas ? 'color:#64748B' : 'color:#1E293B'"></span>
-            <svg :style="open ? 'transform:rotate(180deg)' : ''" style="transition:transform .2s;flex-shrink:0;color:#64748B;" width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+            <svg :style="filterOpen ? 'transform:rotate(180deg)' : ''" style="transition:transform .2s;flex-shrink:0;color:#64748B;" width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
           </button>
-          <div x-show="open" x-transition.opacity.duration.150ms class="sw-dropdown" style="max-height:220px;overflow-y:auto;overscroll-behavior:contain;">
-            <button type="button" @click="filterKelas=''; open=false" class="sw-dropdown__item" :class="{'sw-dropdown__item--active':!filterKelas}">
+          <div x-show="filterOpen" x-transition.opacity.duration.150ms class="sw-dropdown" style="max-height:220px;overflow-y:auto;overscroll-behavior:contain;">
+            <button type="button" @click="filterKelas=''; filterOpen=false" class="sw-dropdown__item" :class="{'sw-dropdown__item--active':!filterKelas}">
               <?php esc_html_e( 'Semua Kelas', 'absensi-sekolah' ); ?>
             </button>
+            <?php if ( empty( $kelas_list ) ) : ?>
+            <button type="button" disabled class="sw-dropdown__item" style="color:#94A3B8;cursor:not-allowed;font-style:italic;">
+              <?php esc_html_e( 'Belum ada kelas', 'absensi-sekolah' ); ?>
+            </button>
+            <?php else : ?>
             <?php foreach ( $kelas_list as $k ) : ?>
-            <button type="button" @click="filterKelas='<?php echo esc_attr( $k->id ); ?>'; open=false" class="sw-dropdown__item" :class="{'sw-dropdown__item--active':filterKelas=='<?php echo esc_attr( $k->id ); ?>'}">
+            <button type="button" @click="filterKelas='<?php echo esc_attr( $k->id ); ?>'; filterOpen=false" class="sw-dropdown__item" :class="{'sw-dropdown__item--active':filterKelas=='<?php echo esc_attr( $k->id ); ?>'}">
               <?php echo esc_html( $k->nama_kelas ); ?>
             </button>
             <?php endforeach; ?>
+            <?php endif; ?>
           </div>
         </div>
         <button type="button" @click="search=''; filterKelas=''" x-show="search || filterKelas"
@@ -297,7 +303,7 @@ window._swI18n = {
               : '<?php echo esc_js( __( 'Menampilkan', 'absensi-sekolah' ) ); ?> ' + ((page-1)*perPage+1) + '–' + Math.min(page*perPage, filteredList.length) + ' <?php echo esc_js( __( 'dari', 'absensi-sekolah' ) ); ?> ' + filteredList.length + ' <?php echo esc_js( __( 'siswa', 'absensi-sekolah' ) ); ?>'">
       </span>
       <div x-show="totalPages > 1" class="sw-page-controls">
-        <button type="button" @click="page > 1 && page--" :disabled="page === 1"
+        <button type="button" @click="if (page > 1) page = page - 1" :disabled="page === 1"
                 class="sw-page-btn" aria-label="<?php esc_attr_e( 'Sebelumnya', 'absensi-sekolah' ); ?>">
           <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
         </button>
@@ -309,7 +315,7 @@ window._swI18n = {
                   :class="{ 'sw-page-btn--active': p === page, 'sw-page-btn--dots': typeof p !== 'number' }"
                   x-text="p"></button>
         </template>
-        <button type="button" @click="page < totalPages && page++" :disabled="page === totalPages"
+        <button type="button" @click="if (page < totalPages) page = page + 1" :disabled="page === totalPages"
                 class="sw-page-btn" aria-label="<?php esc_attr_e( 'Selanjutnya', 'absensi-sekolah' ); ?>">
           <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
         </button>
@@ -350,21 +356,27 @@ window._swI18n = {
         </div>
         <div class="sw-field">
           <label class="sw-label"><?php esc_html_e( 'Kelas', 'absensi-sekolah' ); ?> <span class="sw-req">*</span></label>
-          <div x-data="{ open: false }" style="position:relative;" @click.outside="open=false">
-            <button type="button" @click="open=!open" class="sw-input sw-select-btn"
+          <div style="position:relative;" @click.outside="editKelasOpen=false">
+            <button type="button" @click="editKelasOpen=!editKelasOpen" class="sw-input sw-select-btn"
                     :class="fieldErrors.kelas_id ? 'sw-input--error' : ''">
               <span x-text="editKelasLabel" :style="!editData?.kelas_id ? 'color:#94A3B8' : 'color:#1E293B'"></span>
-              <svg :style="open ? 'transform:rotate(180deg)' : ''" style="transition:transform .2s;flex-shrink:0;color:#64748B;" width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+              <svg :style="editKelasOpen ? 'transform:rotate(180deg)' : ''" style="transition:transform .2s;flex-shrink:0;color:#64748B;" width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
-            <div x-show="open" x-transition.opacity.duration.150ms class="sw-dropdown" style="max-height:220px;overflow-y:auto;overscroll-behavior:contain;">
-              <button type="button" @click="editData.kelas_id=''; open=false" class="sw-dropdown__item" :class="{'sw-dropdown__item--active':!editData?.kelas_id}">
+            <div x-show="editKelasOpen" x-transition.opacity.duration.150ms class="sw-dropdown" style="max-height:220px;overflow-y:auto;overscroll-behavior:contain;">
+              <button type="button" @click="editData.kelas_id=''; editKelasOpen=false" class="sw-dropdown__item" :class="{'sw-dropdown__item--active':!editData?.kelas_id}">
                 <?php esc_html_e( '— Pilih Kelas —', 'absensi-sekolah' ); ?>
               </button>
+              <?php if ( empty( $kelas_list ) ) : ?>
+              <button type="button" disabled class="sw-dropdown__item" style="color:#94A3B8;cursor:not-allowed;font-style:italic;">
+                <?php esc_html_e( 'Belum ada kelas', 'absensi-sekolah' ); ?>
+              </button>
+              <?php else : ?>
               <?php foreach ( $kelas_list as $k ) : ?>
-              <button type="button" @click="editData.kelas_id='<?php echo esc_attr( $k->id ); ?>'; delete fieldErrors.kelas_id; open=false" class="sw-dropdown__item" :class="{'sw-dropdown__item--active':editData?.kelas_id=='<?php echo esc_attr( $k->id ); ?>'}">
+              <button type="button" @click="editData.kelas_id='<?php echo esc_attr( $k->id ); ?>'; delete fieldErrors.kelas_id; editKelasOpen=false" class="sw-dropdown__item" :class="{'sw-dropdown__item--active':editData?.kelas_id=='<?php echo esc_attr( $k->id ); ?>'}">
                 <?php echo esc_html( $k->nama_kelas ); ?>
               </button>
               <?php endforeach; ?>
+              <?php endif; ?>
             </div>
           </div>
           <p x-show="fieldErrors.kelas_id" x-text="fieldErrors.kelas_id" class="sw-field-error" aria-live="polite"></p>

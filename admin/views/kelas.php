@@ -88,8 +88,10 @@ window._klTingkatOpts = <?php echo $_kl_tingkat_opts; ?>;
        editMode:      false,
        editId:        0,
        editNama:      '',
-       editTingkat:   0,
-       editGuruId:    '',
+       editTingkat:      0,
+       editGuruId:       '',
+       editTingkatOpen:  false,
+       editGuruOpen:     false,
 
        get filteredList() {
          let list = this.kelasList;
@@ -447,7 +449,7 @@ window._klTingkatOpts = <?php echo $_kl_tingkat_opts; ?>;
               : ((page-1)*perPage+1) + '–' + Math.min(page*perPage, filteredList.length) + ' <?php echo esc_js( __( 'dari', 'absensi-sekolah' ) ); ?> ' + filteredList.length + ' <?php echo esc_js( __( 'kelas', 'absensi-sekolah' ) ); ?>'">
       </span>
       <div x-show="totalPages > 1" class="kl-pagination">
-        <button class="kl-page-btn kl-page-btn--arrow" :disabled="page === 1" @click="page--" aria-label="<?php esc_attr_e( 'Sebelumnya', 'absensi-sekolah' ); ?>">
+        <button class="kl-page-btn kl-page-btn--arrow" :disabled="page === 1" @click="page = page - 1" aria-label="<?php esc_attr_e( 'Sebelumnya', 'absensi-sekolah' ); ?>">
           <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5"/></svg>
         </button>
         <template x-for="(p, i) in pageRange" :key="i">
@@ -456,7 +458,7 @@ window._klTingkatOpts = <?php echo $_kl_tingkat_opts; ?>;
                   :class="p === page ? 'kl-page-btn--active' : ''"
                   @click="page = p" x-text="p"></button>
         </template>
-        <button class="kl-page-btn kl-page-btn--arrow" :disabled="page === totalPages" @click="page++" aria-label="<?php esc_attr_e( 'Berikutnya', 'absensi-sekolah' ); ?>">
+        <button class="kl-page-btn kl-page-btn--arrow" :disabled="page === totalPages" @click="page = page + 1" aria-label="<?php esc_attr_e( 'Berikutnya', 'absensi-sekolah' ); ?>">
           <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/></svg>
         </button>
       </div>
@@ -502,17 +504,17 @@ window._klTingkatOpts = <?php echo $_kl_tingkat_opts; ?>;
           <!-- Tingkat -->
           <div class="kl-field">
             <label class="kl-label"><?php esc_html_e( 'Tingkat', 'absensi-sekolah' ); ?></label>
-            <div x-data="{ open: false }" style="position:relative;" @click.outside="open=false">
-              <button type="button" @click="open=!open" class="kl-input kl-select-btn">
+            <div style="position:relative;" @click.outside="editTingkatOpen=false">
+              <button type="button" @click="editTingkatOpen=!editTingkatOpen" class="kl-input kl-select-btn">
                 <span x-text="tingkatLabel" :style="!editTingkat ? 'color:#94A3B8' : 'color:#1E293B'"></span>
-                <svg :style="open ? 'transform:rotate(180deg)' : ''" style="transition:transform .2s;flex-shrink:0;color:#64748B;" width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+                <svg :style="editTingkatOpen ? 'transform:rotate(180deg)' : ''" style="transition:transform .2s;flex-shrink:0;color:#64748B;" width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
               </button>
-              <div x-show="open" x-transition.opacity.duration.150ms class="kl-dropdown" style="max-height:220px;overflow-y:auto;overscroll-behavior:contain;">
-                <button type="button" @click="editTingkat=0; open=false" class="kl-dropdown__item" :class="{'kl-dropdown__item--active':!editTingkat}">
+              <div x-show="editTingkatOpen" x-transition.opacity.duration.150ms class="kl-dropdown" style="max-height:220px;overflow-y:auto;overscroll-behavior:contain;">
+                <button type="button" @click="editTingkat=0; editTingkatOpen=false" class="kl-dropdown__item" :class="{'kl-dropdown__item--active':!editTingkat}">
                   <?php esc_html_e( '— Pilih Tingkat —', 'absensi-sekolah' ); ?>
                 </button>
                 <template x-for="o in tingkatOptions" :key="o.id">
-                  <button type="button" @click="editTingkat=o.id; open=false"
+                  <button type="button" @click="editTingkat=o.id; editTingkatOpen=false"
                           class="kl-dropdown__item" :class="{'kl-dropdown__item--active':editTingkat===o.id}"
                           x-text="o.nama"></button>
                 </template>
@@ -523,17 +525,17 @@ window._klTingkatOpts = <?php echo $_kl_tingkat_opts; ?>;
           <!-- Wali Kelas -->
           <div class="kl-field">
             <label class="kl-label"><?php esc_html_e( 'Wali Kelas', 'absensi-sekolah' ); ?></label>
-            <div x-data="{ open: false }" style="position:relative;" @click.outside="open=false">
-              <button type="button" @click="open=!open" class="kl-input kl-select-btn">
+            <div style="position:relative;" @click.outside="editGuruOpen=false">
+              <button type="button" @click="editGuruOpen=!editGuruOpen" class="kl-input kl-select-btn">
                 <span x-text="guruLabel" :style="!editGuruId ? 'color:#94A3B8' : 'color:#1E293B'"></span>
-                <svg :style="open ? 'transform:rotate(180deg)' : ''" style="transition:transform .2s;flex-shrink:0;color:#64748B;" width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+                <svg :style="editGuruOpen ? 'transform:rotate(180deg)' : ''" style="transition:transform .2s;flex-shrink:0;color:#64748B;" width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
               </button>
-              <div x-show="open" x-transition.opacity.duration.150ms class="kl-dropdown" style="max-height:220px;overflow-y:auto;overscroll-behavior:contain;">
-                <button type="button" @click="editGuruId=''; open=false" class="kl-dropdown__item" :class="{'kl-dropdown__item--active':!editGuruId}">
+              <div x-show="editGuruOpen" x-transition.opacity.duration.150ms class="kl-dropdown" style="max-height:220px;overflow-y:auto;overscroll-behavior:contain;">
+                <button type="button" @click="editGuruId=''; editGuruOpen=false" class="kl-dropdown__item" :class="{'kl-dropdown__item--active':!editGuruId}">
                   <?php esc_html_e( '— Pilih Wali Kelas —', 'absensi-sekolah' ); ?>
                 </button>
                 <template x-for="g in guruOptions" :key="g.id">
-                  <button type="button" @click="editGuruId=g.id; open=false"
+                  <button type="button" @click="editGuruId=g.id; editGuruOpen=false"
                           class="kl-dropdown__item" :class="{'kl-dropdown__item--active':editGuruId===g.id}"
                           x-text="g.nama"></button>
                 </template>
