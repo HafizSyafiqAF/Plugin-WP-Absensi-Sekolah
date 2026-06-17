@@ -410,19 +410,29 @@ document.addEventListener('alpine:init', function () {
     function bulanLokal(d) {
       return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
     }
+    var anak = (window.AbsensiConfig && window.AbsensiConfig.anakList) || [];
     return {
-    anakList:      (window.AbsensiConfig && window.AbsensiConfig.anakList) || [],
-    selectedIndex: 0,
+    anakList:      anak,
+    selectedIndex: anak.length === 1 ? 0 : null,
+    searchQ:       '',
     bulan:         bulanLokal(new Date()),
     timeline:      [],
     summary:       { hadir: 0, telat: 0, izin_sakit: 0, alpha: 0 },
     loading:       false,
     error:         null,
 
-    get selectedAnak()  { return this.anakList[this.selectedIndex] || null; },
+    get selectedAnak()  { return this.selectedIndex !== null ? this.anakList[this.selectedIndex] : null; },
     get adaAnak()       { return this.anakList.length !== 0; },
-    get banyakAnak()    { return this.anakList.length !== 0 && this.anakList.length !== 1; },
+    get banyakAnak()    { return this.anakList.length > 1; },
     get adaTimeline()   { return this.timeline.length !== 0; },
+
+    get filteredAnakList() {
+      var q = this.searchQ.toLowerCase();
+      if (!q) return this.anakList;
+      return this.anakList.filter(function(a) {
+        return a.nama.toLowerCase().indexOf(q) !== -1 || (a.nis && String(a.nis).indexOf(q) !== -1);
+      });
+    },
 
     init: function () { if (this.selectedAnak) this.load(); },
 
