@@ -110,37 +110,38 @@ $jam_klr = esc_html( get_option( 'absensi_jam_keluar', '15:00' ) );
         </div>
       </template>
 
-      <!-- CAMERA -->
-      <template x-if="step === 'camera'">
-        <div class="sab-step">
-          <div class="sab-vf sab-vf--live">
-            <video x-ref="video" autoplay playsinline muted class="sab-video" aria-label="<?php esc_attr_e( 'Live kamera selfie', 'absensi-sekolah' ); ?>"></video>
-            <div class="sab-vf__corner sab-vf__corner--tl" aria-hidden="true"></div>
-            <div class="sab-vf__corner sab-vf__corner--tr" aria-hidden="true"></div>
-            <div class="sab-vf__corner sab-vf__corner--bl" aria-hidden="true"></div>
-            <div class="sab-vf__corner sab-vf__corner--br" aria-hidden="true"></div>
-            <div class="sab-oval" aria-hidden="true"></div>
-            <div class="sab-vf__tip" aria-live="polite">
-              <span x-text="gpsStatus !== 'ok' ? '<?php echo esc_js( __( 'Tunggu GPS siap…', 'absensi-sekolah' ) ); ?>' : '<?php echo esc_js( __( 'Posisikan wajah dalam oval', 'absensi-sekolah' ) ); ?>'"></span>
-            </div>
-          </div>
-          <canvas x-ref="canvas" style="display:none;" aria-hidden="true"></canvas>
-          <div class="sab-shutter-row">
-            <div class="sab-shutter-row__side"></div>
-            <button type="button"
-                    class="sab-shutter"
-                    :class="gpsStatus !== 'ok' ? 'sab-shutter--disabled' : ''"
-                    :disabled="gpsStatus !== 'ok'"
-                    @click="capturePhoto()"
-                    :aria-label="gpsStatus !== 'ok' ? '<?php echo esc_js( __( 'Tunggu GPS siap', 'absensi-sekolah' ) ); ?>' : '<?php echo esc_js( __( 'Ambil foto', 'absensi-sekolah' ) ); ?>'">
-              <span class="sab-shutter__ring" aria-hidden="true">
-                <span class="sab-shutter__dot"></span>
-              </span>
-            </button>
-            <div class="sab-shutter-row__side"></div>
+      <!-- CAMERA — x-show (bukan x-if) agar $refs.video selalu ada di DOM
+           sehingga startCamera() bisa assign srcObject tanpa race condition -->
+      <div class="sab-step" x-show="step === 'camera'">
+        <div class="sab-vf sab-vf--live">
+          <video x-ref="video"
+                 x-effect="if(stream){$el.srcObject=stream;$el.play().catch(function(){});}"
+                 autoplay playsinline muted class="sab-video" aria-label="<?php esc_attr_e( 'Live kamera selfie', 'absensi-sekolah' ); ?>"></video>
+          <div class="sab-vf__corner sab-vf__corner--tl" aria-hidden="true"></div>
+          <div class="sab-vf__corner sab-vf__corner--tr" aria-hidden="true"></div>
+          <div class="sab-vf__corner sab-vf__corner--bl" aria-hidden="true"></div>
+          <div class="sab-vf__corner sab-vf__corner--br" aria-hidden="true"></div>
+          <div class="sab-oval" aria-hidden="true"></div>
+          <div class="sab-vf__tip" aria-live="polite">
+            <span x-text="gpsStatus !== 'ok' ? '<?php echo esc_js( __( 'Tunggu GPS siap…', 'absensi-sekolah' ) ); ?>' : '<?php echo esc_js( __( 'Posisikan wajah dalam oval', 'absensi-sekolah' ) ); ?>'"></span>
           </div>
         </div>
-      </template>
+        <canvas x-ref="canvas" style="display:none;" aria-hidden="true"></canvas>
+        <div class="sab-shutter-row">
+          <div class="sab-shutter-row__side"></div>
+          <button type="button"
+                  class="sab-shutter"
+                  :class="gpsStatus !== 'ok' ? 'sab-shutter--disabled' : ''"
+                  :disabled="gpsStatus !== 'ok'"
+                  @click="capturePhoto()"
+                  :aria-label="gpsStatus !== 'ok' ? '<?php echo esc_js( __( 'Tunggu GPS siap', 'absensi-sekolah' ) ); ?>' : '<?php echo esc_js( __( 'Ambil foto', 'absensi-sekolah' ) ); ?>'">
+            <span class="sab-shutter__ring" aria-hidden="true">
+              <span class="sab-shutter__dot"></span>
+            </span>
+          </button>
+          <div class="sab-shutter-row__side"></div>
+        </div>
+      </div>
 
       <!-- PREVIEW -->
       <template x-if="step === 'preview'">
@@ -388,7 +389,7 @@ html,body{background:linear-gradient(135deg,#F5F7FB 0%,#E2E8F0 100%) fixed !impo
 .sab-video{width:100%;height:100%;object-fit:cover;display:block;transform:scaleX(-1);}
 .sab-oval{
   position:absolute;top:50%;left:50%;transform:translate(-50%,-55%);
-  width:120px;height:150px;
+  width:180px;height:230px;
   border:2px solid rgba(255,255,255,.55);border-radius:50%;
   box-shadow:0 0 0 2000px rgba(0,0,0,.35);
   pointer-events:none;z-index:2;

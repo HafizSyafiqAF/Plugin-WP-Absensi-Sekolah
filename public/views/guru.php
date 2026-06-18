@@ -67,12 +67,12 @@ $kelas_json = wp_json_encode( array_map( fn($k) => [ 'id' => $k->id, 'nama_kelas
                 <?php esc_html_e( 'Belum ada kelas', 'absensi-sekolah' ); ?>
               </button>
               <?php else : ?>
-              <button type="button" @click="kelas = ''; saveDraft(); kelasOpen = false"
+              <button type="button" @click="kelas = ''; saveDraft(); kelasOpen = false; _allSiswaCache = []; _cacheKelas = null; enrollResults = []; enrollSearch = ''"
                       class="gab-kdropdown__item" :class="{ 'gab-kdropdown__item--active': !kelas }">
                 <?php esc_html_e( '— Pilih Kelas —', 'absensi-sekolah' ); ?>
               </button>
               <?php foreach ( $kelas_list as $k ) : ?>
-              <button type="button" @click="kelas = '<?php echo esc_attr( $k->id ); ?>'; saveDraft(); kelasOpen = false"
+              <button type="button" @click="kelas = '<?php echo esc_attr( $k->id ); ?>'; saveDraft(); kelasOpen = false; _allSiswaCache = []; _cacheKelas = null; enrollResults = []; enrollSearch = ''"
                       class="gab-kdropdown__item"
                       :class="{ 'gab-kdropdown__item--active': kelas == '<?php echo esc_attr( $k->id ); ?>' }">
                 <?php echo esc_html( $k->nama_kelas ); ?>
@@ -157,10 +157,22 @@ $kelas_json = wp_json_encode( array_map( fn($k) => [ 'id' => $k->id, 'nama_kelas
             <p class="gab-scanner__hint"><?php esc_html_e( 'Klik area ini jika scanner tidak merespons', 'absensi-sekolah' ); ?></p>
           </div>
 
-          <!-- Status Menunggu (Non-input) -->
-          <div class="gab-scanner-wait">
-            <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-            <?php esc_html_e( 'Menunggu scan kartu...', 'absensi-sekolah' ); ?>
+          <!-- Scanner field (Manual / Autofocus input) -->
+          <div class="gab-scanner-field">
+            <label class="gab-scanner-label">
+              <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 013.75 9.375v-4.5zM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5zM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0113.5 9.375v-4.5z"/><path stroke-linecap="round" stroke-linejoin="round" d="M6.75 6.75h.75v.75h-.75v-.75zM6.75 16.5h.75v.75h-.75v-.75zM16.5 6.75h.75v.75h-.75v-.75zM13.5 13.5h.75v.75h-.75v-.75zM13.5 19.5h.75v.75h-.75v-.75zM19.5 13.5h.75v.75h-.75v-.75zM19.5 19.5h.75v.75h-.75v-.75zM16.5 16.5h.75v.75h-.75v-.75z"/></svg>
+              <?php esc_html_e( 'Input Scanner', 'absensi-sekolah' ); ?>
+              <span class="gab-scanner-label__hint"><?php esc_html_e( 'selalu aktif', 'absensi-sekolah' ); ?></span>
+            </label>
+            <div class="gab-scanner-input-wrap">
+              <input type="text" x-ref="rfidInput" autocomplete="off" spellcheck="false"
+                     class="gab-scanner-input"
+                     placeholder="<?php esc_attr_e( 'Menunggu scan...', 'absensi-sekolah' ); ?>">
+              <button type="button" @click="$refs.rfidInput.focus()" class="gab-scanner-action">
+                <svg width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                <?php esc_html_e( 'Fokus', 'absensi-sekolah' ); ?>
+              </button>
+            </div>
           </div>
 
         </div>
@@ -458,9 +470,15 @@ html,body{background:linear-gradient(135deg,#F5F7FB 0%,#E2E8F0 100%) fixed !impo
 .gab-scanner__title{font-size:13px;font-weight:700;color:#4338CA;margin:0 0 4px;z-index:1;position:relative;}
 .gab-scanner__hint{font-size:11.5px;color:#94A3B8;margin:0;z-index:1;position:relative;}
 
-/* Scanner Wait Card (Mode Absen) */
-.gab-scanner-wait{display:flex;align-items:center;gap:12px;padding:14px 18px;margin:12px 18px 16px;background:rgba(255,255,255,.7);border-radius:12px;border:1px solid rgba(255,255,255,.9);font-size:13px;font-weight:600;color:#475569;}
-.gab-scanner-wait svg{color:#64748B;}
+/* Scanner field (Mode Absen) */
+.gab-scanner-field{background:rgba(255,255,255,.55);border-top:1px solid rgba(255,255,255,.8);padding:10px 14px 12px;display:flex;flex-direction:column;gap:6px;}
+.gab-scanner-label{display:flex;align-items:center;gap:5px;font-size:10.5px;font-weight:800;color:#1E293B;text-transform:uppercase;letter-spacing:.04em;}
+.gab-scanner-label__hint{font-weight:500;color:#64748B;text-transform:none;letter-spacing:0;}
+.gab-scanner-input-wrap{position:relative;display:flex;}
+.gab-scanner-input{flex:1;min-width:0;padding:8px 10px;border:1.5px solid rgba(0,0,0,.08);border-radius:8px;font-size:12px;font-family:monospace;font-weight:700;color:#0F172A;background:rgba(255,255,255,.8);outline:none;transition:all .2s;}
+.gab-scanner-input:focus{border-color:rgba(37,99,235,.4);box-shadow:0 0 0 3px rgba(37,99,235,.15);background:#fff;}
+.gab-scanner-action{position:absolute;right:3px;top:3px;bottom:3px;padding:0 10px;background:linear-gradient(145deg,#3b82f6,#1d4ed8);color:#fff;border:none;border-radius:6px;font-size:10.5px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:4px;transition:opacity .15s;}
+.gab-scanner-action:hover{opacity:.9;}
 
 /* Log panel */
 .gab-log{display:flex;flex-direction:column;background:rgba(255,255,255,.4);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.6);border-radius:16px;overflow:hidden;}

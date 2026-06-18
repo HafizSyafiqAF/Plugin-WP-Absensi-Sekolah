@@ -364,6 +364,50 @@ $wa_gateway   = get_option( 'absensi_wa_gateway', '' );
     setTimeout(nudgeLeaflet, ms);
   });
 
+  /* ── 3. Coord inputs → map pin sync ────────────────────────────────────────
+     Ketika user mengetik lat/lng, pin di peta ikut bergeser (debounce 600ms).
+     Tidak ada loop: Alpine update x-model via DOM .value (tidak fire 'input').
+     Akses map & marker via Alpine 3 _x_dataStack — lebih andal dari window scan. */
+  (function() {
+    var debTimer;
+
+    function getMapData() {
+      var wrapper = document.querySelector('[x-data="settingsMap"]');
+      if (!wrapper) return null;
+      // Alpine 3 menyimpan reactive data di _x_dataStack (array of proxy objects)
+      var stack = wrapper._x_dataStack;
+      if (!stack) return null;
+      for (var i = 0; i < stack.length; i++) {
+        if (stack[i] && stack[i].map && stack[i].marker) return stack[i];
+      }
+      return null;
+    }
+
+    function syncMapFromInputs() {
+      var latEl = document.querySelector('[name="absensi_lat"]');
+      var lngEl = document.querySelector('[name="absensi_lng"]');
+      if (!latEl || !lngEl) return;
+      var lat = parseFloat(latEl.value);
+      var lng = parseFloat(lngEl.value);
+      if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) return;
+      var d = getMapData();
+      if (!d) return;
+      d.marker.setLatLng([lat, lng]);
+      d.map.setView([lat, lng], d.map.getZoom());
+    }
+
+    function onCoordInput() {
+      clearTimeout(debTimer);
+      debTimer = setTimeout(syncMapFromInputs, 600);
+    }
+
+    // Elemen sudah ada di DOM (PHP-rendered); ikat langsung.
+    var latEl = document.querySelector('[name="absensi_lat"]');
+    var lngEl = document.querySelector('[name="absensi_lng"]');
+    if (latEl) latEl.addEventListener('input', onCoordInput);
+    if (lngEl) lngEl.addEventListener('input', onCoordInput);
+  }());
+
   /* ── 2. Custom school map-pin marker icon ────────────────────────────────────
      We inject CSS that replaces the default Leaflet blue marker image with
      a beautiful custom SVG school pin rendered as a CSS data-URI. */
@@ -529,14 +573,14 @@ body.wp-admin{background:#EAF0F6!important;}
 .st-slider-ico{color:#CBD5E1;flex-shrink:0;display:flex;align-items:center;}
 .st-slider-ico--lg{color:#94A3B8;}
 #absensi-settings-app .st-slider{
-  flex:1;-webkit-appearance:none;height:8px;
+  flex:1;-webkit-appearance:none;appearance:none;height:8px;
   background:linear-gradient(90deg,rgba(37,99,235,.22),rgba(163,177,198,.12));
   border-radius:999px;cursor:pointer;outline:none;border:none!important;
   box-shadow:inset 2px 2px 5px rgba(163,177,198,.22),inset -1px -1px 3px rgba(255,255,255,.82);
   padding:0!important;min-height:auto;
 }
 #absensi-settings-app .st-slider::-webkit-slider-thumb{
-  -webkit-appearance:none;width:22px;height:22px;border-radius:50%;
+  -webkit-appearance:none;appearance:none;width:22px;height:22px;border-radius:50%;
   background:linear-gradient(145deg,#60A5FA,#2563EB);
   border:2.5px solid white;cursor:pointer;
   box-shadow:2px 3px 10px rgba(37,99,235,.40),inset 0 1px 1px rgba(255,255,255,.4);

@@ -93,9 +93,11 @@
     function handleKeydown(e) {
       if (e.key === TERMINATOR) {
         e.preventDefault();
-        var uid = normalizeUid(buffer);
+        var raw = (targetEl.value || buffer || '').trim();
+        var uid = normalizeUid(raw);
         buffer = '';
-        if (!isValidUid(uid)) { if (onInvalid) onInvalid(uid); return; }
+        if (targetEl.value !== undefined) targetEl.value = '';
+        if (!isValidUid(uid)) { if (onInvalid) onInvalid(raw); return; }
         var now = Date.now();
         if (uid === lastUid && now - lastScanTime < DEBOUNCE_MS) return;
         lastUid = uid; lastScanTime = now;
@@ -303,10 +305,24 @@ document.addEventListener('alpine:init', function () {
     enrollTarget:    null,
     enrollStatus:    null,
     enrollSearching: false,
+    _allSiswaCache:  [],
+    _cacheKelas:     null,
 
     STORAGE_KEY: 'absensi_guru_draft',
 
-    init: function ()    { this.loadDraft(); this.detectSesi(); var self = this; this.$nextTick(function () { self.focusInput(); }); },
+    init: function () {
+      this.loadDraft();
+      this.detectSesi();
+      var self = this;
+      this.$nextTick(function () { self.focusInput(); });
+      /* Ketika kelas berubah, bersihkan cache agar pencarian ulang mengambil data kelas yang benar */
+      this.$watch('kelas', function () {
+        self._allSiswaCache = [];
+        self._cacheKelas = null;
+        self.enrollResults = [];
+        self.enrollSearch = '';
+      });
+    },
     destroy: function () { if (this._rfidCleanup) this._rfidCleanup(); },
 
     loadDraft: function () {
@@ -360,14 +376,31 @@ document.addEventListener('alpine:init', function () {
       }
     },
 
-    searchSiswa: async function () {
-      if (this.enrollSearch.length < 2) return;
-      this.enrollSearching = true;
+    /* Load siswa cache once (when kelas changes or first search) then filter locally */
+    _loadSiswaCache: async function () {
+      var query = 'siswa';
+      if (this.kelas) query += '?kelas_id=' + encodeURIComponent(this.kelas);
       try {
-        var data = await window.api.get('siswa?search=' + encodeURIComponent(this.enrollSearch));
-        this.enrollResults = (data && data.data) || data || [];
-      } catch (e) { this.enrollResults = []; }
-      finally { this.enrollSearching = false; }
+        var res = await window.api.get(query);
+        this._allSiswaCache = (res && res.data) || res || [];
+        this._cacheKelas = this.kelas;
+      } catch (e) { this._allSiswaCache = []; }
+    },
+
+    searchSiswa: async function () {
+      var q = this.enrollSearch.trim().toLowerCase();
+      if (q.length < 2) { this.enrollResults = []; return; }
+      /* Reload cache if kelas changed or cache empty */
+      if (this._cacheKelas !== this.kelas || this._allSiswaCache.length === 0) {
+        this.enrollSearching = true;
+        await this._loadSiswaCache();
+        this.enrollSearching = false;
+      }
+      /* Pure client-side filter: exclude those who already have a card */
+      this.enrollResults = this._allSiswaCache.filter(function (s) {
+        if (s.rfid_uid) return false;
+        return (s.nama || '').toLowerCase().indexOf(q) > -1 || (s.nis || '').toLowerCase().indexOf(q) > -1;
+      });
     },
 
     selectEnrollTarget: function (siswa) {
@@ -377,12 +410,15 @@ document.addEventListener('alpine:init', function () {
 
     handleEnrollScan: async function (uid) {
       if (!this.enrollTarget) { this.addToast({ ok: false, message: 'Pilih siswa terlebih dahulu.' }); return; }
-      var replace = !!this.enrollTarget.rfid_uid;
-      if (replace && !confirm(this.enrollTarget.nama + ' sudah punya kartu. Ganti dengan kartu baru?')) return;
+      this.enrollStatus = null;
       try {
-        await window.api.post('absen/rfid/enroll', { siswa_id: this.enrollTarget.id, rfid_uid: uid, replace: replace });
-        this.enrollStatus = { ok: true, message: 'Kartu berhasil didaftarkan untuk ' + this.enrollTarget.nama };
-        this.enrollTarget = null;
+        await window.api.post('absen/rfid/enroll', { siswa_id: this.enrollTarget.id, rfid_uid: uid, replace: false });
+        this.enrollStatus = { ok: true, message: 'Berhasil! Kartu terdaftar untuk ' + this.enrollTarget.nama };
+        var self = this;
+        setTimeout(function() {
+            self.enrollTarget = null;
+            self.enrollStatus = null;
+        }, 2000);
       } catch (err) {
         var code = err.data && err.data.code;
         var m = code === 'kartu_terpakai'    ? ((err.data && err.data.message) || 'Kartu sudah terdaftar untuk siswa lain.')
