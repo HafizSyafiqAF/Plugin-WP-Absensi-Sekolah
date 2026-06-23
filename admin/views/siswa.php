@@ -381,6 +381,50 @@ window._swI18n = {
           </div>
           <p x-show="fieldErrors.kelas_id" x-text="fieldErrors.kelas_id" class="sw-field-error" aria-live="polite"></p>
         </div>
+
+        <!-- ── Field: Akun WordPress ── -->
+        <div class="sw-field" @click.outside="_userOpen = false">
+          <label class="sw-label">
+            <?php esc_html_e( 'Akun WordPress', 'absensi-sekolah' ); ?>
+            <span class="sw-label-opt">(<?php esc_html_e( 'opsional', 'absensi-sekolah' ); ?>)</span>
+          </label>
+          <!-- Akun terpilih -->
+          <div x-show="_userSelected" class="sw-user-pill">
+            <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="flex-shrink:0;color:#2563EB;" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0"/></svg>
+            <div class="sw-user-pill__info">
+              <span class="sw-user-pill__name" x-text="_userSelected &amp;&amp; _userSelected.name"></span>
+              <span class="sw-user-pill__slug" x-text="_userSelected &amp;&amp; ('@' + _userSelected.slug)"></span>
+            </div>
+            <button type="button" @click="_clearUser()" class="sw-btn sw-btn--ghost sw-btn--sm" style="padding:4px 10px;margin-left:auto;" aria-label="<?php esc_attr_e( 'Hapus akun', 'absensi-sekolah' ); ?>">
+              <svg width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+              <?php esc_html_e( 'Hapus', 'absensi-sekolah' ); ?>
+            </button>
+          </div>
+          <!-- Search input -->
+          <div x-show="!_userSelected" style="position:relative;">
+            <svg style="position:absolute;left:14px;top:50%;transform:translateY(-50%);color:#94A3B8;pointer-events:none;z-index:1;" width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+            <input type="search" x-model="_userSearch"
+                   @input="_searchUsers()"
+                   @focus="_userOpen = true"
+                   placeholder="<?php esc_attr_e( 'Cari nama / username akun WP siswa…', 'absensi-sekolah' ); ?>"
+                   class="sw-input" style="padding-left:38px;" autocomplete="off"
+                   aria-label="<?php esc_attr_e( 'Cari akun WordPress', 'absensi-sekolah' ); ?>">
+            <div x-show="_userOpen &amp;&amp; (_userSearching || _userResults.length > 0)" x-cloak
+                 class="sw-dropdown" style="max-height:190px;overflow-y:auto;" role="listbox">
+              <div x-show="_userSearching" style="padding:9px 14px;font-size:12px;color:#94A3B8;font-style:italic;" aria-live="polite">
+                <?php esc_html_e( 'Mencari…', 'absensi-sekolah' ); ?>
+              </div>
+              <template x-for="u in _userResults" :key="u.id">
+                <button type="button" @click="_selectUser(u)" class="sw-dropdown__item" role="option">
+                  <span x-text="u.name" style="font-weight:600;"></span>
+                  <span x-text="' @' + u.slug" style="font-size:11px;color:#9CA3AF;margin-left:4px;font-family:'JetBrains Mono',monospace;"></span>
+                </button>
+              </template>
+            </div>
+          </div>
+          <p class="sw-hint" style="margin-top:4px;"><?php esc_html_e( 'Hubungkan akun WP agar siswa bisa absen selfie.', 'absensi-sekolah' ); ?></p>
+        </div>
+
         <div x-show="saveError" class="sw-alert sw-alert--danger" aria-live="polite">
           <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
           <span x-text="saveError"></span>
@@ -675,4 +719,159 @@ body.wp-admin{background:#EAF0F6!important;}
 @keyframes sw-spin{to{transform:rotate(360deg);}}
 @keyframes sw-shimmer{0%{background-position:200% 0;}100%{background-position:-200% 0;}}
 [x-cloak]{display:none!important;}
+
+/* ══ AKUN WORDPRESS FIELD ══ */
+.sw-label-opt{font-size:10.5px;font-weight:500;color:#94A3B8;margin-left:5px;}
+.sw-user-pill{display:flex;align-items:center;gap:10px;background:rgba(37,99,235,.06);border:1.5px solid rgba(37,99,235,.18);border-radius:12px;padding:10px 12px;}
+.sw-user-pill__info{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1;}
+.sw-user-pill__name{font-size:13px;font-weight:600;color:#1E293B;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.sw-user-pill__slug{font-size:11px;color:#64748B;font-family:'JetBrains Mono',monospace;}
 </style>
+
+<script>
+/**
+ * Patch Alpine 'siswaManager' dari view — tambah field user_id ke form Tambah/Edit.
+ * Script ini intercept Alpine.data saat alpine:init, sebelum admin.js mendaftarkan komponen.
+ * Listener dipasang lebih awal (inline script view run sebelum footer scripts admin.js).
+ */
+(function () {
+  'use strict';
+
+  document.addEventListener('alpine:init', function () {
+    var origData = Alpine.data.bind(Alpine);
+
+    Alpine.data = function (name, factory) {
+      if (name === 'siswaManager') {
+        // Setelah siswaManager tertangkap, kembalikan Alpine.data ke aslinya
+        Alpine.data = origData;
+
+        origData('siswaManager', function () {
+          var c = factory();
+
+          /* ── State tambahan untuk user selector ─────────────────────────── */
+          c._userSearch    = '';
+          c._userResults   = [];
+          c._userSearching = false;
+          c._userSelected  = null; /* { id, name, slug } */
+          c._userOpen      = false;
+          c._userTimer     = null;
+
+          /* ── Patch openAdd ──────────────────────────────────────────────── */
+          var _openAdd = c.openAdd;
+          c.openAdd = function () {
+            _openAdd.call(this);
+            this.editData.user_id = null;
+            this._userSearch    = '';
+            this._userResults   = [];
+            this._userSelected  = null;
+            this._userOpen      = false;
+          };
+
+          /* ── Patch openEdit ─────────────────────────────────────────────── */
+          var _openEdit = c.openEdit;
+          c.openEdit = function (s) {
+            _openEdit.call(this, s);
+            var uid = s.user_id ? parseInt(s.user_id, 10) : null;
+            this.editData.user_id = uid;
+            this._userSearch    = '';
+            this._userResults   = [];
+            this._userOpen      = false;
+            if (uid) {
+              this._userSelected = { id: uid, name: '…', slug: '' };
+              this._fetchUser(uid);
+            } else {
+              this._userSelected = null;
+            }
+          };
+
+          /* ── Replace save — tambah user_id ke body ──────────────────────── */
+          c.save = async function () {
+            if (!this.editData || !this.validate()) return;
+            this.saving    = true;
+            this.saveError = null;
+            try {
+              var isNew = !this.editData.id;
+              var path  = isNew ? 'siswa' : 'siswa/' + this.editData.id;
+              var body  = {
+                nama:     this.editData.nama.trim(),
+                nis:      this.editData.nis.trim(),
+                kelas_id: parseInt(this.editData.kelas_id, 10) || 0,
+              };
+              if (this.editData.user_id) body.user_id = parseInt(this.editData.user_id, 10);
+              await (isNew ? window.api.post(path, body) : window.api.put(path, body));
+              this.showModal = false;
+              this.loadSiswa();
+            } catch (err) {
+              this.saveError = err.message;
+            } finally {
+              this.saving = false;
+            }
+          };
+
+          /* ── Fetch satu user berdasarkan ID (untuk Edit mode) ─────────────── */
+          c._fetchUser = async function (id) {
+            try {
+              var base = (window.AbsensiAdmin && window.AbsensiAdmin.restUrl || '').split('absensi/v1/')[0];
+              var res  = await fetch(base + 'wp/v2/users/' + id, {
+                headers: { 'X-WP-Nonce': (window.AbsensiAdmin && window.AbsensiAdmin.nonce) || '' },
+              });
+              if (res.ok) {
+                var u = await res.json();
+                if (this.editData && this.editData.user_id === u.id) {
+                  this._userSelected = { id: u.id, name: u.name, slug: u.slug };
+                }
+              }
+            } catch (_) { /* silent */ }
+          };
+
+          /* ── Cari user WP (debounce 350ms) ─────────────────────────────── */
+          c._searchUsers = function () {
+            clearTimeout(this._userTimer);
+            var q = this._userSearch.trim();
+            if (q.length < 2) { this._userResults = []; return; }
+            var self = this;
+            this._userTimer = setTimeout(async function () {
+              self._userSearching = true;
+              try {
+                var base = (window.AbsensiAdmin && window.AbsensiAdmin.restUrl || '').split('absensi/v1/')[0];
+                var res  = await fetch(
+                  base + 'wp/v2/users?search=' + encodeURIComponent(q) + '&per_page=8',
+                  { headers: { 'X-WP-Nonce': (window.AbsensiAdmin && window.AbsensiAdmin.nonce) || '' } }
+                );
+                if (res.ok) self._userResults = await res.json();
+                else self._userResults = [];
+              } catch (_) {
+                self._userResults = [];
+              } finally {
+                self._userSearching = false;
+              }
+            }, 350);
+          };
+
+          /* ── Pilih user ──────────────────────────────────────────────────── */
+          c._selectUser = function (u) {
+            this.editData.user_id = u.id;
+            this._userSelected    = { id: u.id, name: u.name, slug: u.slug };
+            this._userSearch      = '';
+            this._userResults     = [];
+            this._userOpen        = false;
+          };
+
+          /* ── Hapus pilihan user ──────────────────────────────────────────── */
+          c._clearUser = function () {
+            this.editData.user_id = null;
+            this._userSelected    = null;
+            this._userSearch      = '';
+            this._userResults     = [];
+          };
+
+          return c;
+        });
+
+      } else {
+        origData(name, factory);
+      }
+    };
+  });
+}());
+</script>

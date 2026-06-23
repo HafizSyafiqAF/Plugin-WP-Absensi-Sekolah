@@ -382,25 +382,41 @@ document.addEventListener('alpine:init', function () {
       if (this.kelas) query += '?kelas_id=' + encodeURIComponent(this.kelas);
       try {
         var res = await window.api.get(query);
-        this._allSiswaCache = (res && res.data) || res || [];
+        var raw = (res && res.data) || res || [];
+        /* Deduplikasi: prioritas NIS (unik per siswa), fallback ke id */
+        var seen = {};
+        this._allSiswaCache = raw.filter(function (s) {
+          var key = s.nis ? ('nis:' + s.nis) : ('id:' + s.id);
+          if (seen[key]) return false;
+          seen[key] = true;
+          return true;
+        });
         this._cacheKelas = this.kelas;
       } catch (e) { this._allSiswaCache = []; }
     },
 
     searchSiswa: async function () {
       var q = this.enrollSearch.trim().toLowerCase();
-      if (q.length < 2) { this.enrollResults = []; return; }
+      /* Bersihkan hasil lama segera agar tidak tampil stale */
+      this.enrollResults = [];
+      if (q.length < 2) return;
       /* Reload cache if kelas changed or cache empty */
       if (this._cacheKelas !== this.kelas || this._allSiswaCache.length === 0) {
         this.enrollSearching = true;
         await this._loadSiswaCache();
         this.enrollSearching = false;
+        /* Batalkan jika query sudah berubah selama async load */
+        if (this.enrollSearch.trim().toLowerCase() !== q) return;
       }
-      /* Pure client-side filter: exclude those who already have a card */
+      /* Filter: angka → cocokkan NIS dari awal; huruf → cocokkan nama dari awal */
+      var isNumeric = /^\d+$/.test(q);
+      console.log('[absensi-v2] searchSiswa q='+q+' isNumeric='+isNumeric+' cache='+this._allSiswaCache.length);
       this.enrollResults = this._allSiswaCache.filter(function (s) {
         if (s.rfid_uid) return false;
-        return (s.nama || '').toLowerCase().indexOf(q) > -1 || (s.nis || '').toLowerCase().indexOf(q) > -1;
+        if (isNumeric) return (s.nis || '').startsWith(q);
+        return (s.nama || '').toLowerCase().startsWith(q);
       });
+      console.log('[absensi-v2] results='+this.enrollResults.length);
     },
 
     selectEnrollTarget: function (siswa) {
@@ -414,6 +430,9 @@ document.addEventListener('alpine:init', function () {
       try {
         await window.api.post('absen/rfid/enroll', { siswa_id: this.enrollTarget.id, rfid_uid: uid, replace: false });
         this.enrollStatus = { ok: true, message: 'Berhasil! Kartu terdaftar untuk ' + this.enrollTarget.nama };
+        /* Hapus dari cache agar tidak muncul lagi di pencarian berikutnya */
+        var enrolledId = this.enrollTarget.id;
+        this._allSiswaCache = this._allSiswaCache.filter(function (s) { return s.id !== enrolledId; });
         var self = this;
         setTimeout(function() {
             self.enrollTarget = null;

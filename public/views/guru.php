@@ -32,107 +32,32 @@ $kelas_json = wp_json_encode( array_map( fn($k) => [ 'id' => $k->id, 'nama_kelas
           <h1 class="gab-hdr__title"><?php esc_html_e( 'Absensi RFID', 'absensi-sekolah' ); ?></h1>
           <p class="gab-hdr__sub"><?php esc_html_e( 'Tempelkan kartu siswa ke scanner USB', 'absensi-sekolah' ); ?></p>
         </div>
-        <!-- Hadir counter — tampil hanya saat mode absen & kelas sudah dipilih -->
-        <div x-show="mode === 'absen' && kelas" class="gab-hdr__counter" aria-live="polite">
+        <div :style="mode === 'absen' ? '' : 'visibility:hidden'" class="gab-hdr__counter" aria-live="polite">
           <span class="gab-hdr__counter-lbl"><?php esc_html_e( 'Hadir', 'absensi-sekolah' ); ?></span>
           <span class="gab-hdr__counter-val" x-text="hadirCount">0</span>
         </div>
       </div>
 
-      <!-- Baris kontrol: Kelas · Sesi · Mode -->
-      <div class="gab-controls">
-
-        <!-- Kelas -->
-        <div class="gab-ctrl" x-data="{ kelasOpen: false }" @click.outside="kelasOpen = false">
-          <span class="gab-ctrl__lbl"><?php esc_html_e( 'Kelas', 'absensi-sekolah' ); ?></span>
-          <div style="position:relative;">
-            <button type="button" @click="kelasOpen = !kelasOpen" class="gab-pill-select"
-                    :aria-expanded="kelasOpen"
-                    aria-label="<?php esc_attr_e( 'Pilih kelas', 'absensi-sekolah' ); ?>">
-              <span class="gab-pill-select__label">
-                <span x-show="!kelas" style="color:#64748B"><?php esc_html_e( '— Pilih Kelas —', 'absensi-sekolah' ); ?></span>
-                <?php foreach ( $kelas_list as $k ) : ?>
-                <span x-show="kelas == '<?php echo esc_attr( $k->id ); ?>'"><?php echo esc_html( $k->nama_kelas ); ?></span>
-                <?php endforeach; ?>
-              </span>
-              <svg :style="kelasOpen ? 'transform:rotate(180deg)' : ''" style="transition:transform .2s;flex-shrink:0;color:#64748B;"
-                   width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
-                <polyline points="6 9 12 15 18 9"/>
-              </svg>
-            </button>
-            <div x-show="kelasOpen" x-transition.opacity.duration.150ms class="gab-kdropdown"
-                 style="max-height:220px;overflow-y:auto;overscroll-behavior:contain;">
-              <?php if ( empty( $kelas_list ) ) : ?>
-              <button type="button" disabled class="gab-kdropdown__item" style="color:#94A3B8;cursor:not-allowed;font-style:italic;">
-                <?php esc_html_e( 'Belum ada kelas', 'absensi-sekolah' ); ?>
-              </button>
-              <?php else : ?>
-              <button type="button" @click="kelas = ''; saveDraft(); kelasOpen = false; _allSiswaCache = []; _cacheKelas = null; enrollResults = []; enrollSearch = ''"
-                      class="gab-kdropdown__item" :class="{ 'gab-kdropdown__item--active': !kelas }">
-                <?php esc_html_e( '— Pilih Kelas —', 'absensi-sekolah' ); ?>
-              </button>
-              <?php foreach ( $kelas_list as $k ) : ?>
-              <button type="button" @click="kelas = '<?php echo esc_attr( $k->id ); ?>'; saveDraft(); kelasOpen = false; _allSiswaCache = []; _cacheKelas = null; enrollResults = []; enrollSearch = ''"
-                      class="gab-kdropdown__item"
-                      :class="{ 'gab-kdropdown__item--active': kelas == '<?php echo esc_attr( $k->id ); ?>' }">
-                <?php echo esc_html( $k->nama_kelas ); ?>
-              </button>
-              <?php endforeach; ?>
-              <?php endif; ?>
-            </div>
-          </div>
+      <!-- Mode toggle row -->
+      <div class="gab-ctrl-row">
+        <div class="gab-seg" role="group" aria-label="<?php esc_attr_e( 'Pilih mode', 'absensi-sekolah' ); ?>">
+          <button type="button" class="gab-seg__btn"
+                  :class="mode === 'absen' ? 'gab-seg__btn--on' : ''"
+                  @click="mode = 'absen'; saveDraft()"
+                  :aria-pressed="mode === 'absen'">
+            <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M15.59 14.37a6 6 0 01-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 006.16-12.12A14.98 14.98 0 009.631 8.41m5.96 5.96a14.926 14.926 0 01-5.841 2.58m-.119-8.54a6 6 0 00-7.381 5.84h4.8m2.581-5.84a14.927 14.927 0 00-2.58 5.84m2.699 2.7c-.103.021-.207.041-.311.06a15.09 15.09 0 01-2.448-2.448 14.9 14.9 0 01.06-.312m-2.24 2.39a4.493 4.493 0 00-1.757 4.306 4.493 4.493 0 004.306-1.758M16.5 9a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z"/></svg>
+            <?php esc_html_e( 'Absen', 'absensi-sekolah' ); ?>
+          </button>
+          <button type="button" class="gab-seg__btn"
+                  :class="mode === 'enroll' ? 'gab-seg__btn--on gab-seg__btn--enroll' : ''"
+                  @click="mode = 'enroll'; saveDraft()"
+                  :aria-pressed="mode === 'enroll'">
+            <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zM3 19.235v-.11a6.375 6.375 0 0112.75 0v.109A12.318 12.318 0 019.374 21c-2.331 0-4.512-.645-6.374-1.766z"/></svg>
+            <?php esc_html_e( 'Daftar Kartu', 'absensi-sekolah' ); ?>
+          </button>
         </div>
-
-        <!-- Sesi -->
-        <div class="gab-ctrl">
-          <span class="gab-ctrl__lbl"><?php esc_html_e( 'Sesi', 'absensi-sekolah' ); ?></span>
-          <div class="gab-seg" role="group" aria-label="<?php esc_attr_e( 'Pilih sesi', 'absensi-sekolah' ); ?>">
-            <button type="button" class="gab-seg__btn"
-                    :class="sesi === 'masuk' ? 'gab-seg__btn--on' : ''"
-                    @click="sesi = 'masuk'; saveDraft()"
-                    :aria-pressed="sesi === 'masuk'">
-              <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75"/></svg>
-              <?php esc_html_e( 'Masuk', 'absensi-sekolah' ); ?>
-            </button>
-            <button type="button" class="gab-seg__btn"
-                    :class="sesi === 'pulang' ? 'gab-seg__btn--on gab-seg__btn--pulang' : ''"
-                    @click="sesi = 'pulang'; saveDraft()"
-                    :aria-pressed="sesi === 'pulang'">
-              <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 9V5.25A2.25 2.25 0 0110.5 3h6a2.25 2.25 0 012.25 2.25v13.5A2.25 2.25 0 0116.5 21h-6a2.25 2.25 0 01-2.25-2.25V15m-3 0l-3-3m0 0l3-3m-3 3H15"/></svg>
-              <?php esc_html_e( 'Pulang', 'absensi-sekolah' ); ?>
-            </button>
-          </div>
-        </div>
-
-        <!-- Mode -->
-        <div class="gab-ctrl">
-          <span class="gab-ctrl__lbl"><?php esc_html_e( 'Mode', 'absensi-sekolah' ); ?></span>
-          <div class="gab-seg" role="group" aria-label="<?php esc_attr_e( 'Pilih mode', 'absensi-sekolah' ); ?>">
-            <button type="button" class="gab-seg__btn"
-                    :class="mode === 'absen' ? 'gab-seg__btn--on' : ''"
-                    @click="mode = 'absen'; saveDraft()"
-                    :aria-pressed="mode === 'absen'">
-              <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M15.59 14.37a6 6 0 01-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 006.16-12.12A14.98 14.98 0 009.631 8.41m5.96 5.96a14.926 14.926 0 01-5.841 2.58m-.119-8.54a6 6 0 00-7.381 5.84h4.8m2.581-5.84a14.927 14.927 0 00-2.58 5.84m2.699 2.7c-.103.021-.207.041-.311.06a15.09 15.09 0 01-2.448-2.448 14.9 14.9 0 01.06-.312m-2.24 2.39a4.493 4.493 0 00-1.757 4.306 4.493 4.493 0 004.306-1.758M16.5 9a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z"/></svg>
-              <?php esc_html_e( 'Absen', 'absensi-sekolah' ); ?>
-            </button>
-            <button type="button" class="gab-seg__btn"
-                    :class="mode === 'enroll' ? 'gab-seg__btn--on gab-seg__btn--enroll' : ''"
-                    @click="mode = 'enroll'; saveDraft()"
-                    :aria-pressed="mode === 'enroll'">
-              <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zM3 19.235v-.11a6.375 6.375 0 0112.75 0v.109A12.318 12.318 0 019.374 21c-2.331 0-4.512-.645-6.374-1.766z"/></svg>
-              <?php esc_html_e( 'Daftar Kartu', 'absensi-sekolah' ); ?>
-            </button>
-          </div>
-        </div>
-
-      </div><!-- /.gab-controls -->
+      </div>
     </div><!-- /.gab-hdr -->
-
-    <!-- Warning: kelas belum dipilih -->
-    <div x-show="!kelas" class="gab-warn" role="alert" aria-live="polite">
-      <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
-      <?php esc_html_e( 'Pilih kelas terlebih dahulu sebelum mulai memindai kartu.', 'absensi-sekolah' ); ?>
-    </div>
 
     <!-- ── Body ── -->
     <div class="gab-body">
@@ -411,7 +336,7 @@ html,body{background:linear-gradient(135deg,#F5F7FB 0%,#E2E8F0 100%) fixed !impo
 }
 
 /* ── Header ── */
-.gab-hdr{padding:22px 20px 20px;position:relative;background:rgba(255,255,255,.22);border-bottom:1px solid rgba(0,0,0,.05);}
+.gab-hdr{padding:22px 20px 18px;position:relative;background:rgba(255,255,255,.22);border-bottom:1px solid rgba(0,0,0,.05);}
 .gab-hdr__orb{position:absolute;border-radius:50%;pointer-events:none;}
 .gab-hdr__orb--a{width:220px;height:220px;top:-80px;right:-50px;background:radial-gradient(circle,rgba(37,99,235,.10) 0%,transparent 70%);filter:blur(38px);}
 .gab-hdr__orb--b{width:130px;height:130px;bottom:-55px;left:-25px;background:radial-gradient(circle,rgba(124,58,237,.09) 0%,transparent 70%);filter:blur(30px);}
@@ -425,38 +350,22 @@ html,body{background:linear-gradient(135deg,#F5F7FB 0%,#E2E8F0 100%) fixed !impo
 .gab-hdr__counter-lbl{font-size:10px;font-weight:700;color:#64748B;text-transform:uppercase;letter-spacing:.05em;}
 .gab-hdr__counter-val{font-size:22px;font-weight:800;color:#2563EB;line-height:1;}
 
-/* Baris kontrol */
-.gab-controls{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;position:relative;}
-.gab-ctrl{display:flex;flex-direction:column;gap:5px;}
-.gab-ctrl__lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#64748B;}
-
-/* Pill select kelas */
-.gab-pill-select{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;padding:9px 14px;border-radius:999px;border:1.5px solid rgba(255,255,255,.8);background:rgba(255,255,255,.55);box-shadow:inset 4px 4px 10px rgba(163,177,198,.35),inset -4px -4px 10px rgba(255,255,255,.85);font-family:inherit;font-size:13px;font-weight:700;color:#1E293B;cursor:pointer;min-height:40px;transition:border-color .15s,background .15s;}
-.gab-pill-select:hover{background:rgba(255,255,255,.72);border-color:rgba(37,99,235,.25);}
-.gab-pill-select__label{flex:1;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-
-/* Kelas dropdown */
-.gab-kdropdown{position:absolute;top:calc(100% + 6px);left:0;right:0;min-width:160px;background:rgba(255,255,255,.92);backdrop-filter:blur(20px) saturate(150%);-webkit-backdrop-filter:blur(20px) saturate(150%);border-radius:14px;border:1.5px solid rgba(255,255,255,.92);box-shadow:0 10px 36px rgba(15,23,42,.1),4px 4px 16px rgba(163,177,198,.18),-4px -4px 14px rgba(255,255,255,.7);overflow:hidden;z-index:100;padding:5px;}
-.gab-kdropdown__item{display:flex;align-items:center;width:100%;padding:9px 14px;font-size:12.5px;font-weight:600;color:#334155;background:transparent;border:none;cursor:pointer;border-radius:9px;text-align:left;font-family:inherit;transition:background .1s,color .1s;white-space:nowrap;}
-.gab-kdropdown__item:hover:not(:disabled){background:rgba(37,99,235,.07);color:#1E293B;}
-.gab-kdropdown__item--active{background:rgba(37,99,235,.1);color:#2563EB;}
+/* Baris mode toggle (di bawah title row) */
+.gab-ctrl-row{margin-top:14px;display:flex;justify-content:flex-end;}
 
 /* Segmented control */
 .gab-seg{display:flex;gap:4px;background:rgba(255,255,255,.55);border:1px solid rgba(255,255,255,.8);box-shadow:inset 0 1px 1px rgba(255,255,255,.7);border-radius:10px;padding:3px;}
-.gab-seg__btn{flex:1;display:flex;align-items:center;justify-content:center;gap:5px;padding:8px 4px;border-radius:8px;border:none;font-family:inherit;font-size:12px;font-weight:700;color:#64748B;background:transparent;cursor:pointer;min-height:38px;transition:all .18s;}
+.gab-seg__btn{flex:1;display:flex;align-items:center;justify-content:center;gap:5px;padding:8px 10px;border-radius:8px;border:none;font-family:inherit;font-size:12px;font-weight:700;color:#64748B;background:transparent;cursor:pointer;min-height:38px;white-space:nowrap;transition:all .18s;}
 .gab-seg__btn:hover:not(.gab-seg__btn--on){color:#1E293B;background:rgba(255,255,255,.6);}
 .gab-seg__btn--on{background:linear-gradient(145deg,#3b82f6,#1d4ed8);color:white;box-shadow:3px 3px 8px rgba(37,99,235,.3),-1px -1px 4px rgba(255,255,255,.5),inset 0 1px 1px rgba(255,255,255,.2);}
 .gab-seg__btn--pulang.gab-seg__btn--on{background:linear-gradient(145deg,#3b82f6,#1d4ed8);}
 .gab-seg__btn--enroll.gab-seg__btn--on{background:linear-gradient(145deg,#3b82f6,#1d4ed8);}
 
-/* ── Warning banner ── */
-.gab-warn{display:flex;align-items:center;gap:8px;padding:10px 20px;background:rgba(255,251,235,.9);color:#D97706;border-top:1px solid rgba(253,230,138,.4);border-bottom:1px solid rgba(253,230,138,.4);font-size:12.5px;font-weight:600;}
-
 /* ── Body ── */
-.gab-body{padding:16px 20px 20px;}
+.gab-body{padding:20px;}
 
 /* ── Mode Absen — 2 kolom ── */
-.gab-absen{display:grid;grid-template-columns:1fr 1fr;gap:14px;height:360px;}
+.gab-absen{display:grid;grid-template-columns:1fr 1fr;gap:14px;height:400px;}
 
 /* Scanner pad */
 .gab-scanner{display:flex;flex-direction:column;background:rgba(255,255,255,.5);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.7);border-radius:16px;overflow:hidden;}
@@ -516,7 +425,7 @@ html,body{background:linear-gradient(135deg,#F5F7FB 0%,#E2E8F0 100%) fixed !impo
 .gab-btn-ghost:hover{background:rgba(255,255,255,.65);color:#1E293B;}
 
 /* ── Mode Enroll — 2 kolom (konsisten dengan mode absen) ── */
-.gab-enroll{display:grid;grid-template-columns:1fr 1fr;gap:14px;height:360px;}
+.gab-enroll{display:grid;grid-template-columns:1fr 1fr;gap:14px;height:400px;}
 
 /* Panel base */
 .gab-ep{display:flex;flex-direction:column;background:rgba(255,255,255,.4);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.6);border-radius:16px;overflow:hidden;}
@@ -603,7 +512,6 @@ html,body{background:linear-gradient(135deg,#F5F7FB 0%,#E2E8F0 100%) fixed !impo
 
 /* ── Responsive ── */
 @media(max-width:540px){
-  .gab-controls{grid-template-columns:1fr;}
   .gab-absen,.gab-enroll{grid-template-columns:1fr;height:auto;}
   .gab-ep{min-height:240px;}
   .gab-wrap{padding:12px 0 32px;}
