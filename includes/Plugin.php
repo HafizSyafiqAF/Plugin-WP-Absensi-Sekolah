@@ -65,6 +65,13 @@ final class Plugin {
         add_filter( 'wp_list_pages_excludes', [ $this, 'filter_list_pages_excludes' ] );
         add_filter( 'wp_nav_menu_objects', [ $this, 'filter_nav_menu_objects' ], 10, 2 );
         add_filter( 'get_pages', [ $this, 'filter_get_pages' ], 10, 2 );
+
+        // Routing pasca-login: baca role → arahkan ke surface yang sesuai (bukan wp-admin).
+        add_filter( 'login_redirect', [ $this, 'role_login_redirect' ], 10, 3 );
+        // Blok wp-admin untuk non-admin (guru/siswa/ortu) → tendang ke surface-nya.
+        add_action( 'admin_init', [ $this, 'block_admin_for_non_admin' ] );
+        // Sembunyikan admin bar untuk non-admin di frontend (biar tak ada jalan balik ke wp-admin).
+        add_filter( 'show_admin_bar', [ $this, 'hide_admin_bar_non_admin' ] );
     }
 
     public function enqueue_public_assets(): void {
@@ -285,5 +292,73 @@ final class Plugin {
         return array_values( array_filter( $pages, static function ( $p ) use ( $hidden ) {
             return ! ( isset( $p->ID ) && in_array( (int) $p->ID, $hidden, true ) );
         } ) );
+    }
+
+    /**
+     * URL surface yang sesuai role user (siswa/guru/ortu) dari option absensi_pages.
+     * Admin (manage_options) dilewati → biar tetap ke wp-admin. Kosong bila tak match.
+     */
+    private function surface_url_for_user( \WP_User $user ): string {
+        if ( user_can( $user, 'manage_options' ) ) {
+            return ''; // admin → biarkan default (wp-admin)
+        }
+        $pages  = (array) get_option( 'absensi_pages', [] );
+        $by_cap = [
+            'absensi_submit_self' => 'siswa',
+            'absensi_submit_rfid' => 'guru',
+            'absensi_view_child'  => 'ortu',
+        ];
+        foreach ( $by_cap as $cap => $key ) {
+            if ( user_can( $user, $cap ) && ! empty( $pages[ $key ] ) ) {
+                $url = get_permalink( (int) $pages[ $key ] );
+                if ( $url ) {
+                    return $url;
+                }
+            }
+        }
+        // Non-admin tanpa surface cocok → fallback ke home, JANGAN biarkan ke wp-admin.
+        return home_url( '/' );
+    }
+
+    /**
+     * #1 Pasca-login: arahkan user ke surface sesuai rolenya (login_redirect).
+     * Hormati deep-link eksplisit non-admin (login dari link page tertentu) —
+     * cuma override saat target default (kosong / wp-admin).
+     *
+     * @param string $redirect_to URL tujuan default.
+     * @param string $requested   redirect_to yang diminta (mis. dari query).
+     * @param mixed  $user        WP_User saat sukses, WP_Error saat gagal.
+     */
+    public function role_login_redirect( $redirect_to, $requested, $user ) {
+        if ( ! ( $user instanceof \WP_User ) || empty( $user->roles ) ) {
+            return $redirect_to;
+        }
+        if ( $requested && ! str_contains( $requested, '/wp-admin' ) ) {
+            return $redirect_to; // user minta halaman spesifik non-admin → hormati
+        }
+        $url = $this->surface_url_for_user( $user );
+        return $url ?: $redirect_to;
+    }
+
+    /**
+     * #2 Blok wp-admin untuk non-admin (tak punya manage_options). Guru/siswa/ortu
+     * yang buka /wp-admin langsung → redirect ke surface-nya. AJAX dibiarkan
+     * (banyak fitur frontend pakai admin-ajax.php).
+     */
+    public function block_admin_for_non_admin(): void {
+        if ( wp_doing_ajax() || current_user_can( 'manage_options' ) ) {
+            return;
+        }
+        $user = wp_get_current_user();
+        if ( ! $user || ! $user->exists() ) {
+            return;
+        }
+        wp_safe_redirect( $this->surface_url_for_user( $user ) ?: home_url( '/' ) );
+        exit;
+    }
+
+    /** #2 Sembunyikan admin bar untuk non-admin. */
+    public function hide_admin_bar_non_admin( $show ) {
+        return current_user_can( 'manage_options' ) ? $show : false;
     }
 }
