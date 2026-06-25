@@ -25,7 +25,7 @@ $jam_klr = esc_html( get_option( 'absensi_jam_keluar', '15:00' ) );
   <div class="sab-card">
 
     <!-- ── Header ── -->
-    <div x-show="step !== 'result'"
+    <div x-show="step !== 'result' && step !== 'izin-result'"
          class="sab-hdr">
       <div class="sab-hdr__orb sab-hdr__orb--a" aria-hidden="true"></div>
       <div class="sab-hdr__orb sab-hdr__orb--b" aria-hidden="true"></div>
@@ -44,29 +44,32 @@ $jam_klr = esc_html( get_option( 'absensi_jam_keluar', '15:00' ) );
         </div>
       </div>
 
-      <!-- Sesi switcher inside header -->
-      <div class="sab-sesi" role="group" aria-label="<?php esc_attr_e( 'Pilih sesi', 'absensi-sekolah' ); ?>">
-        <button type="button"
-                class="sab-sesi__btn"
-                :class="sesi === 'masuk' ? 'sab-sesi__btn--on' : ''"
-                @click="sesi = 'masuk'"
-                :aria-pressed="sesi === 'masuk'">
-          <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75"/></svg>
-          <?php esc_html_e( 'Masuk', 'absensi-sekolah' ); ?>
-        </button>
-        <button type="button"
-                class="sab-sesi__btn"
-                :class="sesi === 'pulang' ? 'sab-sesi__btn--on sab-sesi__btn--pulang' : ''"
-                @click="sesi = 'pulang'"
-                :aria-pressed="sesi === 'pulang'">
-          <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 9V5.25A2.25 2.25 0 0110.5 3h6a2.25 2.25 0 012.25 2.25v13.5A2.25 2.25 0 0116.5 21h-6a2.25 2.25 0 01-2.25-2.25V15m-3 0l-3-3m0 0l3-3m-3 3H15"/></svg>
-          <?php esc_html_e( 'Pulang', 'absensi-sekolah' ); ?>
-        </button>
+      <!-- Mode toggle: Absen | Ajukan — rata kanan -->
+      <div class="sab-ctrl-row">
+        <div class="sab-mode-sw" role="group" aria-label="<?php esc_attr_e( 'Pilih mode', 'absensi-sekolah' ); ?>">
+          <button type="button"
+                  class="sab-mode-sw__btn"
+                  :class="mode === 'absen' ? 'sab-mode-sw__btn--on' : ''"
+                  @click="switchMode('absen')"
+                  :aria-pressed="mode === 'absen'">
+            <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z"/><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0z"/></svg>
+            <?php esc_html_e( 'Absen', 'absensi-sekolah' ); ?>
+          </button>
+          <button type="button"
+                  class="sab-mode-sw__btn sab-mode-sw__btn--ajukan"
+                  :class="mode === 'izin' ? 'sab-mode-sw__btn--on' : ''"
+                  @click="switchMode('izin')"
+                  :aria-pressed="mode === 'izin'">
+            <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>
+            <?php esc_html_e( 'Ajukan', 'absensi-sekolah' ); ?>
+          </button>
+        </div>
       </div>
     </div><!-- /.sab-hdr -->
 
     <!-- ── GPS status ── -->
-    <div x-show="step !== 'result'"
+    <div x-show="step !== 'result' && step !== 'izin-result'"
+         :style="mode !== 'absen' ? 'visibility:hidden' : ''"
          class="sab-gps"
          :class="{
            'sab-gps--ok':   gpsStatus === 'ok',
@@ -84,7 +87,7 @@ $jam_klr = esc_html( get_option( 'absensi_jam_keluar', '15:00' ) );
     </div>
 
     <!-- ── Error message ── -->
-    <div x-show="errorMsg" x-cloak class="sab-notice sab-notice--danger sab-notice--incard" role="alert" aria-live="assertive">
+    <div x-show="errorMsg && mode === 'absen'" x-cloak class="sab-notice sab-notice--danger sab-notice--incard" role="alert" aria-live="assertive">
       <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"/></svg>
       <span x-text="errorMsg"></span>
     </div>
@@ -92,9 +95,30 @@ $jam_klr = esc_html( get_option( 'absensi_jam_keluar', '15:00' ) );
     <!-- ── Body ── -->
     <div class="sab-body">
 
+
       <!-- IDLE -->
       <template x-if="step === 'idle'">
         <div class="sab-step">
+          <!-- Sesi: Masuk / Pulang -->
+          <div class="sab-sesi" style="margin-bottom:10px;"
+               role="group" aria-label="<?php esc_attr_e( 'Pilih sesi', 'absensi-sekolah' ); ?>">
+            <button type="button"
+                    class="sab-sesi__btn"
+                    :class="sesi === 'masuk' ? 'sab-sesi__btn--on' : ''"
+                    @click="sesi = 'masuk'"
+                    :aria-pressed="sesi === 'masuk'">
+              <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75"/></svg>
+              <?php esc_html_e( 'Masuk', 'absensi-sekolah' ); ?>
+            </button>
+            <button type="button"
+                    class="sab-sesi__btn"
+                    :class="sesi === 'pulang' ? 'sab-sesi__btn--on sab-sesi__btn--pulang' : ''"
+                    @click="sesi = 'pulang'"
+                    :aria-pressed="sesi === 'pulang'">
+              <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 9V5.25A2.25 2.25 0 0110.5 3h6a2.25 2.25 0 012.25 2.25v13.5A2.25 2.25 0 0016.5 21h-6a2.25 2.25 0 01-2.25-2.25V15m-3 0l-3-3m0 0l3-3m-3 3H15"/></svg>
+              <?php esc_html_e( 'Pulang', 'absensi-sekolah' ); ?>
+            </button>
+          </div>
           <div class="sab-vf sab-vf--idle" aria-hidden="true">
             <div class="sab-vf__corner sab-vf__corner--tl"></div>
             <div class="sab-vf__corner sab-vf__corner--tr"></div>
@@ -234,10 +258,112 @@ $jam_klr = esc_html( get_option( 'absensi_jam_keluar', '15:00' ) );
         </div>
       </template>
 
+      <!-- IZIN / SAKIT FORM -->
+      <template x-if="step === 'izin'">
+        <div class="sab-step sab-izin-form" aria-label="<?php esc_attr_e( 'Form ajukan izin atau sakit', 'absensi-sekolah' ); ?>">
+
+          <div class="sab-izin-form__title">
+            <svg width="17" height="17" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>
+            <?php esc_html_e( 'Ajukan Izin / Sakit', 'absensi-sekolah' ); ?>
+          </div>
+
+          <!-- Tipe -->
+          <div class="sab-sesi" role="group" aria-label="<?php esc_attr_e( 'Tipe ketidakhadiran', 'absensi-sekolah' ); ?>">
+            <button type="button" class="sab-sesi__btn"
+                    :class="_izinTipe === 'izin' ? 'sab-sesi__btn--on' : ''"
+                    @click="_izinTipe = 'izin'" :aria-pressed="_izinTipe === 'izin'">
+              <?php esc_html_e( 'Izin', 'absensi-sekolah' ); ?>
+            </button>
+            <button type="button" class="sab-sesi__btn"
+                    :class="_izinTipe === 'sakit' ? 'sab-sesi__btn--on sab-sesi__btn--pulang' : ''"
+                    @click="_izinTipe = 'sakit'" :aria-pressed="_izinTipe === 'sakit'">
+              <?php esc_html_e( 'Sakit', 'absensi-sekolah' ); ?>
+            </button>
+          </div>
+
+          <!-- Alasan -->
+          <div class="sab-izin-field">
+            <label class="sab-izin-field__lbl"><?php esc_html_e( 'Alasan', 'absensi-sekolah' ); ?> <span aria-hidden="true" style="color:#DC2626;">*</span></label>
+            <textarea x-model="_izinAlasan" rows="3"
+                      placeholder="<?php esc_attr_e( 'Jelaskan alasan tidak hadir…', 'absensi-sekolah' ); ?>"
+                      class="sab-izin-field__area"
+                      aria-required="true"></textarea>
+          </div>
+
+          <!-- Bukti -->
+          <div class="sab-izin-field">
+            <label class="sab-izin-field__lbl"><?php esc_html_e( 'Bukti', 'absensi-sekolah' ); ?> <span class="sab-izin-hint" style="display:inline;">(<?php esc_html_e( 'opsional', 'absensi-sekolah' ); ?>)</span></label>
+            <label class="sab-izin-file-label" :class="_izinFile ? 'sab-izin-file-label--has' : ''">
+              <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13"/></svg>
+              <span x-text="_izinFile ? _izinFile.name : '<?php echo esc_js( __( 'Pilih foto atau PDF…', 'absensi-sekolah' ) ); ?>'"></span>
+              <input type="file" @change="pickIzinFile($event)" accept="image/jpeg,image/png,application/pdf"
+                     style="display:none;" aria-label="<?php esc_attr_e( 'Upload bukti izin atau sakit', 'absensi-sekolah' ); ?>">
+            </label>
+            <p class="sab-izin-hint">JPG, PNG, PDF — <?php esc_html_e( 'maks 5 MB', 'absensi-sekolah' ); ?></p>
+          </div>
+
+          <!-- Error -->
+          <div x-show="_izinError" x-cloak class="sab-notice sab-notice--danger sab-notice--incard" role="alert" aria-live="assertive">
+            <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"/></svg>
+            <span x-text="_izinError"></span>
+          </div>
+
+          <!-- Buttons -->
+          <div class="sab-row" style="padding-top:4px;">
+            <button type="button" class="sab-btn sab-btn--ghost" @click="switchMode('absen')">
+              <?php esc_html_e( 'Batal', 'absensi-sekolah' ); ?>
+            </button>
+            <button type="button" class="sab-btn sab-btn--primary"
+                    :disabled="_izinSending || !_izinAlasan.trim()"
+                    @click="submitIzin()">
+              <div x-show="_izinSending" class="sab-spinner sab-spinner--sm" aria-hidden="true"></div>
+              <span x-text="_izinSending ? '<?php echo esc_js( __( 'Mengirim…', 'absensi-sekolah' ) ); ?>' : '<?php echo esc_js( __( 'Kirim Pengajuan', 'absensi-sekolah' ) ); ?>'"></span>
+            </button>
+          </div>
+
+        </div>
+      </template>
+
+      <!-- IZIN RESULT -->
+      <template x-if="step === 'izin-result'">
+        <div aria-live="assertive" role="status">
+          <div class="sab-result sab-result--ok">
+            <div class="sab-result__icon" style="background:#CFFAFE;color:#0891B2;" aria-hidden="true">
+              <svg width="30" height="30" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            </div>
+            <h2 class="sab-result__title"><?php esc_html_e( 'Pengajuan Terkirim', 'absensi-sekolah' ); ?></h2>
+            <p class="sab-result__sub"><?php esc_html_e( 'Menunggu konfirmasi dari guru.', 'absensi-sekolah' ); ?></p>
+            <div class="sab-result__grid">
+              <div class="sab-result__cell">
+                <span class="sab-result__lbl"><?php esc_html_e( 'Tipe', 'absensi-sekolah' ); ?></span>
+                <span class="sab-result__val sab-result__val--cyan"
+                      x-text="_izinResult &amp;&amp; _izinResult.tipe === 'sakit' ? '<?php echo esc_js( __( 'Sakit', 'absensi-sekolah' ) ); ?>' : '<?php echo esc_js( __( 'Izin', 'absensi-sekolah' ) ); ?>'"></span>
+              </div>
+              <div class="sab-result__cell">
+                <span class="sab-result__lbl"><?php esc_html_e( 'Status', 'absensi-sekolah' ); ?></span>
+                <span class="sab-result__val" style="color:#D97706;"><?php esc_html_e( 'Menunggu', 'absensi-sekolah' ); ?></span>
+              </div>
+            </div>
+            <template x-if="_izinResult &amp;&amp; _izinResult.bukti_url">
+              <a :href="_izinResult.bukti_url" target="_blank" rel="noopener"
+                 class="sab-btn sab-btn--ghost" style="margin-top:14px;text-decoration:none;">
+                <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"/></svg>
+                <?php esc_html_e( 'Lihat Bukti', 'absensi-sekolah' ); ?>
+              </a>
+            </template>
+            <button type="button" class="sab-btn sab-btn--ghost" style="margin-top:14px;" @click="step = 'izin'; _izinResult = null; _izinError = null">
+              <?php esc_html_e( 'Kembali', 'absensi-sekolah' ); ?>
+            </button>
+          </div>
+        </div>
+      </template>
+
     </div><!-- /.sab-body -->
 
     <!-- Footer note -->
-    <p x-show="step !== 'result'" class="sab-foot">
+    <p x-show="step !== 'result' && step !== 'izin-result'"
+       :style="mode !== 'absen' ? 'visibility:hidden' : ''"
+       class="sab-foot">
       <svg width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z"/></svg>
       <?php printf( esc_html__( 'Radius %s meter dari titik sekolah', 'absensi-sekolah' ), '<strong>' . $radius . '</strong>' ); ?>
     </p>
@@ -294,7 +420,6 @@ html,body{background:linear-gradient(135deg,#F5F7FB 0%,#E2E8F0 100%) fixed !impo
 .sab-hdr{
   padding:22px 20px 18px;
   position:relative;
-  overflow:hidden;
   background:rgba(255,255,255,.22);
   border-bottom:1px solid rgba(0,0,0,.05);
 }
@@ -330,17 +455,34 @@ html,body{background:linear-gradient(135deg,#F5F7FB 0%,#E2E8F0 100%) fixed !impo
   box-shadow:inset 0 1px 1px rgba(255,255,255,.7);
   border-radius:12px;padding:4px;
   position:relative;
+  z-index:5;
 }
+/* Mode toggle: Absen | Ajukan — rata kanan */
+.sab-ctrl-row{margin-top:14px;display:flex;justify-content:flex-end;}
+
+/* Mode switcher — sama gaya dengan guru .gab-seg */
+.sab-mode-sw{display:flex;gap:4px;background:rgba(255,255,255,.55);border:1px solid rgba(255,255,255,.8);box-shadow:inset 0 1px 1px rgba(255,255,255,.7);border-radius:10px;padding:3px;}
+.sab-mode-sw__btn{flex:1;display:flex;align-items:center;justify-content:center;gap:5px;padding:8px 10px;border-radius:8px;border:none;font-family:inherit;font-size:12px;font-weight:700;color:#64748B;background:transparent;cursor:pointer;min-height:38px;white-space:nowrap;transition:all .18s;}
+.sab-mode-sw__btn:hover:not(.sab-mode-sw__btn--on){color:#1E293B;background:rgba(255,255,255,.6);}
+.sab-mode-sw__btn--on{background:linear-gradient(145deg,#3b82f6,#1d4ed8);color:white;box-shadow:3px 3px 8px rgba(37,99,235,.3),-1px -1px 4px rgba(255,255,255,.5),inset 0 1px 1px rgba(255,255,255,.2);}
 .sab-sesi__btn{
   flex:1;display:flex;align-items:center;justify-content:center;gap:6px;
   padding:9px 6px;border-radius:9px;border:none;
   font-family:inherit;font-size:13px;font-weight:700;
   color:#64748B;background:transparent;
-  cursor:pointer;min-height:42px;transition:all .18s;
+  cursor:pointer!important;min-height:42px;transition:all .18s;
+  pointer-events:auto!important;
+  position:relative;z-index:10;
 }
 .sab-sesi__btn:hover:not(.sab-sesi__btn--on){color:#1E293B;background:rgba(255,255,255,.6);}
 .sab-sesi__btn--on{background:linear-gradient(145deg,#3b82f6,#1d4ed8);color:white;box-shadow:3px 3px 8px rgba(37,99,235,.3),-1px -1px 4px rgba(255,255,255,.5),inset 0 1px 1px rgba(255,255,255,.2);}
 .sab-sesi__btn--pulang.sab-sesi__btn--on{background:linear-gradient(145deg,#3b82f6,#1d4ed8);}
+
+/* Izin tipe switcher dalam form: full-width */
+.sab-izin-form .sab-sesi{width:100%;}
+
+/* Izin tipe switcher dalam form: kompak, full-width */
+.sab-izin-form .sab-sesi__btn{padding:7px 20px;font-size:12px;min-height:34px;}
 
 /* ── GPS ── */
 .sab-gps{
@@ -370,6 +512,7 @@ html,body{background:linear-gradient(135deg,#F5F7FB 0%,#E2E8F0 100%) fixed !impo
 .sab-vf--idle{
   background:linear-gradient(145deg,#0F172A,#1E293B);
   display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;
+  max-height:240px;
 }
 .sab-vf--live{background:#0F172A;}
 .sab-vf--preview{background:#0F172A;}
@@ -502,4 +645,129 @@ html,body{background:linear-gradient(135deg,#F5F7FB 0%,#E2E8F0 100%) fixed !impo
 
 @keyframes sab-spin{to{transform:rotate(360deg);}}
 @keyframes sab-pulse{0%,100%{opacity:1;}50%{opacity:.3;}}
+
+/* ── Tombol Izin (di idle step) ── */
+.sab-btn--izin{
+  background:rgba(255,255,255,.35);color:#0891B2;
+  border:1.5px solid rgba(8,145,178,.22);
+  backdrop-filter:blur(8px);font-size:12.5px;
+}
+.sab-btn--izin:hover{background:rgba(8,145,178,.08);border-color:rgba(8,145,178,.4);color:#0369A1;}
+
+/* ── Izin Form ── */
+.sab-izin-form{display:flex;flex-direction:column;gap:13px;padding-bottom:14px;}
+.sab-izin-form__title{display:flex;align-items:center;gap:8px;font-size:15px;font-weight:800;color:#0F172A;letter-spacing:-.2px;}
+.sab-izin-field{display:flex;flex-direction:column;gap:5px;}
+.sab-izin-field__lbl{font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em;}
+.sab-izin-field__area{
+  width:100%;padding:10px 12px;
+  border:1.5px solid rgba(0,0,0,.09);border-radius:10px;
+  font-size:13px;font-family:inherit;color:#0F172A;
+  background:rgba(255,255,255,.65);resize:vertical;outline:none;
+  transition:border-color .15s,box-shadow .15s;
+}
+.sab-izin-field__area:focus{border-color:#2563EB;box-shadow:0 0 0 3px rgba(37,99,235,.1);background:rgba(255,255,255,.9);}
+.sab-izin-file-label{
+  display:flex;align-items:center;gap:8px;
+  padding:10px 13px;border-radius:10px;
+  border:1.5px dashed rgba(0,0,0,.12);
+  background:rgba(255,255,255,.45);
+  font-size:12.5px;font-weight:600;color:#64748B;cursor:pointer;transition:all .15s;
+}
+.sab-izin-file-label:hover{border-color:#2563EB;color:#2563EB;background:rgba(219,234,254,.3);}
+.sab-izin-file-label--has{border-color:#16A34A;color:#16A34A;background:rgba(240,253,244,.5);}
+.sab-izin-hint{margin:0;font-size:10.5px;color:#94A3B8;}
+.sab-spinner--sm{width:16px;height:16px;border-width:2px;margin:0;flex-shrink:0;}
 </style>
+
+<script>
+/* ── Patch absensiSiswa: tambah alur izin/sakit ── */
+(function () {
+  'use strict';
+  document.addEventListener('alpine:init', function () {
+    var origData = Alpine.data.bind(Alpine);
+    Alpine.data = function (name, factory) {
+      if (name === 'absensiSiswa') {
+        Alpine.data = origData;
+        origData(name, function () {
+          var c = factory();
+
+          c.mode         = 'absen';
+          c._izinTipe    = 'izin';
+          c._izinAlasan  = '';
+          c._izinFile    = null;
+          c._izinError   = null;
+          c._izinSending = false;
+          c._izinResult  = null;
+
+          c.switchMode = function (m) {
+            this.mode = m;
+            if (m === 'izin') {
+              this.step        = 'izin';
+              this._izinTipe   = 'izin';
+              this._izinAlasan = '';
+              this._izinFile   = null;
+              this._izinError  = null;
+              this._izinResult = null;
+            } else {
+              if (this.step === 'izin' || this.step === 'izin-result') {
+                this.step = 'idle';
+              }
+              this.errorMsg = null;
+            }
+          };
+
+          c.pickIzinFile = function (e) {
+            var file = e.target.files && e.target.files[0];
+            if (!file) return;
+            var allowed = ['image/jpeg', 'image/png', 'application/pdf'];
+            if (allowed.indexOf(file.type) === -1) {
+              this._izinError = 'File harus berformat JPG, PNG, atau PDF.';
+              return;
+            }
+            if (file.size > 5 * 1024 * 1024) {
+              this._izinError = 'Ukuran file maksimal 5 MB.';
+              return;
+            }
+            this._izinError = null;
+            var self = this;
+            var reader = new FileReader();
+            reader.onload = function (ev) {
+              self._izinFile = { name: file.name, base64: ev.target.result };
+            };
+            reader.readAsDataURL(file);
+          };
+
+          c.submitIzin = async function () {
+            if (!this._izinAlasan.trim()) { this._izinError = 'Alasan wajib diisi.'; return; }
+            this._izinSending = true; this._izinError = null;
+            try {
+              var body = { tipe: this._izinTipe, alasan: this._izinAlasan.trim() };
+              if (this._izinFile) body.bukti = this._izinFile.base64;
+              var data = await window.api.post('absen/izin', body);
+              this._izinResult = data;
+              this.step = 'izin-result';
+            } catch (err) {
+              this._izinError = err.message || 'Terjadi kesalahan. Coba lagi.';
+            } finally {
+              this._izinSending = false;
+            }
+          };
+
+          /* Patch reset agar juga bersihkan state izin dan mode */
+          var _origReset = c.reset;
+          c.reset = function () {
+            _origReset.call(this);
+            this.mode = 'absen';
+            this._izinResult = null; this._izinError = null; this._izinFile = null;
+          };
+
+          return c;
+        });
+      } else {
+        origData(name, factory);
+      }
+    };
+  });
+}());
+</script>

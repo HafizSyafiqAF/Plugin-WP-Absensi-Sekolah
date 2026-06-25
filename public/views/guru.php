@@ -55,6 +55,13 @@ $kelas_json = wp_json_encode( array_map( fn($k) => [ 'id' => $k->id, 'nama_kelas
             <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zM3 19.235v-.11a6.375 6.375 0 0112.75 0v.109A12.318 12.318 0 019.374 21c-2.331 0-4.512-.645-6.374-1.766z"/></svg>
             <?php esc_html_e( 'Daftar Kartu', 'absensi-sekolah' ); ?>
           </button>
+          <button type="button" class="gab-seg__btn"
+                  :class="mode === 'papan' ? 'gab-seg__btn--on gab-seg__btn--papan' : ''"
+                  @click="mode = 'papan'; saveDraft()"
+                  :aria-pressed="mode === 'papan'">
+            <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M3.375 19.5h17.25m-17.25 0a1.125 1.125 0 01-1.125-1.125M3.375 19.5h7.5c.621 0 1.125-.504 1.125-1.125m-9.75 0V5.625m0 12.75v-1.5c0-.621.504-1.125 1.125-1.125m18.375 2.625V5.625m0 12.75c0 .621-.504 1.125-1.125 1.125m1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125m0 3.75h-7.5A1.125 1.125 0 0112 18.375m9.75-12.75c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125m19.5 0v1.5c0 .621-.504 1.125-1.125 1.125M2.25 5.625v1.5c0 .621.504 1.125 1.125 1.125m0 0h17.25m-17.25 0h7.5c.621 0 1.125.504 1.125 1.125M3.375 8.25c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125m17.25-3.75h-7.5c-.621 0-1.125.504-1.125 1.125m8.625-1.125c.621 0 1.125.504 1.125 1.125v1.5c0 .621-.504 1.125-1.125 1.125m-17.25 0h7.5m-7.5 0c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125M12 10.875v-1.5m0 1.5c0 .621-.504 1.125-1.125 1.125M12 10.875c0 .621.504 1.125 1.125 1.125m-2.25 0c.621 0 1.125.504 1.125 1.125v1.5c0 .621-.504 1.125-1.125 1.125M13.125 12h7.5m-7.5 0c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125"/></svg>
+            <?php esc_html_e( 'Papan', 'absensi-sekolah' ); ?>
+          </button>
         </div>
       </div>
     </div><!-- /.gab-hdr -->
@@ -296,6 +303,181 @@ $kelas_json = wp_json_encode( array_map( fn($k) => [ 'id' => $k->id, 'nama_kelas
 
       </div><!-- /.gab-enroll -->
 
+      <!-- ══ Mode: Papan Kehadiran ══ -->
+      <div x-show="mode === 'papan'" x-cloak class="gab-papan">
+
+        <!-- Toolbar -->
+        <div class="gab-papan__toolbar">
+          <div class="gab-papan__field-grp">
+            <label class="gab-papan__lbl">
+              <svg width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 9v7.5"/></svg>
+              <?php esc_html_e( 'Tanggal', 'absensi-sekolah' ); ?>
+            </label>
+            <input type="date" x-model="papanDate" class="gab-papan__input"
+                   aria-label="<?php esc_attr_e( 'Tanggal papan kehadiran', 'absensi-sekolah' ); ?>">
+          </div>
+          <div class="gab-papan__field-grp gab-papan__field-grp--grow">
+            <label class="gab-papan__lbl">
+              <svg width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
+              <?php esc_html_e( 'Kelas', 'absensi-sekolah' ); ?>
+            </label>
+            <div style="position:relative;">
+              <button type="button" @click="papanCsOpen=!papanCsOpen" @keydown.escape="papanCsOpen=false"
+                      class="gab-papan__csel" :class="papanCsOpen ? 'gab-papan__csel--open' : ''"
+                      :aria-expanded="papanCsOpen"
+                      aria-label="<?php esc_attr_e( 'Pilih kelas', 'absensi-sekolah' ); ?>">
+                <span x-text="papanKelasId ? papanKelasNama : '<?php echo esc_js( __( '— Pilih Kelas —', 'absensi-sekolah' ) ); ?>'"></span>
+                <svg class="gab-papan__csel-chev" width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5"/></svg>
+              </button>
+              <div x-show="papanCsOpen" x-cloak @click.outside="papanCsOpen=false" class="gab-papan__csel-drop">
+                <button type="button" @click="papanKelasId='';papanKelasNama='';papanCsOpen=false"
+                        class="gab-papan__csel-opt" :class="papanKelasId==='' ? 'gab-papan__csel-opt--on':''">
+                  <?php esc_html_e( '— Pilih Kelas —', 'absensi-sekolah' ); ?>
+                </button>
+                <?php foreach ( $kelas_list as $k ) : ?>
+                <button type="button"
+                        @click="papanKelasId='<?php echo esc_js( (string) $k->id ); ?>';papanKelasNama='<?php echo esc_js( $k->nama_kelas ); ?>';papanCsOpen=false"
+                        class="gab-papan__csel-opt"
+                        :class="papanKelasId==='<?php echo esc_js( (string) $k->id ); ?>' ? 'gab-papan__csel-opt--on':''">
+                  <?php echo esc_html( $k->nama_kelas ); ?>
+                </button>
+                <?php endforeach; ?>
+              </div>
+            </div>
+          </div>
+          <div class="gab-papan__field-grp">
+            <span class="gab-papan__lbl" aria-hidden="true" style="visibility:hidden;">_</span>
+            <button type="button" @click="loadPapan()" :disabled="papanLoading || !papanKelasId"
+                    class="gab-papan__btn-muat">
+              <svg x-show="!papanLoading" width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"/></svg>
+              <svg x-show="papanLoading" class="gab-spin" width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+              <?php esc_html_e( 'Terapkan', 'absensi-sekolah' ); ?>
+            </button>
+          </div>
+        </div>
+
+        <!-- Error -->
+        <div x-show="papanError" x-cloak class="gab-papan__notice gab-papan__notice--err" aria-live="polite">
+          <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"/></svg>
+          <span x-text="papanError"></span>
+        </div>
+
+        <!-- Summary chips -->
+        <div x-show="papanRoster.length > 0" class="gab-papan__summary">
+          <span class="gab-papan__chip gab-papan__chip--hadir"
+                x-text="papanRoster.filter(function(s){return s.status === 'hadir' || s.status === 'telat';}).length + ' <?php echo esc_js( __( 'Hadir', 'absensi-sekolah' ) ); ?>'"></span>
+          <span class="gab-papan__chip gab-papan__chip--izin"
+                x-text="papanRoster.filter(function(s){return s.status === 'izin' || s.status === 'sakit';}).length + ' <?php echo esc_js( __( 'Izin/Sakit', 'absensi-sekolah' ) ); ?>'"></span>
+          <span class="gab-papan__chip gab-papan__chip--alpha"
+                x-text="papanRoster.filter(function(s){return s.status === 'alpha' || s.status === null;}).length + ' <?php echo esc_js( __( 'Alpha/Belum', 'absensi-sekolah' ) ); ?>'"></span>
+          <span class="gab-papan__chip gab-papan__chip--total"
+                x-text="papanRoster.length + ' <?php echo esc_js( __( 'Total', 'absensi-sekolah' ) ); ?>'"></span>
+        </div>
+
+        <!-- Empty state -->
+        <div x-show="!papanLoading && papanRoster.length === 0 && !papanError" class="gab-papan__empty">
+          <svg width="30" height="30" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M3.375 19.5h17.25m-17.25 0a1.125 1.125 0 01-1.125-1.125M3.375 19.5h7.5c.621 0 1.125-.504 1.125-1.125m-9.75 0V5.625m0 12.75v-1.5c0-.621.504-1.125 1.125-1.125m18.375 2.625V5.625m0 12.75c0 .621-.504 1.125-1.125 1.125m1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125m0 3.75h-7.5A1.125 1.125 0 0112 18.375m9.75-12.75c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125m19.5 0v1.5c0 .621-.504 1.125-1.125 1.125M2.25 5.625v1.5c0 .621.504 1.125 1.125 1.125m0 0h17.25m-17.25 0h7.5c.621 0 1.125.504 1.125 1.125M3.375 8.25c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125m17.25-3.75h-7.5c-.621 0-1.125.504-1.125 1.125m8.625-1.125c.621 0 1.125.504 1.125 1.125v1.5c0 .621-.504 1.125-1.125 1.125m-17.25 0h7.5"/></svg>
+          <p><?php esc_html_e( 'Pilih kelas dan klik Terapkan untuk melihat papan kehadiran.', 'absensi-sekolah' ); ?></p>
+        </div>
+
+        <!-- Student list -->
+        <div class="gab-papan__list" aria-live="polite" :style="papanRoster.length === 0 ? 'visibility:hidden' : ''">
+          <table class="gab-papan__table">
+            <thead>
+              <tr>
+                <th><?php esc_html_e( 'Siswa', 'absensi-sekolah' ); ?></th>
+                <th><?php esc_html_e( 'Masuk', 'absensi-sekolah' ); ?></th>
+                <th><?php esc_html_e( 'Pulang', 'absensi-sekolah' ); ?></th>
+                <th><?php esc_html_e( 'Status', 'absensi-sekolah' ); ?></th>
+                <th><?php esc_html_e( 'Ubah', 'absensi-sekolah' ); ?></th>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-for="s in papanRoster" :key="s.id">
+                <tr class="gab-papan__tr">
+
+                  <!-- Siswa -->
+                  <td>
+                    <div class="gab-papan__cell-siswa">
+                      <div class="gab-papan__cell-av"
+                           :style="`background:hsl(${(s.id*61)%360},50%,88%);color:hsl(${(s.id*61)%360},45%,35%)`"
+                           x-text="s.nama ? s.nama.charAt(0).toUpperCase() : '?'" aria-hidden="true"></div>
+                      <div>
+                        <span class="gab-papan__cell-nama" x-text="s.nama"></span>
+                        <span class="gab-papan__cell-nis" x-text="s.nis"></span>
+                      </div>
+                    </div>
+                  </td>
+
+                  <!-- Masuk -->
+                  <td>
+                    <span class="gab-papan__cell-time" x-text="s.waktu_masuk ? s.waktu_masuk.substr(11,5) : '—'"></span>
+                  </td>
+
+                  <!-- Pulang -->
+                  <td>
+                    <span class="gab-papan__cell-time gab-papan__cell-time--muted" x-text="s.waktu_keluar ? s.waktu_keluar.substr(11,5) : '—'"></span>
+                  </td>
+
+                  <!-- Status badge -->
+                  <td>
+                    <span x-show="s.status === 'hadir'"  class="gab-papan__sbadge gab-papan__sbadge--hadir"><?php esc_html_e( 'Hadir',  'absensi-sekolah' ); ?></span>
+                    <span x-show="s.status === 'telat'"  class="gab-papan__sbadge gab-papan__sbadge--telat"><?php esc_html_e( 'Telat',  'absensi-sekolah' ); ?></span>
+                    <span x-show="s.status === 'alpha'"  class="gab-papan__sbadge gab-papan__sbadge--alpha"><?php esc_html_e( 'Alpha',  'absensi-sekolah' ); ?></span>
+                    <span x-show="s.status === 'izin'"   class="gab-papan__sbadge gab-papan__sbadge--izin"><?php esc_html_e(  'Izin',   'absensi-sekolah' ); ?></span>
+                    <span x-show="s.status === 'sakit'"  class="gab-papan__sbadge gab-papan__sbadge--sakit"><?php esc_html_e( 'Sakit',  'absensi-sekolah' ); ?></span>
+                    <span x-show="s.status === null"     class="gab-papan__sbadge gab-papan__sbadge--belum"><?php esc_html_e( 'Belum',  'absensi-sekolah' ); ?></span>
+                  </td>
+
+                  <!-- Ubah status + Bukti -->
+                  <td>
+                    <div class="gab-papan__ubah-col">
+                      <div class="gab-papan__row-ctrl">
+                        <select class="gab-papan__status-sel" :disabled="s._stLoading"
+                                @change="setStatus(s, $event.target.value)"
+                                aria-label="<?php esc_attr_e( 'Ubah status kehadiran', 'absensi-sekolah' ); ?>">
+                          <option value=""><?php esc_html_e( 'Ubah…', 'absensi-sekolah' ); ?></option>
+                          <option value="hadir"><?php esc_html_e( 'Hadir', 'absensi-sekolah' ); ?></option>
+                          <option value="telat"><?php esc_html_e( 'Telat', 'absensi-sekolah' ); ?></option>
+                          <option value="izin"><?php esc_html_e( 'Izin', 'absensi-sekolah' ); ?></option>
+                          <option value="sakit"><?php esc_html_e( 'Sakit', 'absensi-sekolah' ); ?></option>
+                          <option value="alpha"><?php esc_html_e( 'Alpha', 'absensi-sekolah' ); ?></option>
+                        </select>
+                        <svg x-show="s._stLoading" class="gab-spin" width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" style="color:#64748B;" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                      </div>
+                      <p x-show="s._stErr" x-text="s._stErr" class="gab-papan__row-err" aria-live="polite"></p>
+                      <div x-show="s.bukti_status === 'menunggu'" class="gab-papan__bukti">
+                        <a :href="s.bukti_url || '#'" target="_blank" rel="noopener"
+                           class="gab-papan__bukti-link" @click.prevent="if(s.bukti_url) window.open(s.bukti_url,'_blank')">
+                          <svg width="10" height="10" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"/></svg>
+                          <?php esc_html_e( 'Bukti', 'absensi-sekolah' ); ?>
+                        </a>
+                        <button type="button" class="gab-papan__bukti-btn gab-papan__bukti-btn--ok"
+                                :disabled="s._bkLoading" @click="confirmBukti(s, 'setuju')"
+                                aria-label="<?php esc_attr_e( 'Setujui izin/sakit', 'absensi-sekolah' ); ?>">
+                          <svg width="10" height="10" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
+                          <?php esc_html_e( 'Setuju', 'absensi-sekolah' ); ?>
+                        </button>
+                        <button type="button" class="gab-papan__bukti-btn gab-papan__bukti-btn--no"
+                                :disabled="s._bkLoading" @click="confirmBukti(s, 'tolak')"
+                                aria-label="<?php esc_attr_e( 'Tolak izin/sakit', 'absensi-sekolah' ); ?>">
+                          <svg width="10" height="10" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                          <?php esc_html_e( 'Tolak', 'absensi-sekolah' ); ?>
+                        </button>
+                      </div>
+                      <span x-show="s.bukti_status === 'setuju'" class="gab-badge gab-badge--green" style="font-size:9.5px;"><?php esc_html_e( 'Disetujui', 'absensi-sekolah' ); ?></span>
+                      <span x-show="s.bukti_status === 'tolak'"  class="gab-badge gab-badge--red"   style="font-size:9.5px;"><?php esc_html_e( 'Ditolak',   'absensi-sekolah' ); ?></span>
+                    </div>
+                  </td>
+
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div><!-- /.gab-papan__list -->
+
+      </div><!-- /.gab-papan -->
+
     </div><!-- /.gab-body -->
   </div><!-- /.gab-card -->
 </div><!-- /.gab-wrap -->
@@ -510,11 +692,97 @@ html,body{background:linear-gradient(135deg,#F5F7FB 0%,#E2E8F0 100%) fixed !impo
 /* Spin util */
 .gab-spin{animation:gab-spin-anim .75s linear infinite;}
 
+/* ── Mode Papan ── */
+.gab-seg__btn--papan.gab-seg__btn--on{background:linear-gradient(145deg,#3b82f6,#1d4ed8);color:white;box-shadow:3px 3px 8px rgba(37,99,235,.3),-1px -1px 4px rgba(255,255,255,.5),inset 0 1px 1px rgba(255,255,255,.2);}
+.gab-papan{display:flex;flex-direction:column;gap:10px;height:400px;}
+
+/* Toolbar */
+.gab-papan__toolbar{display:flex;gap:10px;flex-shrink:0;align-items:flex-end;background:rgba(255,255,255,.45);border:1px solid rgba(255,255,255,.78);border-radius:14px;padding:12px 14px;position:relative;z-index:10;}
+.gab-papan__field-grp{display:flex;flex-direction:column;gap:5px;flex:0 0 auto;}
+.gab-papan__field-grp--grow{flex:1;}
+.gab-papan__lbl{display:flex;align-items:center;gap:5px;font-size:10.5px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.05em;}
+.gab-papan__input{width:100%;background:rgba(255,255,255,.55);border:1px solid rgba(255,255,255,.88);border-radius:11px;padding:8px 11px;font-size:12.5px;min-height:40px;font-family:inherit;color:#1E293B;outline:none;transition:border-color .15s,box-shadow .15s;box-shadow:inset 3px 3px 8px rgba(163,177,198,.28),inset -3px -3px 8px rgba(255,255,255,.78);appearance:none;-webkit-appearance:none;}
+.gab-papan__input:focus{border-color:rgba(37,99,235,.35);box-shadow:0 0 0 3px rgba(37,99,235,.07),inset 2px 2px 6px rgba(163,177,198,.2),inset -2px -2px 6px rgba(255,255,255,.78);}
+.gab-papan__btn-muat{display:inline-flex;align-items:center;gap:5px;padding:8px 18px;border-radius:999px;border:none;font-size:12.5px;font-weight:700;font-family:inherit;background:linear-gradient(145deg,#2563EB,#1D4ED8);color:white;cursor:pointer;white-space:nowrap;flex-shrink:0;min-height:40px;transition:all .15s;box-shadow:4px 4px 12px rgba(37,99,235,.28),-1px -1px 5px rgba(255,255,255,.4),inset 0 1px 1px rgba(255,255,255,.2);}
+.gab-papan__btn-muat:disabled{opacity:.45;cursor:not-allowed;}
+.gab-papan__btn-muat:hover:not(:disabled){transform:translateY(-1px);box-shadow:5px 5px 16px rgba(37,99,235,.35);}
+
+/* Notice */
+.gab-papan__notice{display:flex;align-items:center;gap:7px;padding:9px 12px;border-radius:9px;font-size:12px;font-weight:600;flex-shrink:0;}
+.gab-papan__notice--err{background:rgba(254,242,242,.9);color:#DC2626;border:1px solid rgba(254,202,202,.6);}
+
+/* Summary chips */
+.gab-papan__summary{display:flex;gap:6px;flex-wrap:wrap;flex-shrink:0;}
+.gab-papan__chip{display:inline-flex;align-items:center;padding:3px 10px;border-radius:999px;font-size:10.5px;font-weight:700;letter-spacing:.03em;}
+.gab-papan__chip--hadir{background:#DCFCE7;color:#16A34A;}
+.gab-papan__chip--izin{background:#CFFAFE;color:#0891B2;}
+.gab-papan__chip--alpha{background:#FEE2E2;color:#DC2626;}
+.gab-papan__chip--total{background:rgba(0,0,0,.06);color:#64748B;}
+
+/* Empty */
+.gab-papan__empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:8px;color:#94A3B8;}
+.gab-papan__empty svg{opacity:.3;}
+.gab-papan__empty p{font-size:12px;margin:0;}
+
+/* List */
+.gab-papan__list{flex:1;overflow-y:auto;overflow-x:auto;min-height:0;border:1px solid rgba(0,0,0,.07);border-radius:12px;background:rgba(255,255,255,.4);backdrop-filter:blur(10px);}
+
+/* Table */
+.gab-papan__table{width:100%;border-collapse:collapse;font-size:12.5px;}
+.gab-papan__table thead tr{background:rgba(219,234,254,.5);border-bottom:1.5px solid rgba(147,197,253,.3);}
+.gab-papan__table th{text-align:left;padding:10px 14px;color:#2563EB;font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap;}
+.gab-papan__table td{padding:10px 12px;border-bottom:1px solid rgba(0,0,0,.05);vertical-align:middle;}
+.gab-papan__tr:last-child td{border-bottom:none;}
+.gab-papan__tr{transition:background .12s;}
+.gab-papan__tr:hover td{background:rgba(255,255,255,.5);}
+.gab-papan__cell-siswa{display:flex;align-items:center;gap:9px;}
+.gab-papan__cell-av{width:30px;height:30px;border-radius:9px;flex-shrink:0;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;}
+.gab-papan__cell-nama{display:block;font-weight:700;color:#1E293B;font-size:12.5px;white-space:nowrap;}
+.gab-papan__cell-nis{display:block;font-size:10.5px;color:#94A3B8;font-family:monospace;}
+.gab-papan__cell-time{font-family:monospace;font-size:12.5px;font-weight:700;color:#0F172A;letter-spacing:.02em;}
+.gab-papan__cell-time--muted{color:#94A3B8;font-weight:500;}
+.gab-papan__sbadge{display:inline-flex;align-items:center;padding:3px 9px;border-radius:999px;font-size:10.5px;font-weight:600;letter-spacing:.02em;}
+.gab-papan__sbadge--hadir{background:rgba(220,252,231,.9);color:#16A34A;}
+.gab-papan__sbadge--telat{background:rgba(254,243,199,.9);color:#D97706;}
+.gab-papan__sbadge--alpha{background:rgba(254,226,226,.9);color:#DC2626;}
+.gab-papan__sbadge--izin,.gab-papan__sbadge--sakit{background:rgba(207,250,254,.9);color:#0891B2;}
+.gab-papan__sbadge--belum{background:rgba(0,0,0,.07);color:#64748B;}
+.gab-papan__ubah-col{display:flex;flex-direction:column;gap:4px;align-items:flex-start;}
+.gab-papan__row-ctrl{display:flex;align-items:center;gap:5px;}
+.gab-papan__status-sel{padding:4px 7px;border:1.5px solid rgba(0,0,0,.1);border-radius:7px;font-size:11px;font-family:inherit;background:rgba(255,255,255,.8);color:#0F172A;outline:none;cursor:pointer;transition:border-color .15s;}
+.gab-papan__status-sel:focus{border-color:#2563EB;}
+.gab-papan__status-sel:disabled{opacity:.5;}
+.gab-papan__row-err{font-size:10px;color:#DC2626;margin:0;}
+
+/* Custom kelas select */
+.gab-papan__csel{width:100%;display:flex;align-items:center;justify-content:space-between;gap:8px;background:rgba(255,255,255,.55);border:1px solid rgba(255,255,255,.88);border-radius:11px;padding:8px 11px;font-size:12.5px;min-height:40px;font-family:inherit;color:#1E293B;outline:none;cursor:pointer;text-align:left;transition:border-color .15s,box-shadow .15s;box-shadow:inset 3px 3px 8px rgba(163,177,198,.28),inset -3px -3px 8px rgba(255,255,255,.78);}
+.gab-papan__csel:hover,.gab-papan__csel--open{background:rgba(255,255,255,.85);border-color:rgba(37,99,235,.3);box-shadow:0 0 0 3px rgba(37,99,235,.06),inset 2px 2px 6px rgba(163,177,198,.2),inset -2px -2px 6px rgba(255,255,255,.78);}
+.gab-papan__csel-chev{flex-shrink:0;color:#94A3B8;transition:transform .18s;}
+.gab-papan__csel--open .gab-papan__csel-chev{transform:rotate(180deg);}
+.gab-papan__csel-drop{position:absolute;left:0;right:0;top:calc(100% + 5px);background:rgba(255,255,255,.92);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border:1px solid rgba(255,255,255,.9);border-radius:12px;box-shadow:6px 6px 20px rgba(163,177,198,.2),-3px -3px 10px rgba(255,255,255,.7);z-index:999;overflow:hidden;max-height:200px;overflow-y:auto;}
+.gab-papan__csel-opt{display:block;width:100%;padding:9px 13px;border:none;background:none;cursor:pointer;font-size:12.5px;font-family:inherit;text-align:left;color:#1E293B;transition:background .1s;font-weight:500;}
+.gab-papan__csel-opt:hover{background:rgba(238,242,255,.8);}
+.gab-papan__csel-opt--on{background:#DBEAFE;color:#2563EB;font-weight:700;}
+
+/* Bukti */
+.gab-papan__bukti{display:flex;align-items:center;gap:4px;flex-wrap:wrap;justify-content:flex-end;}
+.gab-papan__bukti-link{display:inline-flex;align-items:center;gap:3px;padding:3px 8px;border-radius:6px;font-size:10.5px;font-weight:700;color:#0891B2;background:rgba(207,250,254,.4);border:1px solid rgba(8,145,178,.2);text-decoration:none;cursor:pointer;}
+.gab-papan__bukti-link:hover{background:rgba(207,250,254,.7);}
+.gab-papan__bukti-btn{display:inline-flex;align-items:center;gap:3px;padding:3px 8px;border-radius:6px;font-size:10.5px;font-weight:700;border:none;cursor:pointer;transition:opacity .15s;}
+.gab-papan__bukti-btn:disabled{opacity:.45;cursor:not-allowed;}
+.gab-papan__bukti-btn--ok{background:#DCFCE7;color:#16A34A;}
+.gab-papan__bukti-btn--ok:hover:not(:disabled){background:#BBF7D0;}
+.gab-papan__bukti-btn--no{background:#FEE2E2;color:#DC2626;}
+.gab-papan__bukti-btn--no:hover:not(:disabled){background:#FECACA;}
+
 /* ── Responsive ── */
 @media(max-width:540px){
-  .gab-absen,.gab-enroll{grid-template-columns:1fr;height:auto;}
+  .gab-absen,.gab-enroll,.gab-papan{grid-template-columns:1fr;height:auto;}
   .gab-ep{min-height:240px;}
   .gab-wrap{padding:12px 0 32px;}
+  .gab-papan{min-height:360px;}
+  .gab-papan__toolbar{flex-wrap:wrap;}
+  .gab-papan__field-grp{flex:1;min-width:120px;}
 }
 
 /* ── Animations ── */
@@ -524,3 +792,103 @@ html,body{background:linear-gradient(135deg,#F5F7FB 0%,#E2E8F0 100%) fixed !impo
 @keyframes gab-tap-ring{0%{transform:scale(.5);opacity:.6}100%{transform:scale(1.8);opacity:0}}
 @keyframes gab-spin-anim{to{transform:rotate(360deg)}}
 </style>
+
+<script>
+/* ── Patch absensiGuru: tambah mode Papan Kehadiran ── */
+(function () {
+  'use strict';
+  function todayLocal() {
+    var d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+
+  document.addEventListener('alpine:init', function () {
+    var origData = Alpine.data.bind(Alpine);
+    Alpine.data = function (name, factory) {
+      if (name === 'absensiGuru') {
+        Alpine.data = origData;
+        origData(name, function () {
+          var c = factory();
+
+          /* Papan state */
+          c.papanDate      = todayLocal();
+          c.papanKelasId   = '';
+          c.papanKelasNama = '';
+          c.papanCsOpen    = false;
+          c.papanLoading   = false;
+          c.papanRoster    = [];
+          c.papanError     = null;
+
+          c.loadPapan = async function () {
+            if (!this.papanKelasId) { this.papanError = 'Pilih kelas terlebih dahulu.'; return; }
+            this.papanLoading = true; this.papanError = null; this.papanRoster = [];
+            try {
+              var kid = encodeURIComponent(this.papanKelasId);
+              var d   = encodeURIComponent(this.papanDate);
+              var results = await Promise.all([
+                window.api.get('siswa?kelas_id=' + kid),
+                window.api.get('laporan?dari=' + d + '&sampai=' + d + '&kelas_id=' + kid),
+              ]);
+              var sr = results[0]; var lr = results[1];
+              var roster  = Array.isArray(sr) ? sr : ((sr && sr.data) ? sr.data : []);
+              var laporan = Array.isArray(lr) ? lr : ((lr && lr.data) ? lr.data : ((lr && lr.rekap) ? lr.rekap : []));
+              var map = {};
+              laporan.forEach(function (r) { map[r.siswa_id] = r; });
+              this.papanRoster = roster.map(function (s) {
+                var r = map[s.id] || null;
+                return {
+                  id: s.id, nama: s.nama, nis: s.nis,
+                  status:        r ? r.status        : null,
+                  waktu_masuk:   r ? r.waktu_masuk   : null,
+                  waktu_keluar:  r ? r.waktu_keluar  : null,
+                  izin_tipe:     r ? r.izin_tipe     : null,
+                  bukti_status:  r ? r.bukti_status  : null,
+                  bukti_url:     r ? r.bukti_url     : null,
+                  _stLoading: false, _bkLoading: false, _stErr: null,
+                };
+              });
+            } catch (err) {
+              this.papanError = err.message || 'Gagal memuat data.';
+            } finally {
+              this.papanLoading = false;
+            }
+          };
+
+          c.setStatus = async function (s, newStatus) {
+            if (!newStatus) return;
+            s._stLoading = true; s._stErr = null;
+            try {
+              await window.api.post('absen/status', { siswa_id: s.id, tanggal: this.papanDate, status: newStatus });
+              s.status = newStatus;
+            } catch (err) {
+              s._stErr = err.message || 'Gagal mengubah status.';
+            } finally {
+              s._stLoading = false;
+            }
+          };
+
+          c.confirmBukti = async function (s, buktiStatus) {
+            s._bkLoading = true; s._stErr = null;
+            try {
+              var data = await window.api.post('absen/status', {
+                siswa_id: s.id, tanggal: this.papanDate,
+                status: s.status, bukti_status: buktiStatus,
+              });
+              s.bukti_status = buktiStatus;
+              if (data && data.status) s.status = data.status;
+            } catch (err) {
+              s._stErr = err.message || 'Gagal mengonfirmasi bukti.';
+            } finally {
+              s._bkLoading = false;
+            }
+          };
+
+          return c;
+        });
+      } else {
+        origData(name, factory);
+      }
+    };
+  });
+}());
+</script>

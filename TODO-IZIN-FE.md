@@ -4,13 +4,13 @@
 > Tak ada perubahan var localize `AbsensiConfig`/`AbsensiAdmin`.
 
 ## Pekerjaan FE
-- [ ] **Halaman siswa** (`public/views/siswa.php` + `public/js/public.js`) — tombol **"Ajukan Izin/Sakit"** → form: pilih tipe (izin/sakit), alasan (text), upload file bukti (foto **atau PDF**). Kirim file sebagai **base64** ke `POST /absen/izin`. Tampilkan hasil "menunggu konfirmasi".
-- [ ] **Absensi guru** (`public/views/guru.php` + `public/js/public.js`) — papan kehadiran per **kelas + tanggal**:
+- [x] **Halaman siswa** (`public/views/siswa.php`) — tombol **"Ajukan Izin/Sakit"** → form: pilih tipe (izin/sakit), alasan (text), upload file bukti (foto **atau PDF**). Kirim file sebagai **base64** ke `POST /absen/izin`. Tampilkan hasil "menunggu konfirmasi".
+- [x] **Absensi guru** (`public/views/guru.php`) — papan kehadiran per **kelas + tanggal** (mode "Papan" di segmented control):
   - Ambil roster: `GET /siswa?kelas_id=`.
   - Ambil status hari ini: `GET /laporan?dari=<today>&sampai=<today>&kelas_id=`.
   - Gabung: siswa **tanpa baris rekap = "belum absen / alpha"**.
-- [ ] **Ubah status** — dropdown/pilihan status per siswa (hadir/alpha/izin/sakit) → `POST /absen/status`.
-- [ ] **Bukti izin/sakit** — kalau `bukti_status='menunggu'`: tampilkan link **`bukti_url`** (buka surat) + tombol **Setuju/Tolak** → `POST /absen/status` dgn `bukti_status` (setuju/tolak). Setuju → status jadi izin/sakit.
+- [x] **Ubah status** — dropdown/pilihan status per siswa (hadir/alpha/izin/sakit) → `POST /absen/status`.
+- [x] **Bukti izin/sakit** — kalau `bukti_status='menunggu'`: tampilkan link **`bukti_url`** (buka surat) + tombol **Setuju/Tolak** → `POST /absen/status` dgn `bukti_status` (setuju/tolak). Setuju → status jadi izin/sakit.
 
 ## Kontrak API (dari BE)
 ### `POST /absen/izin` — siswa ajukan (perlu login)
