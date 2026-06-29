@@ -3,6 +3,8 @@ namespace Absensi\api;
 
 defined( 'ABSPATH' ) || exit;
 
+use Absensi\helpers\FileHelper;
+
 /**
  * REST Endpoint: /wp-json/absensi/v1/laporan
  * Rekap & export absensi (JSON, trigger download Excel/PDF via admin).
@@ -295,6 +297,11 @@ class LaporanEndpoint {
         $total = (int) $wpdb->get_var(
             "SELECT COUNT(*) FROM {$wpdb->prefix}absensi_rekap r $where"
         );
+
+        // izin_tipe + bukti_status sudah ikut via r.*; tambah URL publik bukti.
+        foreach ( $rows as $r ) {
+            $r->bukti_url = empty( $r->bukti_path ) ? null : FileHelper::file_url( $r->bukti_path );
+        }
 
         return new \WP_REST_Response( [
             'data'       => $rows,
