@@ -10,7 +10,7 @@ defined( 'ABSPATH' ) || exit;
 class Installer {
 
     /** Versi skema DB – naikkan setiap ada perubahan tabel. */
-    const DB_VERSION = '1.3.1';
+    const DB_VERSION = '1.4.0';
 
     /**
      * Capability custom plugin. Dipakai sebagai permission_callback di REST.
@@ -187,6 +187,9 @@ class Installer {
             jarak_meter  INT UNSIGNED DEFAULT NULL COMMENT 'Jarak haversine saat absen (audit)',
             foto_path    VARCHAR(255) DEFAULT NULL,
             catatan      TEXT DEFAULT NULL,
+            izin_tipe    ENUM('izin','sakit') DEFAULT NULL COMMENT 'Tipe pengajuan izin/sakit',
+            bukti_status ENUM('menunggu','setuju','tolak') DEFAULT NULL COMMENT 'Verifikasi bukti oleh guru',
+            bukti_path   VARCHAR(255) DEFAULT NULL COMMENT 'Path surat bukti izin/sakit',
             guru_id      BIGINT UNSIGNED DEFAULT NULL COMMENT 'Guru yang validasi (RFID)',
             created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (id),
