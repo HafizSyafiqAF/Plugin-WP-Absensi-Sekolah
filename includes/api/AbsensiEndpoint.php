@@ -54,6 +54,20 @@ class AbsensiEndpoint {
                 'uid' => [ 'required' => true, 'type' => 'string', 'maxLength' => 50 ],
             ],
         ] );
+
+        register_rest_route( self::NAMESPACE, '/absen/izin', [
+            'methods'             => \WP_REST_Server::CREATABLE,
+            'callback'            => [ $this, 'handle_izin' ],
+            'permission_callback' => [ $this, 'is_logged_in' ],
+            'args'                => $this->izin_args(),
+        ] );
+
+        register_rest_route( self::NAMESPACE, '/absen/status', [
+            'methods'             => \WP_REST_Server::CREATABLE,
+            'callback'            => [ $this, 'handle_set_status' ],
+            'permission_callback' => [ $this, 'is_guru_or_admin' ],
+            'args'                => $this->status_args(),
+        ] );
     }
 
     // ─── Handler Selfie + GPS ─────────────────────────────────────────────────
@@ -200,6 +214,141 @@ class AbsensiEndpoint {
             'jarak'   => round( $jarak ),
             'message' => $status === 'hadir' ? 'Absen berhasil!' : 'Absen diterima, namun Anda terlambat.',
         ], 201 );
+    }
+
+    // ─── Handler Izin/Sakit ───────────────────────────────────────────────────
+
+    /**
+     * POST /absen/izin — siswa ajukan izin/sakit + bukti (upsert rekap pending).
+     * Status rekap = alpha (tampil belum-hadir) sampai guru setuju via /absen/status;
+     * bukti_status = menunggu. Tak butuh GPS/SSL (bukan absen lokasi).
+     */
+    public function handle_izin( \WP_REST_Request $req ): \WP_REST_Response {
+        global $wpdb;
+
+        $siswa = $this->get_siswa_by_user( get_current_user_id() );
+        if ( ! $siswa ) {
+            return $this->error( 'siswa_tidak_ditemukan', 'Akun siswa tidak terdaftar.', 404 );
+        }
+
+        $tipe = $req->get_param( 'tipe' );
+        if ( ! in_array( $tipe, [ 'izin', 'sakit' ], true ) ) {
+            return $this->error( 'tipe_invalid', 'Tipe harus izin atau sakit.', 422 );
+        }
+
+        $bukti = (string) $req->get_param( 'bukti' );
+        if ( '' === $bukti ) {
+            return $this->error( 'bukti_kosong', 'Bukti surat wajib diunggah.', 422 );
+        }
+
+        $today    = current_time( 'Y-m-d' );
+        $existing = $wpdb->get_row( $wpdb->prepare(
+            "SELECT id, waktu_masuk FROM {$wpdb->prefix}absensi_rekap WHERE siswa_id = %d AND tanggal = %s",
+            $siswa->id, $today
+        ) );
+        // Sudah benar-benar absen (ada waktu_masuk) → tak bisa ajukan izin.
+        if ( $existing && ! empty( $existing->waktu_masuk ) ) {
+            return $this->error( 'sudah_absen', 'Anda sudah absen hari ini.', 409 );
+        }
+
+        $bukti_path = FileHelper::save_bukti( $bukti, (int) $siswa->id );
+        if ( is_wp_error( $bukti_path ) ) {
+            return $this->error( 'bukti_invalid', $bukti_path->get_error_message(), 422 );
+        }
+
+        // ponytail: re-ajukan menimpa baris pending lama, file bukti lama jadi orphan.
+        // Biarkan — retensi/cleanup di luar scope; tambah purge bila storage jadi isu.
+        $data = SanitizeHelper::rekap( [
+            'siswa_id'     => $siswa->id,
+            'kelas_id'     => $siswa->kelas_id,
+            'tanggal'      => $today,
+            'status'       => 'alpha',      // pending → tampil belum-hadir sampai guru setuju
+            'mode'         => 'manual',
+            'izin_tipe'    => $tipe,
+            'bukti_status' => 'menunggu',
+            'bukti_path'   => $bukti_path,
+            'catatan'      => (string) $req->get_param( 'alasan' ),
+        ] );
+
+        if ( $existing ) {
+            $wpdb->update( $wpdb->prefix . 'absensi_rekap', $data, [ 'id' => (int) $existing->id ] );
+        } elseif ( ! $wpdb->insert( $wpdb->prefix . 'absensi_rekap', $data ) ) {
+            return $this->error( 'db_error', 'Gagal menyimpan pengajuan.', 500 );
+        }
+
+        return new \WP_REST_Response( [
+            'success'   => true,
+            'status'    => 'menunggu',
+            'tipe'      => $tipe,
+            'bukti_url' => FileHelper::file_url( $bukti_path ),
+        ], 201 );
+    }
+
+    /**
+     * POST /absen/status (guru/admin) — ubah status kehadiran + konfirmasi bukti.
+     * Upsert baris rekap (siswa_id+tanggal): UPDATE bila ada, INSERT bila belum
+     * (mis. tandai alpha siswa yang belum punya rekap). guru_id = validator.
+     * Pemakaian: guru setuju izin (status=izin/sakit, bukti_status=setuju),
+     * tolak (status=alpha, bukti_status=tolak), atau set hadir/telat/alpha manual.
+     */
+    public function handle_set_status( \WP_REST_Request $req ): \WP_REST_Response {
+        global $wpdb;
+
+        $siswa_id = absint( $req->get_param( 'siswa_id' ) );
+        $siswa    = $wpdb->get_row( $wpdb->prepare(
+            "SELECT id, kelas_id FROM {$wpdb->prefix}absensi_siswa WHERE id = %d", $siswa_id
+        ) );
+        if ( ! $siswa ) {
+            return $this->error( 'siswa_tidak_ditemukan', 'Siswa tidak ditemukan.', 404 );
+        }
+
+        $status = $req->get_param( 'status' );
+        if ( ! in_array( $status, [ 'hadir', 'telat', 'izin', 'sakit', 'alpha' ], true ) ) {
+            return $this->error( 'status_invalid', 'Status tidak valid.', 422 );
+        }
+
+        $bukti_status = $req->get_param( 'bukti_status' );
+        if ( $bukti_status && ! in_array( $bukti_status, [ 'menunggu', 'setuju', 'tolak' ], true ) ) {
+            return $this->error( 'bukti_status_invalid', 'bukti_status tidak valid.', 422 );
+        }
+
+        $tanggal = $req->get_param( 'tanggal' ) ?: current_time( 'Y-m-d' );
+        if ( ! preg_match( '/^\d{4}-\d{2}-\d{2}$/', (string) $tanggal ) ) {
+            return $this->error( 'tanggal_invalid', 'Format tanggal harus YYYY-MM-DD.', 422 );
+        }
+
+        $fields = [ 'status' => $status, 'guru_id' => get_current_user_id() ];
+        if ( $bukti_status ) {
+            $fields['bukti_status'] = $bukti_status;
+        }
+
+        $existing = $wpdb->get_var( $wpdb->prepare(
+            "SELECT id FROM {$wpdb->prefix}absensi_rekap WHERE siswa_id = %d AND tanggal = %s",
+            $siswa_id, $tanggal
+        ) );
+
+        if ( $existing ) {
+            $wpdb->update( $wpdb->prefix . 'absensi_rekap', SanitizeHelper::rekap( $fields ), [ 'id' => (int) $existing ] );
+        } else {
+            $fields += [ 'siswa_id' => $siswa_id, 'kelas_id' => (int) $siswa->kelas_id, 'tanggal' => $tanggal, 'mode' => 'manual' ];
+            if ( ! $wpdb->insert( $wpdb->prefix . 'absensi_rekap', SanitizeHelper::rekap( $fields ) ) ) {
+                return $this->error( 'db_error', 'Gagal menyimpan status.', 500 );
+            }
+        }
+
+        // Baca-balik nilai tersimpan (akurat: bukti_status bisa tak diubah request ini).
+        $row = $wpdb->get_row( $wpdb->prepare(
+            "SELECT status, bukti_status FROM {$wpdb->prefix}absensi_rekap WHERE siswa_id = %d AND tanggal = %s",
+            $siswa_id, $tanggal
+        ) );
+
+        return new \WP_REST_Response( [
+            'success'      => true,
+            'siswa_id'     => $siswa_id,
+            'tanggal'      => $tanggal,
+            'status'       => $row->status,
+            'bukti_status' => $row->bukti_status,
+        ], 200 );
     }
 
     // ─── Handler RFID ─────────────────────────────────────────────────────────
@@ -518,6 +667,24 @@ class AbsensiEndpoint {
             'siswa_id' => [ 'required' => true,  'type' => 'integer' ],
             'rfid_uid' => [ 'required' => true,  'type' => 'string', 'maxLength' => 50 ],
             'replace'  => [ 'required' => false, 'type' => 'boolean', 'default' => false ],
+        ];
+    }
+
+    private function izin_args(): array {
+        // tipe TANPA enum di sini → validasi di handler (422), bukan 400 dari WP arg-check.
+        return [
+            'tipe'   => [ 'required' => true,  'type' => 'string' ],
+            'alasan' => [ 'required' => false, 'type' => 'string' ],
+            'bukti'  => [ 'required' => true,  'type' => 'string' ], // base64 JPG/PNG/PDF
+        ];
+    }
+
+    private function status_args(): array {
+        return [
+            'siswa_id'     => [ 'required' => true,  'type' => 'integer' ],
+            'tanggal'      => [ 'required' => false, 'type' => 'string' ],
+            'status'       => [ 'required' => true,  'type' => 'string' ],
+            'bukti_status' => [ 'required' => false, 'type' => 'string' ],
         ];
     }
 }
