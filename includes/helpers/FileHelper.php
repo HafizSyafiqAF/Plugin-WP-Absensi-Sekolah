@@ -81,6 +81,71 @@ class FileHelper {
     }
 
     /**
+     * Simpan bukti izin/sakit (base64) ke uploads/absensi-bukti/Y/m/.
+     * Terima JPG/PNG (validasi gambar nyata) + PDF. Pola sama save_selfie
+     * (cap 5MB, nama random, protect_dir, cek tipe-vs-ekstensi).
+     * Return path relatif dari basedir, atau WP_Error.
+     *
+     * @param string $base64   Data URI atau raw base64 JPEG/PNG/PDF.
+     * @param int    $siswa_id ID siswa untuk penamaan file.
+     */
+    public static function save_bukti( string $base64, int $siswa_id ): string|\WP_Error {
+        if ( str_contains( $base64, ',' ) ) {
+            [ , $base64 ] = explode( ',', $base64, 2 );
+        }
+
+        $binary = base64_decode( $base64, strict: true );
+        if ( false === $binary ) {
+            return new \WP_Error( 'bukti_invalid', 'Data bukti tidak valid.' );
+        }
+
+        if ( strlen( $binary ) > 5 * 1024 * 1024 ) {
+            return new \WP_Error( 'bukti_terlalu_besar', 'Ukuran bukti maksimal 5 MB.' );
+        }
+
+        // ponytail: deteksi PDF dari magic %PDF di offset 0. PDF dgn whitespace/BOM
+        // sebelum %PDF (langka) ditolak — longgarkan kalau ada laporan nyata.
+        $magic = bin2hex( substr( $binary, 0, 4 ) );
+        if ( str_starts_with( $magic, '25504446' ) ) { // %PDF
+            $ext = 'pdf';
+        } else {
+            // Gambar: validasi struktur nyata (anti-polyglot), seperti save_selfie.
+            $info    = @getimagesizefromstring( $binary );
+            $allowed = [ IMAGETYPE_JPEG => 'jpg', IMAGETYPE_PNG => 'png' ];
+            if ( false === $info || empty( $info[2] ) || ! isset( $allowed[ $info[2] ] ) ) {
+                return new \WP_Error( 'bukti_tipe_ditolak', 'Bukti harus JPG, PNG, atau PDF.' );
+            }
+            $ext = $allowed[ $info[2] ];
+        }
+
+        $upload_dir = wp_upload_dir();
+        $base       = $upload_dir['basedir'] . '/absensi-bukti';
+        $folder     = $base . '/' . gmdate( 'Y/m' );
+        wp_mkdir_p( $folder );
+        self::protect_dir( $base );
+
+        $token    = bin2hex( random_bytes( 16 ) );
+        $filename = sprintf( 'bukti-%d-%s.%s', $siswa_id, $token, $ext );
+        $filepath = $folder . '/' . $filename;
+
+        if ( false === file_put_contents( $filepath, $binary ) ) {
+            return new \WP_Error( 'tulis_file_gagal', 'Gagal menyimpan bukti ke server.' );
+        }
+
+        // Verifikasi akhir: tipe cocok dengan ekstensi (anti mismatch/polyglot).
+        if ( ! function_exists( 'wp_check_filetype_and_ext' ) ) {
+            require_once ABSPATH . 'wp-includes/functions.php';
+        }
+        $check = wp_check_filetype_and_ext( $filepath, $filename );
+        if ( empty( $check['type'] ) || ! in_array( $check['type'], [ 'image/jpeg', 'image/png', 'application/pdf' ], true ) ) {
+            @unlink( $filepath );
+            return new \WP_Error( 'bukti_tipe_ditolak', 'Tipe file tidak cocok dengan ekstensi.' );
+        }
+
+        return str_replace( $upload_dir['basedir'] . '/', '', $filepath );
+    }
+
+    /**
      * Pasang penjaga folder upload: index.php (anti listing) + .htaccess
      * (tolak eksekusi script & directory index). Idempotent, hanya tulis jika belum ada.
      */
@@ -105,10 +170,15 @@ class FileHelper {
     }
 
     /**
-     * Konversi path relatif DB ke URL publik.
+     * Konversi path relatif (dari basedir) ke URL publik. Selfie/bukti/file lain.
      */
-    public static function selfie_url( string $path ): string {
+    public static function file_url( string $path ): string {
         $upload_dir = wp_upload_dir();
         return $upload_dir['baseurl'] . '/' . ltrim( $path, '/' );
+    }
+
+    /** Alias lama. Pakai file_url(). */
+    public static function selfie_url( string $path ): string {
+        return self::file_url( $path );
     }
 }
