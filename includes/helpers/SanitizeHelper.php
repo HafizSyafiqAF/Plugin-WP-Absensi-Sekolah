@@ -100,6 +100,10 @@ class SanitizeHelper {
         if ( isset( $data['foto_path'] ) )    $clean['foto_path']    = sanitize_text_field( $data['foto_path'] );
         if ( isset( $data['catatan'] ) )      $clean['catatan']      = sanitize_textarea_field( $data['catatan'] );
         if ( isset( $data['guru_id'] ) )      $clean['guru_id']      = absint( $data['guru_id'] ) ?: null;
+        // Izin/sakit + verifikasi bukti (kolom nullable; nilai invalid → null, tak dipaksa default).
+        if ( isset( $data['izin_tipe'] ) )    $clean['izin_tipe']    = in_array( $data['izin_tipe'], [ 'izin', 'sakit' ], true ) ? $data['izin_tipe'] : null;
+        if ( isset( $data['bukti_status'] ) ) $clean['bukti_status'] = in_array( $data['bukti_status'], [ 'menunggu', 'setuju', 'tolak' ], true ) ? $data['bukti_status'] : null;
+        if ( isset( $data['bukti_path'] ) )   $clean['bukti_path']   = substr( sanitize_text_field( $data['bukti_path'] ), 0, 255 );
         return $clean;
     }
 }
