@@ -19,24 +19,33 @@ class AbsensiEndpoint {
     const NAMESPACE = 'absensi/v1';
 
     public function register_routes(): void {
+        // Kiosk publik (tanpa login): permission terbuka; anti-abuse via rate-limit
+        // per nomor_induk di handler. Identitas dari nomor_induk, bukan user WP.
         register_rest_route( self::NAMESPACE, '/absen/selfie', [
             'methods'             => \WP_REST_Server::CREATABLE,
             'callback'            => [ $this, 'handle_selfie' ],
-            'permission_callback' => [ $this, 'is_logged_in' ],
+            'permission_callback' => '__return_true',
             'args'                => $this->selfie_args(),
         ] );
 
+        // Kiosk RFID publik (perangkat guru, tanpa login): permission terbuka,
+        // anti double-tap via debounce transient di handler.
         register_rest_route( self::NAMESPACE, '/absen/rfid', [
             'methods'             => \WP_REST_Server::CREATABLE,
             'callback'            => [ $this, 'handle_rfid' ],
-            'permission_callback' => [ $this, 'is_guru_or_admin' ],
+            'permission_callback' => '__return_true',
             'args'                => $this->rfid_args(),
         ] );
 
+        // Cek status hari ini, kiosk publik via nomor_induk (tanpa login).
+        // Respons SENGAJA hanya field presensi non-sensitif (tanpa lat/lng/foto/bukti).
         register_rest_route( self::NAMESPACE, '/absen/status', [
             'methods'             => \WP_REST_Server::READABLE,
             'callback'            => [ $this, 'get_status' ],
-            'permission_callback' => [ $this, 'is_logged_in' ],
+            'permission_callback' => '__return_true',
+            'args'                => [
+                'nomor_induk' => [ 'required' => true, 'type' => 'string', 'maxLength' => 30 ],
+            ],
         ] );
 
         register_rest_route( self::NAMESPACE, '/absen/rfid/enroll', [
@@ -80,16 +89,32 @@ class AbsensiEndpoint {
             return $ssl;
         }
 
-        $siswa = $this->get_siswa_by_user( get_current_user_id() );
-        if ( ! $siswa ) {
-            return $this->error( 'siswa_tidak_ditemukan', 'Akun siswa tidak terdaftar.', 404 );
+        // Kiosk publik (tanpa login): identitas dari nomor_induk.
+        $nomor = sanitize_text_field( (string) $req->get_param( 'nomor_induk' ) );
+        if ( '' === $nomor ) {
+            return $this->error( 'nomor_kosong', 'Nomor induk wajib diisi.', 422 );
+        }
+
+        // Rate-limit anti-abuse per nomor_induk (endpoint tanpa auth). 0 = nonaktif.
+        $rl = (int) get_option( 'absensi_selfie_rl_detik', 5 );
+        if ( $rl > 0 ) {
+            $rl_key = 'absensi_selfie_rl_' . md5( $nomor );
+            if ( false !== get_transient( $rl_key ) ) {
+                return $this->error( 'terlalu_cepat', 'Terlalu cepat. Tunggu sebentar lalu coba lagi.', 429 );
+            }
+            set_transient( $rl_key, 1, $rl );
+        }
+
+        $user = $this->get_user_by_nomor( $nomor );
+        if ( ! $user ) {
+            return $this->error( 'nomor_tidak_terdaftar', 'Nomor induk tidak terdaftar.', 404 );
         }
 
         // Validasi GPS
         $lat = (float) $req->get_param( 'lat' );
         $lng = (float) $req->get_param( 'lng' );
 
-        // Rentang koordinat siswa harus valid sebelum haversine (cegah hitung sampah)
+        // Rentang koordinat user harus valid sebelum haversine (cegah hitung sampah)
         if ( ! GeoHelper::is_valid( $lat, $lng ) ) {
             return $this->error( 'koordinat_invalid', 'Koordinat GPS tidak valid.', 422 );
         }
@@ -131,8 +156,8 @@ class AbsensiEndpoint {
         // Tentukan sesi (masuk/pulang): param eksplisit, atau auto by kondisi rekap hari ini
         $today    = current_time( 'Y-m-d' );
         $existing = $wpdb->get_row( $wpdb->prepare(
-            "SELECT id, waktu_masuk, waktu_keluar FROM {$wpdb->prefix}absensi_rekap WHERE siswa_id = %d AND tanggal = %s",
-            $siswa->id, $today
+            "SELECT id, waktu_masuk, waktu_keluar FROM {$wpdb->prefix}absensi_rekap WHERE user_id = %d AND tanggal = %s",
+            $user->id, $today
         ) );
 
         $sesi = $req->get_param( 'sesi' );
@@ -157,7 +182,7 @@ class AbsensiEndpoint {
                 ] ),
                 [ 'id' => (int) $existing->id ]
             );
-            do_action( 'absensi_absen_keluar', $siswa );
+            do_action( 'absensi_absen_keluar', $user );
             return new \WP_REST_Response( [
                 'success' => true,
                 'sesi'    => 'pulang',
@@ -175,20 +200,20 @@ class AbsensiEndpoint {
         $foto_base64 = $req->get_param( 'foto' );
         $foto_path   = '';
         if ( $foto_base64 ) {
-            $foto_path = FileHelper::save_selfie( $foto_base64, $siswa->id );
+            $foto_path = FileHelper::save_selfie( $foto_base64, (int) $user->id );
             if ( is_wp_error( $foto_path ) ) {
                 return $this->error( 'foto_gagal', $foto_path->get_error_message() );
             }
         }
 
         // Tentukan status masuk (hadir/telat) – konsisten timezone WP
-        $status = $this->tentukan_status_masuk( (int) $siswa->kelas_id );
+        $status = $this->tentukan_status_masuk( (int) $user->group_id );
 
         $inserted = $wpdb->insert(
             $wpdb->prefix . 'absensi_rekap',
             SanitizeHelper::rekap( [
-                'siswa_id'     => $siswa->id,
-                'kelas_id'     => $siswa->kelas_id,
+                'user_id'      => $user->id,
+                'group_id'     => $user->group_id,
                 'tanggal'      => $today,
                 'waktu_masuk'  => current_time( 'mysql' ),
                 'status'       => $status,
@@ -205,7 +230,7 @@ class AbsensiEndpoint {
             return $this->error( 'db_error', 'Gagal menyimpan absensi.', 500 );
         }
 
-        do_action( 'absensi_absen_masuk', $siswa, $status );
+        do_action( 'absensi_absen_masuk', $user, $status );
 
         return new \WP_REST_Response( [
             'success' => true,
@@ -377,19 +402,19 @@ class AbsensiEndpoint {
             set_transient( $tap_key, time(), $window );
         }
 
-        // Cari siswa berdasarkan UID
-        $siswa = $wpdb->get_row( $wpdb->prepare(
-            "SELECT * FROM {$wpdb->prefix}absensi_siswa WHERE rfid_uid = %s LIMIT 1",
+        // Cari user (siswa/guru/staff) berdasarkan UID kartu
+        $user = $wpdb->get_row( $wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}absensi_users WHERE rfid_uid = %s LIMIT 1",
             $uid
         ) );
-        if ( ! $siswa ) {
+        if ( ! $user ) {
             return $this->error( 'uid_tidak_terdaftar', "UID $uid tidak terdaftar.", 404 );
         }
 
         $today = current_time( 'Y-m-d' );
         $existing = $wpdb->get_row( $wpdb->prepare(
-            "SELECT id, waktu_masuk FROM {$wpdb->prefix}absensi_rekap WHERE siswa_id = %d AND tanggal = %s",
-            $siswa->id, $today
+            "SELECT id, waktu_masuk, waktu_keluar FROM {$wpdb->prefix}absensi_rekap WHERE user_id = %d AND tanggal = %s",
+            $user->id, $today
         ) );
 
         // Tap kedua = catat waktu keluar
@@ -402,44 +427,43 @@ class AbsensiEndpoint {
                 ] ),
                 [ 'id' => (int) $existing->id ]
             );
-            do_action( 'absensi_absen_keluar', $siswa );
+            do_action( 'absensi_absen_keluar', $user );
             return new \WP_REST_Response( [
                 'success' => true,
                 'action'  => 'keluar',
-                'siswa'   => $siswa->nama,
-                'message' => "Selamat siang, {$siswa->nama}! Waktu keluar dicatat.",
+                'siswa'   => $user->nama,
+                'message' => "Selamat siang, {$user->nama}! Waktu keluar dicatat.",
             ] );
         }
 
         if ( $existing ) {
-            return $this->error( 'sudah_absen', "{$siswa->nama} sudah absen masuk dan keluar hari ini.", 409 );
+            return $this->error( 'sudah_absen', "{$user->nama} sudah absen masuk dan keluar hari ini.", 409 );
         }
 
         // Tap pertama = catat masuk. Status hadir/telat konsisten timezone WP.
-        $status = $this->tentukan_status_masuk( (int) $siswa->kelas_id );
+        $status = $this->tentukan_status_masuk( (int) $user->group_id );
 
         $wpdb->insert(
             $wpdb->prefix . 'absensi_rekap',
             SanitizeHelper::rekap( [
-                'siswa_id'    => $siswa->id,
-                'kelas_id'    => $siswa->kelas_id,
-                'tanggal'     => $today,
+                'user_id'      => $user->id,
+                'group_id'     => $user->group_id,
+                'tanggal'      => $today,
                 'waktu_masuk'  => current_time( 'mysql' ),
                 'status'       => $status,
                 'mode'         => 'rfid',
                 'metode_masuk' => 'rfid',
-                'guru_id'      => get_current_user_id(),
             ] )
         );
 
-        do_action( 'absensi_absen_masuk', $siswa, $status );
+        do_action( 'absensi_absen_masuk', $user, $status );
 
         return new \WP_REST_Response( [
             'success' => true,
             'action'  => 'masuk',
             'status'  => $status,
-            'siswa'   => $siswa->nama,
-            'message' => "Selamat datang, {$siswa->nama}!",
+            'siswa'   => $user->nama,
+            'message' => "Selamat datang, {$user->nama}!",
         ], 201 );
     }
 
@@ -447,17 +471,32 @@ class AbsensiEndpoint {
 
     public function get_status( \WP_REST_Request $req ): \WP_REST_Response {
         global $wpdb;
-        $siswa = $this->get_siswa_by_user( get_current_user_id() );
-        if ( ! $siswa ) {
-            return $this->error( 'siswa_tidak_ditemukan', 'Akun siswa tidak ditemukan.', 404 );
+
+        // Kiosk publik: identitas dari nomor_induk (bukan user WP).
+        $nomor = sanitize_text_field( (string) $req->get_param( 'nomor_induk' ) );
+        if ( '' === $nomor ) {
+            return $this->error( 'nomor_kosong', 'Nomor induk wajib diisi.', 422 );
         }
-        $today  = current_time( 'Y-m-d' );
-        $rekap  = $wpdb->get_row( $wpdb->prepare(
-            "SELECT * FROM {$wpdb->prefix}absensi_rekap WHERE siswa_id = %d AND tanggal = %s",
-            $siswa->id, $today
+
+        $user = $this->get_user_by_nomor( $nomor );
+        if ( ! $user ) {
+            return $this->error( 'nomor_tidak_terdaftar', 'Nomor induk tidak terdaftar.', 404 );
+        }
+
+        // Endpoint publik → balas HANYA field presensi non-sensitif.
+        // JANGAN bocorkan lat/lng/jarak/foto_path/bukti_path/catatan (privasi: bisa
+        // di-enumerasi siapa pun yang menebak nomor_induk).
+        $today = current_time( 'Y-m-d' );
+        $rekap = $wpdb->get_row( $wpdb->prepare(
+            "SELECT status, waktu_masuk, waktu_keluar, izin_tipe, bukti_status
+               FROM {$wpdb->prefix}absensi_rekap WHERE user_id = %d AND tanggal = %s",
+            $user->id, $today
         ) );
+
         return new \WP_REST_Response( [
             'sudah_absen' => (bool) $rekap,
+            'nama'        => $user->nama,
+            'tanggal'     => $today,
             'rekap'       => $rekap,
         ] );
     }
@@ -569,6 +608,18 @@ class AbsensiEndpoint {
     }
 
     /**
+     * Cari user (siswa/guru/staff) by nomor_induk untuk endpoint kiosk publik.
+     * Return objek (id, nama, group_id) atau null bila tak ada. Prepared.
+     */
+    private function get_user_by_nomor( string $nomor ): ?object {
+        global $wpdb;
+        return $wpdb->get_row( $wpdb->prepare(
+            "SELECT id, nama, group_id FROM {$wpdb->prefix}absensi_users WHERE nomor_induk = %s LIMIT 1",
+            $nomor
+        ) ) ?: null;
+    }
+
+    /**
      * Tolak absen jika koneksi bukan HTTPS (kamera & Geolocation API butuh SSL,
      * plan §5). Default enforce; bisa dimatikan untuk dev lokal lewat filter:
      *   add_filter( 'absensi_enforce_ssl', '__return_false' );
@@ -594,18 +645,18 @@ class AbsensiEndpoint {
      * (mis. +7 jam di Asia/Jakarta), siswa telat bisa ke-cap "hadir".
      * Sekarang "now" dan "batas" sama-sama dihitung di wp_timezone().
      */
-    private function tentukan_status_masuk( int $kelas_id = 0 ): string {
+    private function tentukan_status_masuk( int $group_id = 0 ): string {
         global $wpdb;
         $tz  = wp_timezone();
         $now = new \DateTimeImmutable( 'now', $tz );
 
-        // Jam masuk dari jadwal kelas (hari ini); fallback ke option global
+        // Jam masuk dari jadwal group (hari ini); fallback ke option global
         $jam_masuk = '';
-        if ( $kelas_id > 0 ) {
+        if ( $group_id > 0 ) {
             $hari      = (int) $now->format( 'N' ); // 1=Senin .. 7=Minggu
             $jam_masuk = (string) $wpdb->get_var( $wpdb->prepare(
-                "SELECT jam_masuk FROM {$wpdb->prefix}absensi_jadwal WHERE kelas_id = %d AND hari = %d LIMIT 1",
-                $kelas_id, $hari
+                "SELECT jam_masuk FROM {$wpdb->prefix}absensi_jadwal WHERE group_id = %d AND hari = %d LIMIT 1",
+                $group_id, $hari
             ) );
         }
         if ( '' === $jam_masuk ) {
@@ -648,6 +699,7 @@ class AbsensiEndpoint {
 
     private function selfie_args(): array {
         return [
+            'nomor_induk' => [ 'required' => true,  'type' => 'string', 'maxLength' => 30 ],
             'lat'  => [ 'required' => true,  'type' => 'number' ],
             'lng'  => [ 'required' => true,  'type' => 'number' ],
             'foto'     => [ 'required' => false, 'type' => 'string' ],
