@@ -8,10 +8,14 @@ use Absensi\helpers\FileHelper;
 /**
  * REST Endpoint: /wp-json/absensi/v1/laporan
  * Rekap & export absensi (JSON, trigger download Excel/PDF via admin).
+ * Skema v2 (users/group). Admin-only (cap manage_options); tanpa scope ortu.
  */
 class LaporanEndpoint {
 
     const NAMESPACE = 'absensi/v1';
+
+    /** Batas baris export (cegah OOM/timeout pada rentang sangat besar). */
+    const EXPORT_MAX_ROWS = 50000;
 
     public function register_routes(): void {
         register_rest_route( self::NAMESPACE, '/laporan', [
@@ -37,13 +41,10 @@ class LaporanEndpoint {
                 'dari'     => [ 'type' => 'string' ],
                 'sampai'   => [ 'type' => 'string' ],
                 'preset'   => [ 'type' => 'string', 'enum' => [ 'harian', 'mingguan', 'bulanan' ] ],
-                'kelas_id' => [ 'type' => 'integer' ],
+                'group_id' => [ 'type' => 'integer' ],
             ],
         ] );
     }
-
-    /** Batas baris export (cegah OOM/timeout pada rentang sangat besar). */
-    const EXPORT_MAX_ROWS = 50000;
 
     /**
      * Resolusi rentang tanggal untuk laporan/summary/export.
@@ -80,19 +81,15 @@ class LaporanEndpoint {
 
     /**
      * Export laporan ke file download (CSV native / XLSX PhpSpreadsheet / PDF Dompdf).
-     * Stream langsung + Content-Disposition: attachment (R5). Cap absensi_view_reports.
+     * Stream langsung + Content-Disposition: attachment. Cap manage_options.
      * XLSX/PDF butuh `composer install` (vendor/) → 503 bila library tak tersedia.
      */
     public function export_laporan( \WP_REST_Request $req ): \WP_REST_Response {
-        $format          = sanitize_text_field( $req->get_param( 'format' ) ) ?: 'csv';
+        $format            = sanitize_text_field( $req->get_param( 'format' ) ) ?: 'csv';
         [ $dari, $sampai ] = $this->resolve_range( $req );
-        $kelas           = absint( $req->get_param( 'kelas_id' ) );
+        $group             = absint( $req->get_param( 'group_id' ) );
 
-        $rows  = $this->query_rows( $dari, $sampai, $kelas );
-        if ( is_array( $rows ) === false ) {
-            // scope kosong (mis. ortu tanpa anak) — tetap hasilkan file kosong, bukan error
-            $rows = [];
-        }
+        $rows = $this->query_rows( $dari, $sampai, $group );
         $base = "laporan-absensi-{$dari}_sd_{$sampai}";
 
         switch ( $format ) {
@@ -121,16 +118,16 @@ class LaporanEndpoint {
 
     /** Header kolom export (urut). */
     private function export_columns(): array {
-        return [ 'Tanggal', 'NIS', 'Nama', 'Kelas', 'Status', 'Waktu Masuk', 'Waktu Keluar', 'Metode Masuk', 'Metode Keluar', 'Jarak (m)' ];
+        return [ 'Tanggal', 'Nomor Induk', 'Nama', 'Group', 'Status', 'Waktu Masuk', 'Waktu Keluar', 'Metode Masuk', 'Metode Keluar', 'Jarak (m)' ];
     }
 
     /** Satu baris rekap → array nilai sesuai export_columns(). */
     private function row_values( object $r ): array {
         return [
             $r->tanggal,
-            $r->nis,
+            $r->nomor_induk,
             $r->nama,
-            $r->nama_kelas,
+            $r->nama_group,
             $r->status,
             $r->waktu_masuk,
             $r->waktu_keluar,
@@ -142,33 +139,24 @@ class LaporanEndpoint {
 
     /**
      * Ambil baris laporan untuk export (tanpa paginasi, dibatasi EXPORT_MAX_ROWS).
-     * Menghormati scope wali (anti-IDOR). Return array of row objects.
+     * Return array of row objects.
      */
-    private function query_rows( string $dari, string $sampai, int $kelas_id ): array {
+    private function query_rows( string $dari, string $sampai, int $group_id ): array {
         global $wpdb;
 
         $where_parts = [ $wpdb->prepare( 'r.tanggal BETWEEN %s AND %s', $dari, $sampai ) ];
-        if ( $kelas_id ) {
-            $where_parts[] = $wpdb->prepare( 'r.kelas_id = %d', $kelas_id );
+        if ( $group_id ) {
+            $where_parts[] = $wpdb->prepare( 'r.group_id = %d', $group_id );
         }
-
-        $scope = $this->wali_scope_ids();
-        if ( is_array( $scope ) ) {
-            if ( empty( $scope ) ) {
-                return [];
-            }
-            $where_parts[] = 'r.siswa_id IN (' . implode( ',', array_map( 'intval', $scope ) ) . ')';
-        }
-
         $where = 'WHERE ' . implode( ' AND ', $where_parts );
 
         return (array) $wpdb->get_results( $wpdb->prepare(
-            "SELECT r.*, s.nama, s.nis, k.nama_kelas
+            "SELECT r.*, u.nama, u.nomor_induk, g.nama AS nama_group
                FROM {$wpdb->prefix}absensi_rekap r
-               LEFT JOIN {$wpdb->prefix}absensi_siswa s ON s.id = r.siswa_id
-               LEFT JOIN {$wpdb->prefix}absensi_kelas k ON k.id = r.kelas_id
+               LEFT JOIN {$wpdb->prefix}absensi_users u ON u.id = r.user_id
+               LEFT JOIN {$wpdb->prefix}absensi_group g ON g.id = r.group_id
                $where
-               ORDER BY r.tanggal DESC, s.nama ASC
+               ORDER BY r.tanggal DESC, u.nama ASC
                LIMIT %d",
             self::EXPORT_MAX_ROWS
         ) );
@@ -248,48 +236,30 @@ class LaporanEndpoint {
         exit;
     }
 
-    public function can_export(): bool {
-        return current_user_can( 'absensi_view_reports' );
-    }
-
-    private function error( string $code, string $message, int $status ): \WP_REST_Response {
-        return new \WP_REST_Response( [ 'code' => $code, 'message' => $message, 'data' => [ 'status' => $status ] ], $status );
-    }
-
     public function get_laporan( \WP_REST_Request $req ): \WP_REST_Response {
         global $wpdb;
 
         [ $tanggal_mulai, $tanggal_akhir ] = $this->resolve_range( $req );
-        $kelas_id      = absint( $req->get_param( 'kelas_id' ) );
-        $per_page      = min( absint( $req->get_param( 'per_page' ) ?: 50 ), 200 );
-        $page          = max( 1, absint( $req->get_param( 'page' ) ?: 1 ) );
-        $offset        = ( $page - 1 ) * $per_page;
+        $group_id = absint( $req->get_param( 'group_id' ) );
+        $per_page = min( absint( $req->get_param( 'per_page' ) ?: 50 ), 200 );
+        $page     = max( 1, absint( $req->get_param( 'page' ) ?: 1 ) );
+        $offset   = ( $page - 1 ) * $per_page;
 
         $where_parts = [
             $wpdb->prepare( 'r.tanggal BETWEEN %s AND %s', $tanggal_mulai, $tanggal_akhir ),
         ];
-        if ( $kelas_id ) {
-            $where_parts[] = $wpdb->prepare( 'r.kelas_id = %d', $kelas_id );
+        if ( $group_id ) {
+            $where_parts[] = $wpdb->prepare( 'r.group_id = %d', $group_id );
         }
-
-        // Batasi orang tua ke anak ter-link (tutup IDOR). null = akses penuh.
-        $scope = $this->wali_scope_ids();
-        if ( is_array( $scope ) ) {
-            if ( empty( $scope ) ) {
-                return new \WP_REST_Response( [ 'data' => [], 'total' => 0, 'page' => $page, 'per_page' => $per_page, 'total_page' => 0 ] );
-            }
-            $where_parts[] = 'r.siswa_id IN (' . implode( ',', array_map( 'intval', $scope ) ) . ')';
-        }
-
         $where = 'WHERE ' . implode( ' AND ', $where_parts );
 
         $rows = $wpdb->get_results( $wpdb->prepare(
-            "SELECT r.*, s.nama, s.nis, k.nama_kelas
+            "SELECT r.*, u.nama, u.nomor_induk, g.nama AS nama_group
                FROM {$wpdb->prefix}absensi_rekap r
-               LEFT JOIN {$wpdb->prefix}absensi_siswa s ON s.id = r.siswa_id
-               LEFT JOIN {$wpdb->prefix}absensi_kelas k ON k.id = r.kelas_id
+               LEFT JOIN {$wpdb->prefix}absensi_users u ON u.id = r.user_id
+               LEFT JOIN {$wpdb->prefix}absensi_group g ON g.id = r.group_id
                $where
-               ORDER BY r.tanggal DESC, s.nama ASC
+               ORDER BY r.tanggal DESC, u.nama ASC
                LIMIT %d OFFSET %d",
             $per_page, $offset
         ) );
@@ -298,7 +268,7 @@ class LaporanEndpoint {
             "SELECT COUNT(*) FROM {$wpdb->prefix}absensi_rekap r $where"
         );
 
-        // izin_tipe + bukti_status sudah ikut via r.*; tambah URL publik bukti.
+        // izin_tipe + bukti_status ikut via r.*; tambah URL publik bukti.
         foreach ( $rows as $r ) {
             $r->bukti_url = empty( $r->bukti_path ) ? null : FileHelper::file_url( $r->bukti_path );
         }
@@ -315,29 +285,15 @@ class LaporanEndpoint {
     public function get_summary( \WP_REST_Request $req ): \WP_REST_Response {
         global $wpdb;
 
-        // Default rentang = hari ini (backward-compatible dgn perilaku lama)
         [ $dari, $sampai ] = $this->resolve_range( $req );
-        $kelas_id = absint( $req->get_param( 'kelas_id' ) );
+        $group_id = absint( $req->get_param( 'group_id' ) );
 
-        // WHERE dirakit dari fragmen yang sudah di-prepare (lihat pola get_laporan)
+        // WHERE dirakit dari fragmen yang sudah di-prepare.
         $where_parts = [
             $wpdb->prepare( 'tanggal BETWEEN %s AND %s', $dari, $sampai ),
         ];
-        if ( $kelas_id ) {
-            $where_parts[] = $wpdb->prepare( 'kelas_id = %d', $kelas_id );
-        }
-
-        // Batasi orang tua ke anak ter-link (tutup IDOR). null = akses penuh.
-        $scope = $this->wali_scope_ids();
-        if ( is_array( $scope ) ) {
-            if ( empty( $scope ) ) {
-                return new \WP_REST_Response( [
-                    'dari' => $dari, 'sampai' => $sampai, 'kelas_id' => $kelas_id ?: null,
-                    'tanggal' => $dari === $sampai ? $dari : null,
-                    'hadir' => 0, 'telat' => 0, 'izin' => 0, 'sakit' => 0, 'alpha' => 0, 'total' => 0,
-                ] );
-            }
-            $where_parts[] = 'siswa_id IN (' . implode( ',', array_map( 'intval', $scope ) ) . ')';
+        if ( $group_id ) {
+            $where_parts[] = $wpdb->prepare( 'group_id = %d', $group_id );
         }
         $where = 'WHERE ' . implode( ' AND ', $where_parts );
 
@@ -358,7 +314,7 @@ class LaporanEndpoint {
         return new \WP_REST_Response( [
             'dari'     => $dari,
             'sampai'   => $sampai,
-            'kelas_id' => $kelas_id ?: null,
+            'group_id' => $group_id ?: null,
             'tanggal'  => $dari === $sampai ? $dari : null, // kompat: field lama saat 1 hari
             'hadir'    => $hadir,
             'telat'    => $telat,
@@ -369,29 +325,18 @@ class LaporanEndpoint {
         ] );
     }
 
+    /** Admin-only (lihat laporan). */
     public function can_view(): bool {
-        $user = wp_get_current_user();
-        return ! empty( array_intersect( $user->roles, [ 'administrator', 'absensi_admin', 'guru', 'orang_tua' ] ) );
+        return current_user_can( 'manage_options' );
     }
 
-    /**
-     * Scope siswa untuk user saat ini (anti-IDOR).
-     * - null  : akses penuh (administrator / absensi_admin / guru).
-     * - array : batasi ke ID anak ter-link via absensi_wali (orang_tua);
-     *           array kosong = tak punya anak → tak boleh lihat apa pun.
-     * siswa_id dari client TIDAK dipercaya; selalu derive dari relasi server.
-     */
-    private function wali_scope_ids(): ?array {
-        $user = wp_get_current_user();
-        if ( array_intersect( $user->roles, [ 'administrator', 'absensi_admin', 'guru' ] ) ) {
-            return null;
-        }
-        global $wpdb;
-        $ids = $wpdb->get_col( $wpdb->prepare(
-            "SELECT siswa_id FROM {$wpdb->prefix}absensi_wali WHERE wali_user_id = %d",
-            get_current_user_id()
-        ) );
-        return array_map( 'intval', $ids );
+    /** Admin-only (export). */
+    public function can_export(): bool {
+        return current_user_can( 'manage_options' );
+    }
+
+    private function error( string $code, string $message, int $status ): \WP_REST_Response {
+        return new \WP_REST_Response( [ 'code' => $code, 'message' => $message, 'data' => [ 'status' => $status ] ], $status );
     }
 
     private function laporan_args(): array {
@@ -399,7 +344,7 @@ class LaporanEndpoint {
             'dari'     => [ 'type' => 'string' ],
             'sampai'   => [ 'type' => 'string' ],
             'preset'   => [ 'type' => 'string', 'enum' => [ 'harian', 'mingguan', 'bulanan' ] ],
-            'kelas_id' => [ 'type' => 'integer' ],
+            'group_id' => [ 'type' => 'integer' ],
             'per_page' => [ 'type' => 'integer', 'default' => 50 ],
             'page'     => [ 'type' => 'integer', 'default' => 1 ],
         ];
@@ -410,7 +355,7 @@ class LaporanEndpoint {
             'dari'     => [ 'type' => 'string' ],
             'sampai'   => [ 'type' => 'string' ],
             'preset'   => [ 'type' => 'string', 'enum' => [ 'harian', 'mingguan', 'bulanan' ] ],
-            'kelas_id' => [ 'type' => 'integer' ],
+            'group_id' => [ 'type' => 'integer' ],
         ];
     }
 }
