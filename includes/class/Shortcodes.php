@@ -9,12 +9,14 @@ defined( 'ABSPATH' ) || exit;
  * Penggunaan di halaman WordPress:
  *   [absensi_selfie]   → Halaman absen selfie + GPS untuk siswa
  *   [absensi_status]   → Widget status absen hari ini
- *   [absensi_siswa]    → Surface siswa (absen mandiri)        — view: public/views/siswa.php
- *   [absensi_guru]     → Surface guru (scan RFID)             — view: public/views/guru.php
- *   [absensi_ortu]     → Surface orang tua (riwayat anak)     — view: public/views/ortu.php
+ *   [absensi_siswa]    → Surface siswa kiosk (absen by nomor induk + selfie) — view: public/views/siswa.php
+ *   [absensi_guru]     → Surface guru kiosk (scan RFID)                      — view: public/views/guru.php
  *
- * Catatan boundary: shortcode di sini hanya WIRING (register + gate auth/cap +
- * include view). Markup ada di file view (public/views/*.php) = tanggung jawab FE.
+ * Model kiosk tanpa login: surface publik, keamanan absen di endpoint
+ * (nomor_induk + rate-limit / RFID), bukan gate halaman.
+ *
+ * Catatan boundary: shortcode di sini hanya WIRING (register + include view).
+ * Markup ada di file view (public/views/*.php) = tanggung jawab FE.
  * Bila view belum ada → tampilkan notice placeholder, bukan error.
  */
 class Shortcodes {
@@ -22,39 +24,25 @@ class Shortcodes {
     public function register(): void {
         add_shortcode( 'absensi_selfie',  [ $this, 'render_selfie'  ] );
         add_shortcode( 'absensi_status',  [ $this, 'render_status'  ] );
-        // Surface FE (Alpine + Tailwind CDN). View markup disediakan FE.
+        // Surface FE kiosk publik (Alpine + Tailwind CDN). View markup disediakan FE.
         add_shortcode( 'absensi_siswa', [ $this, 'render_siswa' ] );
         add_shortcode( 'absensi_guru',  [ $this, 'render_guru'  ] );
-        add_shortcode( 'absensi_ortu',  [ $this, 'render_ortu'  ] );
     }
 
     public function render_siswa( array $atts ): string {
-        return $this->render_surface( 'siswa.php', null ); // cukup login (siswa)
+        return $this->render_surface( 'siswa.php' ); // kiosk publik (tanpa login)
     }
 
     public function render_guru( array $atts ): string {
-        return $this->render_surface( 'guru.php', 'absensi_submit_rfid' );
-    }
-
-    public function render_ortu( array $atts ): string {
-        return $this->render_surface( 'ortu.php', 'absensi_view_child' );
+        return $this->render_surface( 'guru.php' ); // kiosk RFID publik (tanpa login)
     }
 
     /**
-     * Render satu surface FE: gate login (+ cap opsional), lalu include view.
-     * @param string      $view Nama file di public/views/.
-     * @param string|null $cap  Capability wajib, atau null = cukup login.
+     * Render satu surface FE kiosk (tanpa login): include view.
+     * Keamanan absen ada di endpoint (nomor_induk + rate-limit / RFID), bukan gate halaman.
+     * @param string $view Nama file di public/views/.
      */
-    private function render_surface( string $view, ?string $cap ): string {
-        if ( ! is_user_logged_in() ) {
-            return '<p>' . wp_kses_post( sprintf(
-                __( 'Silakan <a href="%s">login</a> untuk menggunakan fitur absensi.', 'absensi-sekolah' ),
-                esc_url( wp_login_url( get_permalink() ) )
-            ) ) . '</p>';
-        }
-        if ( $cap && ! current_user_can( $cap ) ) {
-            return '<p>' . esc_html__( 'Anda tidak memiliki akses ke halaman ini.', 'absensi-sekolah' ) . '</p>';
-        }
+    private function render_surface( string $view ): string {
         $file = ABSENSI_PLUGIN_DIR . 'public/views/' . $view;
         if ( ! file_exists( $file ) ) {
             // View belum disediakan FE — placeholder, bukan error fatal.

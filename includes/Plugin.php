@@ -36,11 +36,9 @@ final class Plugin {
 
         // WordPress REST API endpoints
         add_action( 'rest_api_init', [ new api\AbsensiEndpoint(),  'register_routes' ] );
-        add_action( 'rest_api_init', [ new api\SiswaEndpoint(),    'register_routes' ] );
-        add_action( 'rest_api_init', [ new api\KelasEndpoint(),    'register_routes' ] );
+        add_action( 'rest_api_init', [ new api\UsersEndpoint(),    'register_routes' ] );
+        add_action( 'rest_api_init', [ new api\GroupEndpoint(),    'register_routes' ] );
         add_action( 'rest_api_init', [ new api\JadwalEndpoint(),   'register_routes' ] );
-        add_action( 'rest_api_init', [ new api\WaliEndpoint(),     'register_routes' ] );
-        add_action( 'rest_api_init', [ new api\ChildEndpoint(),    'register_routes' ] );
         add_action( 'rest_api_init', [ new api\LaporanEndpoint(),  'register_routes' ] );
         add_action( 'rest_api_init', [ new api\SettingsEndpoint(), 'register_routes' ] );
 
@@ -56,22 +54,6 @@ final class Plugin {
 
         // Alpine.js (CDN) wajib atribut `defer` — sisipkan ke tag <script>-nya.
         add_filter( 'script_loader_tag', [ $this, 'defer_alpine_tag' ], 10, 2 );
-
-        // Sembunyikan link page surface (guru/ortu) dari navigasi bila user tak punya
-        // cap — siswa cuma lihat "Absensi Siswa". Gate isi tetap di shortcode.
-        // - wp_list_pages_excludes / wp_nav_menu_objects: tema klasik (wp_page_menu / menu custom).
-        // - get_pages: tema blok (FSE) — Navigation block render lewat core/page-list yang
-        //   ambil data via get_pages() (mis. Twenty Twenty-Five). Tanpa ini, nav blok bocor.
-        add_filter( 'wp_list_pages_excludes', [ $this, 'filter_list_pages_excludes' ] );
-        add_filter( 'wp_nav_menu_objects', [ $this, 'filter_nav_menu_objects' ], 10, 2 );
-        add_filter( 'get_pages', [ $this, 'filter_get_pages' ], 10, 2 );
-
-        // Routing pasca-login: baca role → arahkan ke surface yang sesuai (bukan wp-admin).
-        add_filter( 'login_redirect', [ $this, 'role_login_redirect' ], 10, 3 );
-        // Blok wp-admin untuk non-admin (guru/siswa/ortu) → tendang ke surface-nya.
-        add_action( 'admin_init', [ $this, 'block_admin_for_non_admin' ] );
-        // Sembunyikan admin bar untuk non-admin di frontend (biar tak ada jalan balik ke wp-admin).
-        add_filter( 'show_admin_bar', [ $this, 'hide_admin_bar_non_admin' ] );
     }
 
     public function enqueue_public_assets(): void {
@@ -93,32 +75,10 @@ final class Plugin {
             'nonce'        => wp_create_nonce( 'wp_rest' ),
             'rfidDebounce' => (int) get_option( 'absensi_rfid_debounce', 3 ),
             'akurasiMax'   => (int) get_option( 'absensi_akurasi_max', 100 ),
-            'anakList'     => $this->anak_list_current_user(),
         ] );
 
         // Stack FE: Alpine + Tailwind via CDN. Alpine load setelah config (dep handle).
         $this->enqueue_frontend_cdn( 'absensi-public', false );
-    }
-
-    /**
-     * Daftar anak ter-link untuk user login (role orang_tua) → dipakai FE view ortu.
-     * Kosong untuk non-ortu / belum login. Diturunkan dari absensi_wali (server).
-     */
-    private function anak_list_current_user(): array {
-        $uid = get_current_user_id();
-        if ( ! $uid ) {
-            return [];
-        }
-        global $wpdb;
-        return (array) $wpdb->get_results( $wpdb->prepare(
-            "SELECT s.id AS siswa_id, s.nama, s.nis, s.kelas_id, k.nama_kelas
-               FROM {$wpdb->prefix}absensi_wali w
-               JOIN {$wpdb->prefix}absensi_siswa s ON s.id = w.siswa_id
-               LEFT JOIN {$wpdb->prefix}absensi_kelas k ON k.id = s.kelas_id
-              WHERE w.wali_user_id = %d
-              ORDER BY s.nama ASC",
-            $uid
-        ) );
     }
 
     public function enqueue_admin_assets( string $hook ): void {
@@ -213,152 +173,5 @@ final class Plugin {
             $tag = str_replace( ' src=', ' defer src=', $tag );
         }
         return $tag;
-    }
-
-    /**
-     * Map page surface (dari option absensi_pages) → cap wajib.
-     * null = cukup login (siswa). Hanya page yang ID-nya ada yang dimasukkan.
-     *
-     * @return array<int,?string> [ page_id => cap|null ]
-     */
-    private function surface_page_caps(): array {
-        $pages = (array) get_option( 'absensi_pages', [] );
-        // Strict per-role: tiap surface butuh cap khusus → user cuma lihat link
-        // yang sesuai rolenya. siswa=submit_self, guru=submit_rfid, ortu=view_child.
-        // Admin punya semua cap → lihat ketiganya. Guest tak punya cap → tak lihat apa pun.
-        $map   = [
-            'siswa' => 'absensi_submit_self',
-            'guru'  => 'absensi_submit_rfid',
-            'ortu'  => 'absensi_view_child',
-        ];
-        $out = [];
-        foreach ( $map as $key => $cap ) {
-            if ( ! empty( $pages[ $key ] ) ) {
-                $out[ (int) $pages[ $key ] ] = $cap;
-            }
-        }
-        return $out;
-    }
-
-    /**
-     * ID page surface yang harus DISEMBUNYIKAN dari navigasi untuk user saat ini.
-     * Page ber-cap yang tak dimiliki user → sembunyi. Page siswa (cap null) selalu
-     * tampil (login flow tetap bisa diakses). Gate isi tetap di shortcode.
-     *
-     * @return int[]
-     */
-    private function hidden_surface_page_ids(): array {
-        $hidden = [];
-        foreach ( $this->surface_page_caps() as $id => $cap ) {
-            if ( null !== $cap && ! current_user_can( $cap ) ) {
-                $hidden[] = $id;
-            }
-        }
-        return $hidden;
-    }
-
-    /** Exclude page surface tak-berhak dari wp_list_pages / wp_page_menu (auto menu tema). */
-    public function filter_list_pages_excludes( array $exclude ): array {
-        return array_merge( $exclude, $this->hidden_surface_page_ids() );
-    }
-
-    /** Buang item page surface tak-berhak dari menu navigasi custom (wp_nav_menu). */
-    public function filter_nav_menu_objects( array $items, $args ): array {
-        $hidden = $this->hidden_surface_page_ids();
-        if ( ! $hidden ) {
-            return $items;
-        }
-        return array_filter( $items, static function ( $it ) use ( $hidden ) {
-            return ! ( isset( $it->object, $it->object_id )
-                && 'page' === $it->object
-                && in_array( (int) $it->object_id, $hidden, true ) );
-        } );
-    }
-
-    /**
-     * Buang page surface tak-berhak dari hasil get_pages().
-     * Dipakai tema blok (FSE): core/page-list di dalam Navigation block ambil
-     * daftar page via get_pages(), tak lewat wp_nav_menu/wp_list_pages.
-     *
-     * @param mixed $pages Array WP_Post hasil get_pages (bisa non-array di edge case).
-     * @param array $args  Args get_pages (tak dipakai).
-     * @return mixed
-     */
-    public function filter_get_pages( $pages, $args = [] ) {
-        $hidden = $this->hidden_surface_page_ids();
-        if ( ! $hidden || ! is_array( $pages ) ) {
-            return $pages;
-        }
-        return array_values( array_filter( $pages, static function ( $p ) use ( $hidden ) {
-            return ! ( isset( $p->ID ) && in_array( (int) $p->ID, $hidden, true ) );
-        } ) );
-    }
-
-    /**
-     * URL surface yang sesuai role user (siswa/guru/ortu) dari option absensi_pages.
-     * Admin (manage_options) dilewati → biar tetap ke wp-admin. Kosong bila tak match.
-     */
-    private function surface_url_for_user( \WP_User $user ): string {
-        if ( user_can( $user, 'manage_options' ) ) {
-            return ''; // admin → biarkan default (wp-admin)
-        }
-        $pages  = (array) get_option( 'absensi_pages', [] );
-        $by_cap = [
-            'absensi_submit_self' => 'siswa',
-            'absensi_submit_rfid' => 'guru',
-            'absensi_view_child'  => 'ortu',
-        ];
-        foreach ( $by_cap as $cap => $key ) {
-            if ( user_can( $user, $cap ) && ! empty( $pages[ $key ] ) ) {
-                $url = get_permalink( (int) $pages[ $key ] );
-                if ( $url ) {
-                    return $url;
-                }
-            }
-        }
-        // Non-admin tanpa surface cocok → fallback ke home, JANGAN biarkan ke wp-admin.
-        return home_url( '/' );
-    }
-
-    /**
-     * #1 Pasca-login: arahkan user ke surface sesuai rolenya (login_redirect).
-     * Hormati deep-link eksplisit non-admin (login dari link page tertentu) —
-     * cuma override saat target default (kosong / wp-admin).
-     *
-     * @param string $redirect_to URL tujuan default.
-     * @param string $requested   redirect_to yang diminta (mis. dari query).
-     * @param mixed  $user        WP_User saat sukses, WP_Error saat gagal.
-     */
-    public function role_login_redirect( $redirect_to, $requested, $user ) {
-        if ( ! ( $user instanceof \WP_User ) || empty( $user->roles ) ) {
-            return $redirect_to;
-        }
-        if ( $requested && ! str_contains( $requested, '/wp-admin' ) ) {
-            return $redirect_to; // user minta halaman spesifik non-admin → hormati
-        }
-        $url = $this->surface_url_for_user( $user );
-        return $url ?: $redirect_to;
-    }
-
-    /**
-     * #2 Blok wp-admin untuk non-admin (tak punya manage_options). Guru/siswa/ortu
-     * yang buka /wp-admin langsung → redirect ke surface-nya. AJAX dibiarkan
-     * (banyak fitur frontend pakai admin-ajax.php).
-     */
-    public function block_admin_for_non_admin(): void {
-        if ( wp_doing_ajax() || current_user_can( 'manage_options' ) ) {
-            return;
-        }
-        $user = wp_get_current_user();
-        if ( ! $user || ! $user->exists() ) {
-            return;
-        }
-        wp_safe_redirect( $this->surface_url_for_user( $user ) ?: home_url( '/' ) );
-        exit;
-    }
-
-    /** #2 Sembunyikan admin bar untuk non-admin. */
-    public function hide_admin_bar_non_admin( $show ) {
-        return current_user_can( 'manage_options' ) ? $show : false;
     }
 }
