@@ -27,6 +27,30 @@ class SanitizeHelper {
     }
 
     /**
+     * Sanitasi data user (skema v2: absensi_users) untuk INSERT/UPDATE.
+     * Kolom: nomor_induk (≤30), nama (≤150), group_id (absint), rfid_uid (hex, kosong→null).
+     */
+    public static function users( array $data ): array {
+        $clean = [];
+        if ( isset( $data['nomor_induk'] ) ) $clean['nomor_induk'] = substr( sanitize_text_field( $data['nomor_induk'] ), 0, 30 );
+        if ( isset( $data['nama'] ) )        $clean['nama']        = substr( sanitize_text_field( $data['nama'] ), 0, 150 );
+        if ( isset( $data['group_id'] ) )    $clean['group_id']    = absint( $data['group_id'] );
+        if ( isset( $data['rfid_uid'] ) )    $clean['rfid_uid']    = self::rfid_uid( $data['rfid_uid'] ) ?: null;
+        return $clean;
+    }
+
+    /**
+     * Sanitasi data group (skema v2: absensi_group) untuk INSERT/UPDATE.
+     * Kolom: nama (≤100), tipe (whitelist kelas/guru/staff; invalid → 'kelas').
+     */
+    public static function group( array $data ): array {
+        $clean = [];
+        if ( isset( $data['nama'] ) ) $clean['nama'] = substr( sanitize_text_field( $data['nama'] ), 0, 100 );
+        if ( isset( $data['tipe'] ) ) $clean['tipe'] = in_array( $data['tipe'], [ 'kelas', 'guru', 'staff' ], true ) ? $data['tipe'] : 'kelas';
+        return $clean;
+    }
+
+    /**
      * Sanitasi data kelas untuk INSERT/UPDATE.
      * Kolom: nama_kelas (≤100), tingkat (1–99), guru_id (WP user, nullable).
      */
@@ -40,12 +64,12 @@ class SanitizeHelper {
 
     /**
      * Sanitasi data jadwal untuk INSERT/UPDATE.
-     * Kolom: kelas_id, hari (1–7), jam_masuk/jam_keluar (TIME, dinormalisasi H:i:s).
+     * Kolom: group_id, hari (1–7), jam_masuk/jam_keluar (TIME, dinormalisasi H:i:s).
      * Jam tak valid → '' (endpoint menolak dengan 422).
      */
     public static function jadwal( array $data ): array {
         $clean = [];
-        if ( isset( $data['kelas_id'] ) )   $clean['kelas_id']   = absint( $data['kelas_id'] );
+        if ( isset( $data['group_id'] ) )   $clean['group_id']   = absint( $data['group_id'] );
         if ( isset( $data['hari'] ) )       $clean['hari']       = absint( $data['hari'] );
         if ( isset( $data['jam_masuk'] ) )  $clean['jam_masuk']  = self::normalize_time( $data['jam_masuk'] );
         if ( isset( $data['jam_keluar'] ) ) $clean['jam_keluar'] = self::normalize_time( $data['jam_keluar'] );
@@ -85,6 +109,10 @@ class SanitizeHelper {
         $allowed_mode   = [ 'selfie', 'rfid', 'manual' ];
 
         $clean = [];
+        // Skema v2: user_id/group_id. siswa_id/kelas_id dipertahankan sementara
+        // (handler lama belum dipivot) — dibuang penuh di Fase 5.
+        if ( isset( $data['user_id'] ) )      $clean['user_id']      = absint( $data['user_id'] );
+        if ( isset( $data['group_id'] ) )     $clean['group_id']     = absint( $data['group_id'] );
         if ( isset( $data['siswa_id'] ) )     $clean['siswa_id']     = absint( $data['siswa_id'] );
         if ( isset( $data['kelas_id'] ) )     $clean['kelas_id']     = absint( $data['kelas_id'] );
         if ( isset( $data['tanggal'] ) )      $clean['tanggal']      = sanitize_text_field( $data['tanggal'] );
