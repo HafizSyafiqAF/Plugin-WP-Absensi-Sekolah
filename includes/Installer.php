@@ -10,31 +10,17 @@ defined( 'ABSPATH' ) || exit;
 class Installer {
 
     /** Versi skema DB – naikkan setiap ada perubahan tabel. */
-    const DB_VERSION = '1.4.0';
-
-    /**
-     * Capability custom plugin. Dipakai sebagai permission_callback di REST.
-     * Administrator WP otomatis diberi semua cap ini.
-     */
-    const CAPS = [
-        'absensi_submit_self',   // Siswa absen selfie + GPS
-        'absensi_submit_rfid',   // Guru absen via tap RFID
-        'absensi_enroll_rfid',   // Daftar/bind kartu RFID ke siswa
-        'absensi_view_reports',  // Lihat & export laporan
-        'absensi_view_child',    // Orang tua lihat absensi anak
-    ];
+    const DB_VERSION = '2.0.0';
 
     public static function activate(): void {
         self::create_tables();
         self::seed_default_options();
-        self::seed_roles();
         self::seed_pages();
         Retensi::schedule();
         flush_rewrite_rules();
     }
 
     public static function deactivate(): void {
-        self::remove_roles();
         self::remove_pages();
         Retensi::unschedule();
         flush_rewrite_rules();
@@ -51,80 +37,17 @@ class Installer {
         if ( version_compare( $installed, self::DB_VERSION, '>=' ) ) {
             return false; // skema sudah terkini
         }
+        // Migrasi breaking v2 (rename tabel/kolom) HARUS sebelum create_tables:
+        // dbDelta hanya CREATE/ALTER-tambah, tak bisa RENAME. Idempotent → aman diulang.
+        if ( version_compare( $installed, '2.0.0', '<' ) ) {
+            self::migrate_to_v2();
+        }
         self::create_tables(); // dbDelta + update_option( 'absensi_db_version', DB_VERSION )
-        // Re-seed role/cap & option default (idempotent) supaya upgrade lewat maybe_upgrade
-        // tetap sinkron tanpa harus deactivate+activate ulang. Tanpa ini, role custom
-        // (absensi_admin/guru/orang_tua) bisa hilang/stale di situs yang hanya upgrade skema.
-        self::seed_roles();
+        // Re-seed option default (idempotent) supaya upgrade lewat maybe_upgrade tetap
+        // sinkron tanpa harus deactivate+activate ulang.
         self::seed_default_options();
         // Langkah migrasi per-versi berikutnya (backfill data) ditambah di sini.
         return true;
-    }
-
-    // ─── Role & Capability ───────────────────────────────────────────────────
-
-    /**
-     * Definisi role plugin → daftar capability.
-     * Slug role dipertahankan sesuai yang dirujuk permission_callback existing
-     * (guru, absensi_admin, orang_tua) + absensi_siswa untuk pemegang cap submit_self.
-     */
-    private static function role_definitions(): array {
-        return [
-            'absensi_admin' => [
-                'name' => 'Admin Absensi',
-                'caps' => [ 'read', ...self::CAPS ], // admin sekolah: semua cap absensi
-            ],
-            'guru' => [
-                'name' => 'Guru',
-                'caps' => [ 'read', 'absensi_submit_rfid', 'absensi_enroll_rfid', 'absensi_view_reports' ],
-            ],
-            'absensi_siswa' => [
-                'name' => 'Siswa',
-                'caps' => [ 'read', 'absensi_submit_self' ],
-            ],
-            'orang_tua' => [
-                'name' => 'Orang Tua',
-                'caps' => [ 'read', 'absensi_view_child' ],
-            ],
-        ];
-    }
-
-    /** Seed role custom + berikan semua cap absensi ke administrator. Idempotent. */
-    private static function seed_roles(): void {
-        foreach ( self::role_definitions() as $slug => $def ) {
-            $role = get_role( $slug );
-            if ( null === $role ) {
-                add_role( $slug, $def['name'], array_fill_keys( $def['caps'], true ) );
-            } else {
-                // Role sudah ada – sinkronkan cap (mis. setelah update versi).
-                foreach ( $def['caps'] as $cap ) {
-                    $role->add_cap( $cap );
-                }
-            }
-        }
-
-        $admin = get_role( 'administrator' );
-        if ( $admin ) {
-            foreach ( self::CAPS as $cap ) {
-                $admin->add_cap( $cap );
-            }
-        }
-    }
-
-    /** Cabut cap dari administrator & hapus role custom. Dipanggil saat deactivate/uninstall. */
-    private static function remove_roles(): void {
-        $admin = get_role( 'administrator' );
-        if ( $admin ) {
-            foreach ( self::CAPS as $cap ) {
-                $admin->remove_cap( $cap );
-            }
-        }
-
-        foreach ( array_keys( self::role_definitions() ) as $slug ) {
-            if ( get_role( $slug ) ) {
-                remove_role( $slug );
-            }
-        }
     }
 
     // ─── Buat Tabel Custom ───────────────────────────────────────────────────
@@ -134,47 +57,45 @@ class Installer {
         $charset = $wpdb->get_charset_collate();
         require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 
-        // Tabel siswa
-        dbDelta( "CREATE TABLE {$wpdb->prefix}absensi_siswa (
+        // Tabel users (eks-siswa) — orang yang diabsen: siswa/guru/staff. Tanpa akun WP.
+        dbDelta( "CREATE TABLE {$wpdb->prefix}absensi_users (
             id          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-            user_id     BIGINT UNSIGNED DEFAULT NULL COMMENT 'WP user jika ada',
-            nis         VARCHAR(20)  NOT NULL,
+            nomor_induk VARCHAR(30)  NOT NULL COMMENT 'NIS/NIP — nomor induk unik',
             nama        VARCHAR(150) NOT NULL,
-            kelas_id    BIGINT UNSIGNED NOT NULL DEFAULT 0,
-            rfid_uid    VARCHAR(50)  DEFAULT NULL COMMENT 'UID kartu RFID siswa',
+            group_id    BIGINT UNSIGNED NOT NULL DEFAULT 0,
+            rfid_uid    VARCHAR(50)  DEFAULT NULL COMMENT 'UID kartu RFID',
             foto_path   VARCHAR(255) DEFAULT NULL,
             created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (id),
-            UNIQUE KEY nis (nis),
+            UNIQUE KEY nomor_induk (nomor_induk),
             UNIQUE KEY rfid_uid (rfid_uid)
         ) $charset;" );
 
-        // Tabel kelas
-        dbDelta( "CREATE TABLE {$wpdb->prefix}absensi_kelas (
+        // Tabel group (eks-kelas) — kelompok absen + tipe.
+        dbDelta( "CREATE TABLE {$wpdb->prefix}absensi_group (
             id         BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-            nama_kelas VARCHAR(100) NOT NULL,
-            tingkat    TINYINT UNSIGNED NOT NULL DEFAULT 1,
-            guru_id    BIGINT UNSIGNED DEFAULT NULL COMMENT 'WP user ID guru wali',
+            nama       VARCHAR(100) NOT NULL,
+            tipe       ENUM('kelas','guru','staff') NOT NULL DEFAULT 'kelas',
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (id)
         ) $charset;" );
 
-        // Tabel jadwal (hari & jam masuk/keluar per kelas)
+        // Tabel jadwal (hari & jam masuk/keluar per group)
         dbDelta( "CREATE TABLE {$wpdb->prefix}absensi_jadwal (
             id          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-            kelas_id    BIGINT UNSIGNED NOT NULL,
+            group_id    BIGINT UNSIGNED NOT NULL,
             hari        TINYINT UNSIGNED NOT NULL COMMENT '1=Senin ... 7=Minggu',
             jam_masuk   TIME NOT NULL,
             jam_keluar  TIME NOT NULL,
             PRIMARY KEY (id),
-            KEY kelas_id (kelas_id)
+            KEY group_id (group_id)
         ) $charset;" );
 
-        // Tabel rekap absensi
+        // Tabel rekap absensi (1 baris per user per tanggal)
         dbDelta( "CREATE TABLE {$wpdb->prefix}absensi_rekap (
             id           BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-            siswa_id     BIGINT UNSIGNED NOT NULL,
-            kelas_id     BIGINT UNSIGNED NOT NULL,
+            user_id      BIGINT UNSIGNED NOT NULL,
+            group_id     BIGINT UNSIGNED NOT NULL,
             tanggal      DATE NOT NULL,
             waktu_masuk  DATETIME DEFAULT NULL,
             waktu_keluar DATETIME DEFAULT NULL,
@@ -187,30 +108,133 @@ class Installer {
             jarak_meter  INT UNSIGNED DEFAULT NULL COMMENT 'Jarak haversine saat absen (audit)',
             foto_path    VARCHAR(255) DEFAULT NULL,
             catatan      TEXT DEFAULT NULL,
-            izin_tipe    ENUM('izin','sakit') DEFAULT NULL COMMENT 'Tipe pengajuan izin/sakit',
-            bukti_status ENUM('menunggu','setuju','tolak') DEFAULT NULL COMMENT 'Verifikasi bukti oleh guru',
-            bukti_path   VARCHAR(255) DEFAULT NULL COMMENT 'Path surat bukti izin/sakit',
-            guru_id      BIGINT UNSIGNED DEFAULT NULL COMMENT 'Guru yang validasi (RFID)',
+            izin_tipe    ENUM('izin','sakit') DEFAULT NULL COMMENT 'Tipe pengajuan izin/sakit (dormant)',
+            bukti_status ENUM('menunggu','setuju','tolak') DEFAULT NULL COMMENT 'Verifikasi bukti (dormant)',
+            bukti_path   VARCHAR(255) DEFAULT NULL COMMENT 'Path surat bukti izin/sakit (dormant)',
             created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (id),
-            UNIQUE KEY unik_siswa_tanggal (siswa_id, tanggal),
+            UNIQUE KEY unik_user_tanggal (user_id, tanggal),
             KEY tanggal (tanggal),
-            KEY kelas_id (kelas_id)
-        ) $charset;" );
-
-        // Tabel relasi wali (orang tua) → siswa (1 ortu : N anak)
-        dbDelta( "CREATE TABLE {$wpdb->prefix}absensi_wali (
-            id           BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-            wali_user_id BIGINT UNSIGNED NOT NULL,
-            siswa_id     BIGINT UNSIGNED NOT NULL,
-            created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (id),
-            UNIQUE KEY unik_wali_siswa (wali_user_id, siswa_id),
-            KEY wali_user_id (wali_user_id),
-            KEY siswa_id (siswa_id)
+            KEY group_id (group_id)
         ) $charset;" );
 
         update_option( 'absensi_db_version', self::DB_VERSION );
+    }
+
+    // ─── Migrasi v2 (breaking: rename tabel/kolom — dbDelta tak bisa) ─────────
+
+    /**
+     * Pivot v2 (model kiosk tanpa login): rename tabel & kolom ke skema generik.
+     *   absensi_siswa → absensi_users (nis→nomor_induk, kelas_id→group_id, DROP user_id)
+     *   absensi_kelas → absensi_group (nama_kelas→nama, ADD tipe, DROP tingkat/guru_id)
+     *   absensi_rekap : siswa_id→user_id, kelas_id→group_id, DROP guru_id
+     *   absensi_jadwal: kelas_id→group_id
+     *   absensi_wali  : DROP TABLE (tak ada ortu)
+     *
+     * Idempotent: tiap langkah dijaga cek eksistensi tabel/kolom/index, jadi aman
+     * dipanggil berulang. Index ber-nama lama (nis/unik_siswa_tanggal/kelas_id) dibuang
+     * di sini; create_tables() (dipanggil setelah ini di maybe_upgrade) menata index baru.
+     */
+    private static function migrate_to_v2(): void {
+        global $wpdb;
+        $p = $wpdb->prefix;
+
+        // 1. Rename tabel (hanya bila lama ada & baru belum).
+        if ( self::table_exists( "{$p}absensi_siswa" ) && ! self::table_exists( "{$p}absensi_users" ) ) {
+            $wpdb->query( "RENAME TABLE {$p}absensi_siswa TO {$p}absensi_users" );
+        }
+        if ( self::table_exists( "{$p}absensi_kelas" ) && ! self::table_exists( "{$p}absensi_group" ) ) {
+            $wpdb->query( "RENAME TABLE {$p}absensi_kelas TO {$p}absensi_group" );
+        }
+
+        // 2. users: rename kolom, buang user_id + index unik lama.
+        $users = "{$p}absensi_users";
+        if ( self::table_exists( $users ) ) {
+            if ( self::column_exists( $users, 'nis' ) ) {
+                $wpdb->query( "ALTER TABLE {$users} CHANGE nis nomor_induk VARCHAR(30) NOT NULL" );
+            }
+            if ( self::column_exists( $users, 'kelas_id' ) ) {
+                $wpdb->query( "ALTER TABLE {$users} CHANGE kelas_id group_id BIGINT UNSIGNED NOT NULL DEFAULT 0" );
+            }
+            if ( self::column_exists( $users, 'user_id' ) ) {
+                $wpdb->query( "ALTER TABLE {$users} DROP COLUMN user_id" );
+            }
+            if ( self::index_exists( $users, 'nis' ) ) {
+                $wpdb->query( "ALTER TABLE {$users} DROP INDEX nis" );
+            }
+        }
+
+        // 3. group: rename kolom, tambah tipe, buang tingkat/guru_id.
+        $group = "{$p}absensi_group";
+        if ( self::table_exists( $group ) ) {
+            if ( self::column_exists( $group, 'nama_kelas' ) ) {
+                $wpdb->query( "ALTER TABLE {$group} CHANGE nama_kelas nama VARCHAR(100) NOT NULL" );
+            }
+            if ( ! self::column_exists( $group, 'tipe' ) ) {
+                $wpdb->query( "ALTER TABLE {$group} ADD COLUMN tipe ENUM('kelas','guru','staff') NOT NULL DEFAULT 'kelas'" );
+            }
+            if ( self::column_exists( $group, 'tingkat' ) ) {
+                $wpdb->query( "ALTER TABLE {$group} DROP COLUMN tingkat" );
+            }
+            if ( self::column_exists( $group, 'guru_id' ) ) {
+                $wpdb->query( "ALTER TABLE {$group} DROP COLUMN guru_id" );
+            }
+        }
+
+        // 4. rekap: rename kolom, buang guru_id + index lama.
+        $rekap = "{$p}absensi_rekap";
+        if ( self::table_exists( $rekap ) ) {
+            if ( self::column_exists( $rekap, 'siswa_id' ) ) {
+                $wpdb->query( "ALTER TABLE {$rekap} CHANGE siswa_id user_id BIGINT UNSIGNED NOT NULL" );
+            }
+            if ( self::column_exists( $rekap, 'kelas_id' ) ) {
+                $wpdb->query( "ALTER TABLE {$rekap} CHANGE kelas_id group_id BIGINT UNSIGNED NOT NULL" );
+            }
+            if ( self::column_exists( $rekap, 'guru_id' ) ) {
+                $wpdb->query( "ALTER TABLE {$rekap} DROP COLUMN guru_id" );
+            }
+            if ( self::index_exists( $rekap, 'unik_siswa_tanggal' ) ) {
+                $wpdb->query( "ALTER TABLE {$rekap} DROP INDEX unik_siswa_tanggal" );
+            }
+            if ( self::index_exists( $rekap, 'kelas_id' ) ) {
+                $wpdb->query( "ALTER TABLE {$rekap} DROP INDEX kelas_id" );
+            }
+        }
+
+        // 5. jadwal: rename kolom + index lama.
+        $jadwal = "{$p}absensi_jadwal";
+        if ( self::table_exists( $jadwal ) ) {
+            if ( self::column_exists( $jadwal, 'kelas_id' ) ) {
+                $wpdb->query( "ALTER TABLE {$jadwal} CHANGE kelas_id group_id BIGINT UNSIGNED NOT NULL" );
+            }
+            if ( self::index_exists( $jadwal, 'kelas_id' ) ) {
+                $wpdb->query( "ALTER TABLE {$jadwal} DROP INDEX kelas_id" );
+            }
+        }
+
+        // 6. Buang tabel wali (tak ada ortu di model baru).
+        $wpdb->query( "DROP TABLE IF EXISTS {$p}absensi_wali" );
+    }
+
+    /** True bila tabel ada. */
+    private static function table_exists( string $table ): bool {
+        global $wpdb;
+        return (bool) $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) );
+    }
+
+    /**
+     * True bila kolom ada di tabel. Nama tabel = literal internal ($wpdb->prefix +
+     * konstanta), aman diinterpolasi; nilai kolom tetap lewat prepare().
+     */
+    private static function column_exists( string $table, string $column ): bool {
+        global $wpdb;
+        return (bool) $wpdb->get_results( $wpdb->prepare( "SHOW COLUMNS FROM `{$table}` WHERE Field = %s", $column ) );
+    }
+
+    /** True bila index/key bernama $index ada di tabel. */
+    private static function index_exists( string $table, string $index ): bool {
+        global $wpdb;
+        return (bool) $wpdb->get_results( $wpdb->prepare( "SHOW INDEX FROM `{$table}` WHERE Key_name = %s", $index ) );
     }
 
     // ─── Default Options ──────────────────────────────────────────────────────
@@ -239,11 +263,11 @@ class Installer {
     // ─── Auto-buat Page Publik (surface FE) ────────────────────────────────────
 
     /**
-     * Buat halaman WP berisi shortcode surface saat aktivasi (siswa/guru/ortu),
+     * Buat halaman WP berisi shortcode surface saat aktivasi (siswa/guru — kiosk publik),
      * agar langsung muncul di publik tanpa user membuat manual.
      *
      * Idempotent & hormati konten user:
-     * - ID tersimpan di option `absensi_pages` ({siswa,guru,ortu}). Sudah ada & valid → skip.
+     * - ID tersimpan di option `absensi_pages` ({siswa,guru}). Sudah ada & valid → skip.
      * - Page ber-slug sama yang sudah dibuat user → pakai ID-nya (tak buat dobel).
      *   Page "adopsi" ini TIDAK dicatat sebagai buatan plugin → tak ikut terhapus
      *   saat deactivate (lihat remove_pages()).
@@ -253,9 +277,8 @@ class Installer {
      */
     private static function seed_pages(): void {
         $defs = [
-            'siswa' => [ 'title' => 'Absensi Siswa',     'slug' => 'absensi-siswa', 'shortcode' => '[absensi_siswa]' ],
-            'guru'  => [ 'title' => 'Absensi Guru',      'slug' => 'absensi-guru',  'shortcode' => '[absensi_guru]' ],
-            'ortu'  => [ 'title' => 'Absensi Orang Tua', 'slug' => 'absensi-ortu',  'shortcode' => '[absensi_ortu]' ],
+            'siswa' => [ 'title' => 'Absensi Siswa', 'slug' => 'absensi-siswa', 'shortcode' => '[absensi_siswa]' ],
+            'guru'  => [ 'title' => 'Absensi Guru',  'slug' => 'absensi-guru',  'shortcode' => '[absensi_guru]' ],
         ];
 
         $pages   = (array) get_option( 'absensi_pages', [] );
@@ -305,7 +328,6 @@ class Installer {
         $shortcodes = [
             'siswa' => '[absensi_siswa]',
             'guru'  => '[absensi_guru]',
-            'ortu'  => '[absensi_ortu]',
         ];
 
         $created = (array) get_option( 'absensi_pages_created', [] );
