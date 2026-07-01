@@ -7,9 +7,9 @@ use Absensi\helpers\SanitizeHelper;
 
 /**
  * REST Endpoint: /wp-json/absensi/v1/jadwal
- * CRUD jam masuk/keluar per kelas per hari (1=Senin .. 7=Minggu).
+ * CRUD jam masuk/keluar per group per hari (1=Senin .. 7=Minggu).
  * Dipakai oleh logika telat-by-jadwal (AbsensiEndpoint::tentukan_status_masuk).
- * Pola mengikuti SiswaEndpoint/KelasEndpoint: query $wpdb langsung, cap can_manage.
+ * Query $wpdb langsung, cap can_manage.
  */
 class JadwalEndpoint {
 
@@ -52,14 +52,14 @@ class JadwalEndpoint {
 
     public function list_jadwal( \WP_REST_Request $req ): \WP_REST_Response {
         global $wpdb;
-        $kelas_id = absint( $req->get_param( 'kelas_id' ) );
-        $where    = $kelas_id ? $wpdb->prepare( 'WHERE j.kelas_id = %d', $kelas_id ) : '';
+        $group_id = absint( $req->get_param( 'group_id' ) );
+        $where    = $group_id ? $wpdb->prepare( 'WHERE j.group_id = %d', $group_id ) : '';
         $rows = $wpdb->get_results(
-            "SELECT j.*, k.nama_kelas
+            "SELECT j.*, g.nama AS nama_group
                FROM {$wpdb->prefix}absensi_jadwal j
-               LEFT JOIN {$wpdb->prefix}absensi_kelas k ON k.id = j.kelas_id
+               LEFT JOIN {$wpdb->prefix}absensi_group g ON g.id = j.group_id
                $where
-               ORDER BY j.kelas_id ASC, j.hari ASC"
+               ORDER BY j.group_id ASC, j.hari ASC"
         );
         return new \WP_REST_Response( $rows );
     }
@@ -84,13 +84,13 @@ class JadwalEndpoint {
             return $err;
         }
 
-        // Satu jadwal per (kelas, hari) — cegah duplikat (telat-by-jadwal ambil 1 baris).
+        // Satu jadwal per (group, hari) — cegah duplikat (telat-by-jadwal ambil 1 baris).
         $dup = $wpdb->get_var( $wpdb->prepare(
-            "SELECT id FROM {$wpdb->prefix}absensi_jadwal WHERE kelas_id = %d AND hari = %d",
-            $data['kelas_id'], $data['hari']
+            "SELECT id FROM {$wpdb->prefix}absensi_jadwal WHERE group_id = %d AND hari = %d",
+            $data['group_id'], $data['hari']
         ) );
         if ( $dup ) {
-            return $this->error( 'jadwal_duplikat', 'Jadwal untuk kelas & hari ini sudah ada.', 409 );
+            return $this->error( 'jadwal_duplikat', 'Jadwal untuk group & hari ini sudah ada.', 409 );
         }
 
         $wpdb->insert( $wpdb->prefix . 'absensi_jadwal', $data );
@@ -117,15 +117,15 @@ class JadwalEndpoint {
             return $err;
         }
 
-        // Cek duplikat (kelas,hari) terhadap baris LAIN, pakai nilai gabungan lama+baru.
-        $kelas_id = $data['kelas_id'] ?? (int) $current->kelas_id;
+        // Cek duplikat (group,hari) terhadap baris LAIN, pakai nilai gabungan lama+baru.
+        $group_id = $data['group_id'] ?? (int) $current->group_id;
         $hari     = $data['hari']     ?? (int) $current->hari;
         $dup = $wpdb->get_var( $wpdb->prepare(
-            "SELECT id FROM $table WHERE kelas_id = %d AND hari = %d AND id != %d",
-            $kelas_id, $hari, $id
+            "SELECT id FROM $table WHERE group_id = %d AND hari = %d AND id != %d",
+            $group_id, $hari, $id
         ) );
         if ( $dup ) {
-            return $this->error( 'jadwal_duplikat', 'Jadwal untuk kelas & hari ini sudah ada.', 409 );
+            return $this->error( 'jadwal_duplikat', 'Jadwal untuk group & hari ini sudah ada.', 409 );
         }
 
         $wpdb->update( $table, $data, [ 'id' => $id ] );
@@ -154,14 +154,14 @@ class JadwalEndpoint {
     private function validate( array $data, bool $create ): ?\WP_REST_Response {
         global $wpdb;
 
-        // Kelas wajib & harus ada
-        if ( $create || isset( $data['kelas_id'] ) ) {
-            $kelas_id = $data['kelas_id'] ?? 0;
-            if ( ! $kelas_id ) {
-                return $this->error( 'kelas_wajib', 'kelas_id wajib diisi.', 422 );
+        // Group wajib & harus ada
+        if ( $create || isset( $data['group_id'] ) ) {
+            $group_id = $data['group_id'] ?? 0;
+            if ( ! $group_id ) {
+                return $this->error( 'group_wajib', 'group_id wajib diisi.', 422 );
             }
-            if ( ! $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$wpdb->prefix}absensi_kelas WHERE id = %d", $kelas_id ) ) ) {
-                return $this->error( 'kelas_invalid', 'Kelas tidak ditemukan.', 422 );
+            if ( ! $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$wpdb->prefix}absensi_group WHERE id = %d", $group_id ) ) ) {
+                return $this->error( 'group_invalid', 'Group tidak ditemukan.', 422 );
             }
         }
 
@@ -197,7 +197,7 @@ class JadwalEndpoint {
 
     private function jadwal_args( bool $required ): array {
         return [
-            'kelas_id'   => [ 'required' => $required, 'type' => 'integer' ],
+            'group_id'   => [ 'required' => $required, 'type' => 'integer' ],
             'hari'       => [ 'required' => $required, 'type' => 'integer' ],
             'jam_masuk'  => [ 'required' => $required, 'type' => 'string' ],
             'jam_keluar' => [ 'required' => $required, 'type' => 'string' ],
