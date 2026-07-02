@@ -28,8 +28,9 @@ final class Plugin {
         // Retensi foto: handler cron + jadwal harian (purge selfie lawas).
         Retensi::init();
 
-        // Notifikasi WA ke wali setelah anak absen (hook absensi_absen_masuk/keluar).
-        Notifikasi::init();
+        // Notifikasi WA dicabut (pivot: model wali/akun dibuang). Titik colok bila
+        // dihidupkan lagi: action absensi_absen_masuk/keluar tetap di-fire endpoint;
+        // penerima nanti = kolom no_wa di absensi_users (bukan user-meta akun wali).
 
         // Custom Post Types & Tabel DB
         ( new class\PostTypes() )->register();
