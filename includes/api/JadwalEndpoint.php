@@ -143,8 +143,9 @@ class JadwalEndpoint {
     }
 
     public function can_manage(): bool {
-        $user = wp_get_current_user();
-        return ! empty( array_intersect( $user->roles, [ 'administrator', 'absensi_admin', 'guru' ] ) );
+        // Admin-only (pivot): bukan role-check lama — role guru/absensi_admin sudah
+        // tak di-seed, tapi residunya di DB tak boleh lolos gate.
+        return current_user_can( 'manage_options' );
     }
 
     /**
