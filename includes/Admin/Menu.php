@@ -13,24 +13,24 @@ class Menu {
     }
 
     public function add_menus(): void {
-        // Menu utama
+        // Menu utama — admin-only (pivot: wp-admin cuma operator/administrator).
         add_menu_page(
             __( 'Absensi Sekolah', 'absensi-sekolah' ),
             __( 'Absensi', 'absensi-sekolah' ),
-            'read',
+            'manage_options',
             'absensi-dashboard',
             [ $this, 'page_dashboard' ],
             'dashicons-id-alt',
             30
         );
 
-        // Sub-menu
+        // Sub-menu — semua cap manage_options (tanpa role guru/siswa; admin-only).
         $submenus = [
-            [ 'absensi-dashboard',  __( 'Dashboard',    'absensi-sekolah' ), 'read',            [ $this, 'page_dashboard'  ] ],
-            [ 'absensi-siswa',      __( 'Siswa',        'absensi-sekolah' ), 'manage_options',  [ $this, 'page_siswa'      ] ],
-            [ 'absensi-kelas',      __( 'Kelas',        'absensi-sekolah' ), 'manage_options',  [ $this, 'page_kelas'      ] ],
-            [ 'absensi-rfid',       __( 'Absen RFID',   'absensi-sekolah' ), 'edit_posts',      [ $this, 'page_rfid'       ] ],
-            [ 'absensi-laporan',    __( 'Laporan',      'absensi-sekolah' ), 'read',            [ $this, 'page_laporan'    ] ],
+            [ 'absensi-dashboard',  __( 'Dashboard',    'absensi-sekolah' ), 'manage_options',  [ $this, 'page_dashboard'  ] ],
+            [ 'absensi-users',      __( 'Users',        'absensi-sekolah' ), 'manage_options',  [ $this, 'page_users'      ] ],
+            [ 'absensi-group',      __( 'Group',        'absensi-sekolah' ), 'manage_options',  [ $this, 'page_group'      ] ],
+            [ 'absensi-rfid',       __( 'Absen RFID',   'absensi-sekolah' ), 'manage_options',  [ $this, 'page_rfid'       ] ],
+            [ 'absensi-laporan',    __( 'Laporan',      'absensi-sekolah' ), 'manage_options',  [ $this, 'page_laporan'    ] ],
             [ 'absensi-settings',   __( 'Pengaturan',   'absensi-sekolah' ), 'manage_options',  [ $this, 'page_settings'   ] ],
         ];
 
@@ -42,8 +42,8 @@ class Menu {
     // ─── Callback Halaman ─────────────────────────────────────────────────────
 
     public function page_dashboard(): void  { $this->render( 'dashboard' ); }
-    public function page_siswa(): void      { $this->render( 'siswa' ); }
-    public function page_kelas(): void      { $this->render( 'kelas' ); }
+    public function page_users(): void      { $this->render( 'users' ); }
+    public function page_group(): void      { $this->render( 'group' ); }
     public function page_rfid(): void       { $this->render( 'rfid' ); }
     public function page_laporan(): void    { $this->render( 'laporan' ); }
     public function page_settings(): void   { $this->render( 'settings' ); }
