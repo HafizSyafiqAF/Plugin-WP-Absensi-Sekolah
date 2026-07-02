@@ -82,7 +82,7 @@ Namespace `absensi/v1` (`/wp-json/absensi/v1/`). Konstanta `NAMESPACE` diulang d
 
 ## Helpers (`includes/helpers/`)
 
-- **[SanitizeHelper.php](includes/helpers/SanitizeHelper.php)** — WAJIB sebelum tiap `$wpdb->insert/update`. `::siswa()`, `::rekap()` (whitelist `status`/`mode`), `::rfid_uid()` (strip non-hex, uppercase, trim CR/LF dari HID).
+- **[SanitizeHelper.php](includes/helpers/SanitizeHelper.php)** — WAJIB sebelum tiap `$wpdb->insert/update`. `::users()`, `::group()`, `::rekap()` (whitelist `status`/`mode`, kunci `user_id`/`group_id`), `::jadwal()`, `::rfid_uid()` (strip non-hex, uppercase, trim CR/LF dari HID). (`::siswa()`/`::kelas()` lama dibuang di pivot v2.)
 - **[GeoHelper.php](includes/helpers/GeoHelper.php)** — `::haversine($lat1,$lng1,$lat2,$lng2)` → meter. `::is_valid()` range cek.
 - **[FileHelper.php](includes/helpers/FileHelper.php)** — `::save_selfie($base64,$siswa_id)` → simpan ke `uploads/absensi-selfie/Y/m/`, validasi magic bytes (JPEG `ffd8ff` / PNG `89504e47`), cap 5MB, return path relatif. `::selfie_url()` konversi ke URL publik.
 

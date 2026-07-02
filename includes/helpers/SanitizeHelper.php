@@ -15,18 +15,6 @@ defined( 'ABSPATH' ) || exit;
 class SanitizeHelper {
 
     /**
-     * Sanitasi data siswa untuk INSERT/UPDATE.
-     */
-    public static function siswa( array $data ): array {
-        $clean = [];
-        if ( isset( $data['nis'] ) )      $clean['nis']      = substr( sanitize_text_field( $data['nis'] ), 0, 20 );
-        if ( isset( $data['nama'] ) )     $clean['nama']     = substr( sanitize_text_field( $data['nama'] ), 0, 150 );
-        if ( isset( $data['kelas_id'] ) ) $clean['kelas_id'] = absint( $data['kelas_id'] );
-        if ( isset( $data['user_id'] ) )  $clean['user_id']  = absint( $data['user_id'] ) ?: null;
-        return $clean;
-    }
-
-    /**
      * Sanitasi data user (skema v2: absensi_users) untuk INSERT/UPDATE.
      * Kolom: nomor_induk (≤30), nama (≤150), group_id (absint), rfid_uid (hex, kosong→null).
      */
@@ -47,18 +35,6 @@ class SanitizeHelper {
         $clean = [];
         if ( isset( $data['nama'] ) ) $clean['nama'] = substr( sanitize_text_field( $data['nama'] ), 0, 100 );
         if ( isset( $data['tipe'] ) ) $clean['tipe'] = in_array( $data['tipe'], [ 'kelas', 'guru', 'staff' ], true ) ? $data['tipe'] : 'kelas';
-        return $clean;
-    }
-
-    /**
-     * Sanitasi data kelas untuk INSERT/UPDATE.
-     * Kolom: nama_kelas (≤100), tingkat (1–99), guru_id (WP user, nullable).
-     */
-    public static function kelas( array $data ): array {
-        $clean = [];
-        if ( isset( $data['nama_kelas'] ) ) $clean['nama_kelas'] = substr( sanitize_text_field( $data['nama_kelas'] ), 0, 100 );
-        if ( isset( $data['tingkat'] ) )    $clean['tingkat']    = max( 1, min( 99, absint( $data['tingkat'] ) ) );
-        if ( isset( $data['guru_id'] ) )    $clean['guru_id']    = absint( $data['guru_id'] ) ?: null;
         return $clean;
     }
 
@@ -109,12 +85,9 @@ class SanitizeHelper {
         $allowed_mode   = [ 'selfie', 'rfid', 'manual' ];
 
         $clean = [];
-        // Skema v2: user_id/group_id. siswa_id/kelas_id dipertahankan sementara
-        // (handler lama belum dipivot) — dibuang penuh di Fase 5.
+        // Skema v2: kunci relasi hanya user_id/group_id (eks siswa_id/kelas_id sudah dibuang).
         if ( isset( $data['user_id'] ) )      $clean['user_id']      = absint( $data['user_id'] );
         if ( isset( $data['group_id'] ) )     $clean['group_id']     = absint( $data['group_id'] );
-        if ( isset( $data['siswa_id'] ) )     $clean['siswa_id']     = absint( $data['siswa_id'] );
-        if ( isset( $data['kelas_id'] ) )     $clean['kelas_id']     = absint( $data['kelas_id'] );
         if ( isset( $data['tanggal'] ) )      $clean['tanggal']      = sanitize_text_field( $data['tanggal'] );
         if ( isset( $data['waktu_masuk'] ) )  $clean['waktu_masuk']  = sanitize_text_field( $data['waktu_masuk'] );
         if ( isset( $data['waktu_keluar'] ) ) $clean['waktu_keluar'] = sanitize_text_field( $data['waktu_keluar'] );
