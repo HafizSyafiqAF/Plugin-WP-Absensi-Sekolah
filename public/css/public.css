@@ -266,9 +266,60 @@
 
 @keyframes absensi-spin { to { transform: rotate(360deg); } }
 
+/* ═══ Kiosk Guru RFID (design.md §11) ═════════════════════════════════════════
+   Fullscreen: jam besar (atas) · feedback/idle BESAR (tengah) · petunjuk (bawah).
+   Feedback terbaca dari jauh; input UID tersembunyi (HID). */
+.absensi-kiosk.kiosk-guru { justify-content: space-between; gap: 24px; }
+
+/* Jam dinding (tengah-atas) */
+.kiosk-guru .kioskg-topbar { display: flex; align-items: center; justify-content: center; gap: 12px; color: var(--c-text-muted); }
+.kiosk-guru .kioskg-clock-icon { display: inline-flex; }
+
+/* Panggung tengah (idle / feedback) */
+.kiosk-guru .kioskg-stage {
+  flex: 1; width: 100%; max-width: 720px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px;
+}
+
+/* Status idle: pulsa + "Siap scan kartu…" */
+.kiosk-guru .kioskg-idle { display: flex; flex-direction: column; align-items: center; gap: 18px; color: var(--c-text-muted); }
+.kiosk-guru .kioskg-idle__pulse {
+  width: 120px; height: 120px; border-radius: var(--r-full);
+  display: flex; align-items: center; justify-content: center;
+  background: var(--c-primary-soft); color: var(--c-primary);
+  animation: kioskg-pulse 2s ease-in-out infinite;
+}
+.kiosk-guru .kioskg-idle__text { font-size: 24px; font-weight: 600; color: var(--c-text); }
+.kiosk-guru .kioskg-idle__sub  { font-size: 16px; }
+
+/* Feedback besar: avatar + nama + badge status + pesan (warna peta status) */
+.kiosk-guru .kioskg-feedback { display: flex; flex-direction: column; align-items: center; gap: 16px; }
+.kiosk-guru .kioskg-avatar {
+  width: 96px; height: 96px; border-radius: var(--r-full);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 40px; font-weight: 700; background: var(--c-primary-soft); color: var(--c-primary);
+}
+.kiosk-guru .kioskg-msg { font-size: 18px; color: var(--c-text-muted); }
+.kiosk-guru .kioskg-feedback--success .kioskg-avatar { background: var(--c-success-soft); color: var(--c-success-text); }
+.kiosk-guru .kioskg-feedback--warning .kioskg-avatar { background: var(--c-warning-soft); color: var(--c-warning-text); }
+.kiosk-guru .kioskg-feedback--info    .kioskg-avatar { background: var(--c-info-soft);    color: var(--c-info-text); }
+.kiosk-guru .kioskg-feedback--danger  .kioskg-avatar { background: var(--c-danger-soft);  color: var(--c-danger-text); }
+
+/* Petunjuk bawah */
+.kiosk-guru .kioskg-hint { color: var(--c-text-muted); font-size: 14px; }
+
+/* Input UID tersembunyi (tetap fokusable utk scanner HID) */
+.kiosk-guru .kioskg-hidden-input { position: fixed; left: -9999px; top: 0; width: 1px; height: 1px; opacity: 0; }
+
+/* Toggle bunyi (pojok kanan-atas, ikon saja) */
+.kiosk-guru .kioskg-mute { position: fixed; top: 16px; right: 16px; z-index: 10; width: 44px; padding: 0; }
+
+@keyframes kioskg-pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.08); opacity: .65; } }
+
 /* Layar besar (kiosk TV/tablet): perbesar ke batas atas rentang §2.2 */
 @media (min-width: 1024px) {
   .absensi-kiosk .kiosk-feedback-name   { font-size: 48px; }
   .absensi-kiosk .kiosk-feedback-status { font-size: 32px; }
   .absensi-kiosk .kiosk-clock           { font-size: 56px; }
+  .kiosk-guru .kioskg-idle__text        { font-size: 28px; }
 }

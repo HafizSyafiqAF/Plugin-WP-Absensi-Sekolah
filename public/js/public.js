@@ -595,6 +595,8 @@ document.addEventListener('alpine:init', function () {
     'info':             '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>',
     'clock':            '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
     'credit-card':      '<rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/>',
+    'volume-2':         '<path d="M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z"/><path d="M16 9a5 5 0 0 1 0 6"/><path d="M19.364 18.364a9 9 0 0 0 0-12.728"/>',
+    'volume-x':         '<path d="M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z"/><line x1="22" x2="16" y1="9" y2="15"/><line x1="16" x2="22" y1="9" y2="15"/>',
     'chevron-left':     '<path d="m15 18-6-6 6-6"/>',
     'chevron-right':    '<path d="m9 18 6-6-6-6"/>',
     'x':                '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
@@ -903,6 +905,158 @@ document.addEventListener('alpine:init', function () {
     destroy: function () {
       this.stopCamera();
       if (this.photoUrl) URL.revokeObjectURL(this.photoUrl);
+    }
+  }; });
+
+  /* ─── Komponen kiosk Guru (RFID) — pivot v2 (design.md §11) ──────────────────
+   * Dibangun bertahap per item TODO-FE. Kini: jam besar real-time + area feedback
+   * besar + status idle. Berikutnya: autofokus input UID, submit POST /absen/rfid,
+   * feedback nama+status, tangani 404/429/409, auto reset ke idle.
+   * Config: AbsensiConfig.rfidDebounce. Endpoint: POST /absen/rfid. */
+  Alpine.data('kioskGuru', function () { return {
+    jam: '',                   // 'HH:MM:SS' — jam dinding berjalan
+    fb:  null,                 // feedback tap: { ok, tone, nama, statusLabel, message } | null (idle)
+    _clockTimer: null,
+    _fbTimer: null,            // timer auto-reset feedback → idle
+    _busy: false,              // cegah request tumpang tindih saat tap beruntun
+    // Beep opsional (design.md §11): bantu operator tanpa lihat layar. Bisa dibisukan.
+    muted: (function () { try { return localStorage.getItem('absensiGuruMuted') === '1'; } catch (e) { return false; } })(),
+    _audioCtx: null,
+
+    init: function () {
+      this.tick();
+      this._clockTimer = setInterval(this.tick.bind(this), 1000);
+      // Autofokus permanen ke input UID tersembunyi (scanner HID "mengetik" ke sini).
+      this.$nextTick(function () { this.focusInput(); }.bind(this));
+    },
+
+    /* Perbarui jam dinding (tabular-nums di CSS). */
+    tick: function () {
+      this.jam = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    },
+
+    /* Fokuskan input UID (dipanggil saat init, klik di mana pun, & setelah tiap tap).
+     * setTimeout(0) agar aman dipanggil dari handler @blur (hindari loop sinkron). */
+    focusInput: function () {
+      var el = this.$refs.rfid;
+      if (el) setTimeout(function () { el.focus(); }, 0);
+    },
+
+    /* Scanner tekan Enter setelah "mengetik" UID → ambil nilai, bersihkan, refokus,
+     * lalu proses tap (loop tap berikutnya siap). Submit ke server = item Kirim. */
+    onEnter: function () {
+      var el = this.$refs.rfid;
+      if (!el) return;
+      var uid = el.value.trim();
+      el.value = '';              // clear → siap tap berikut
+      this.focusInput();          // refocus (loop tap)
+      if (!uid) return;
+      this.submit(uid);
+    },
+
+    /* Kirim tap ke POST /absen/rfid { rfid_uid }. Tangani semua state (design.md §11):
+     *   201 { action:'masuk', status, siswa }  → hijau/kuning "MASUK — HADIR/TELAT"
+     *   200 { action:'keluar', siswa }         → info "KELUAR"
+     *   404 uid_tidak_terdaftar (merah) · 429 double_tap (kuning) · 409 sudah_absen (info)
+     * Hasil disimpan di this.fb (dirender panggung feedback). Auto-reset ke idle = item berikutnya. */
+    submit: async function (uid) {
+      if (this._busy) return;               // abaikan tap yang tumpang tindih
+      this._busy = true;
+      try {
+        var data = await window.api.post('absen/rfid', { rfid_uid: uid });   // 201 masuk / 200 keluar
+        if (data.action === 'keluar') {
+          this.fb = { ok: true, tone: 'info', nama: data.siswa || '',
+                      statusLabel: 'KELUAR', message: data.message || '' };
+        } else {
+          var st = data.status || 'hadir';
+          this.fb = { ok: true, tone: ( st === 'telat' ? 'warning' : 'success' ), nama: data.siswa || '',
+                      statusLabel: 'MASUK — ' + st.toUpperCase(), message: data.message || '' };
+        }
+      } catch (err) {
+        // absensiApiError → {code, status, message} (pesan server sudah Indonesia).
+        var e = window.absensiApiError(err);
+        // Gagal jaringan (status 0 / offline) → pesan "coba tap lagi" (design.md §11 Error State).
+        var netFail = ( e.status === 0 );
+        this.fb = { ok: false, tone: this._errTone(e.code, e.status), nama: '',
+                    statusLabel: this._errLabel(e.code, e.status),
+                    message: netFail ? 'Gagal terhubung. Coba tap lagi.' : e.message };
+      } finally {
+        this._busy = false;
+        this.beep( !! ( this.fb && this.fb.ok ) );   // beep sukses/gagal (opsional)
+        this._scheduleReset();          // tahan ~2.5 dtk → kembali idle "Siap scan…"
+      }
+    },
+
+    /* Bisukan/aktifkan beep (persist localStorage). */
+    toggleMute: function () {
+      this.muted = ! this.muted;
+      try { localStorage.setItem('absensiGuruMuted', this.muted ? '1' : '0'); } catch (e) {}
+    },
+
+    /* Beep pendek via WebAudio (tanpa file/aset). sukses=nada tinggi, gagal=nada rendah.
+     * AudioContext dibuat lazy & di-resume (gesture tap sudah membuka izin audio). */
+    beep: function (ok) {
+      if (this.muted) return;
+      try {
+        var AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return;
+        if (!this._audioCtx) this._audioCtx = new AC();
+        var ctx = this._audioCtx;
+        if (ctx.state === 'suspended') ctx.resume();
+        var osc = ctx.createOscillator();
+        var gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        var t = ctx.currentTime, dur = ok ? 0.18 : 0.32;
+        osc.type = ok ? 'sine' : 'square';
+        osc.frequency.value = ok ? 880 : 220;
+        gain.gain.setValueAtTime(0.0001, t);
+        gain.gain.exponentialRampToValueAtTime(0.15, t + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+        osc.start(t);
+        osc.stop(t + dur + 0.02);
+      } catch (e) { /* audio opsional → abaikan gagal */ }
+    },
+
+    /* Auto-reset feedback ke idle setelah jeda (design.md §11: tahan ~2–3 dtk).
+     * Tap baru menjadwal ulang (clear timer lama) supaya feedback baru tak keburu hilang. */
+    _scheduleReset: function () {
+      clearTimeout(this._fbTimer);
+      var self = this;
+      this._fbTimer = setTimeout(function () { self.fb = null; }, 2500);
+    },
+
+    /* Warna error (design.md §11): double_tap kuning, sudah_absen info, selain itu merah. */
+    _errTone: function (code, status) {
+      if (code === 'double_tap'  || status === 429) return 'warning';
+      if (code === 'sudah_absen' || status === 409) return 'info';
+      return 'danger';
+    },
+    /* Label badge besar untuk error. */
+    _errLabel: function (code, status) {
+      if (code === 'uid_tidak_terdaftar' || status === 404) return 'Kartu Tidak Terdaftar';
+      if (code === 'double_tap'          || status === 429) return 'Tunggu Sebentar';
+      if (code === 'sudah_absen'         || status === 409) return 'Sudah Absen';
+      return 'Gagal';
+    },
+
+    /* Inisial nama untuk avatar feedback; error → '!'. */
+    get fbInitial() {
+      if (!this.fb) return '';
+      if (!this.fb.ok) return '!';
+      return this.fb.nama ? this.fb.nama.trim().charAt(0).toUpperCase() : '';
+    },
+    /* Warna panggung feedback dari tone (peta status design.md §11). */
+    get fbClass() { return this.fb ? 'kioskg-feedback--' + this.fb.tone : ''; },
+    /* Warna badge besar dari tone (kontrak visual badge §2.1). */
+    get fbBadgeClass() {
+      var m = { success: 'badge--hadir', warning: 'badge--telat', info: 'badge--pulang', danger: 'badge--alpha' };
+      return this.fb ? ( m[this.fb.tone] || 'badge--alpha' ) : '';
+    },
+
+    destroy: function () {
+      if (this._clockTimer) clearInterval(this._clockTimer);
+      clearTimeout(this._fbTimer);
+      if (this._audioCtx) { try { this._audioCtx.close(); } catch (e) {} }
     }
   }; });
 });
