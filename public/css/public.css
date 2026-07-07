@@ -85,6 +85,11 @@
   padding: 32px 24px;
 }
 .absensi-kiosk .kiosk-title { font-size: 24px; line-height: 32px; font-weight: 700; }
+.absensi-kiosk .kiosk-head  { margin-bottom: 24px; }
+.absensi-kiosk .kiosk-sub   { margin-top: 4px; color: var(--c-text-muted); font-size: 15px; }
+.absensi-kiosk .kiosk-flow  { display: flex; flex-direction: column; gap: 20px; text-align: left; transition: opacity .15s; }
+/* Loading overlay ringan saat submit (design.md §10 Loading): redup + kunci interaksi */
+.absensi-kiosk .kiosk-flow[aria-busy="true"] { opacity: .6; pointer-events: none; }
 
 /* Kiosk khusus (design.md §2.2 — terbaca jauh):
    Nama 36–48px Bold · Status 28–32px Semibold · Jam 40–56px Bold tabular-nums. */
@@ -128,6 +133,7 @@
 .absensi-kiosk .btn--outline       { background: var(--c-surface); color: var(--c-text); border-color: var(--c-border); }
 .absensi-kiosk .btn--outline:hover { background: var(--c-bg); }
 .absensi-kiosk .btn--lg    { height: 56px; padding: 0 28px; font-size: 17px; }  /* CTA kiosk terbaca */
+.absensi-kiosk .btn--sm    { height: 44px; padding: 0 16px; font-size: 14px; }  /* ≥44px target sentuh (design.md §A11y) */
 .absensi-kiosk .btn--block { width: 100%; }
 .absensi-kiosk .btn:disabled, .absensi-kiosk .btn.is-disabled { opacity: .5; cursor: not-allowed; }
 .absensi-kiosk .btn.is-loading { opacity: .8; pointer-events: none; }
@@ -138,6 +144,7 @@
 
 .absensi-kiosk .field { display: flex; flex-direction: column; gap: 6px; text-align: left; }
 .absensi-kiosk .field__label { font-size: 14px; font-weight: 500; color: var(--c-text-muted); }
+.absensi-kiosk .field__hint  { font-weight: 400; color: var(--c-text-muted); opacity: .8; }
 .absensi-kiosk .input {
   width: 100%; height: 52px; padding: 12px 16px; border-radius: var(--r-md);
   border: 1px solid var(--c-border); background: var(--c-surface); color: var(--c-text);
@@ -146,11 +153,89 @@
 .absensi-kiosk .input:focus { outline: none; border-color: var(--c-primary); box-shadow: var(--shadow-focus); }
 .absensi-kiosk .input--error { border-color: var(--c-danger); }
 .absensi-kiosk .field__error { font-size: 14px; color: var(--c-danger-text); }
+/* Input group (ikon adornment kiri) — mis. Nomor Induk id-card */
+.absensi-kiosk .input-group { position: relative; display: flex; align-items: center; }
+.absensi-kiosk .input-group .input { padding-left: 46px; }
+.absensi-kiosk .input-group__icon { position: absolute; left: 16px; display: inline-flex; color: var(--c-text-muted); pointer-events: none; }
 
 .absensi-kiosk .spinner {
   width: 32px; height: 32px; border-radius: var(--r-full);
   border: 3px solid var(--c-border); border-top-color: var(--c-primary); animation: absensi-spin .6s linear infinite;
 }
+.absensi-kiosk .spinner--sm { width: 18px; height: 18px; border-width: 2px; }
+
+/* Status GPS (item Ambil GPS): waiting/ok/error */
+.absensi-kiosk .kiosk-gps {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 12px 14px; border-radius: var(--r-md); border: 1px solid var(--c-border);
+  background: var(--c-bg); color: var(--c-text-muted); font-size: 14px; text-align: left;
+}
+.absensi-kiosk .kiosk-gps--waiting { background: var(--c-primary-soft); color: var(--c-primary-hover); }
+.absensi-kiosk .kiosk-gps--ok      { background: var(--c-success-soft); border-color: rgba(34, 197, 94, .3);  color: var(--c-success-text); }
+.absensi-kiosk .kiosk-gps--weak    { background: var(--c-warning-soft); border-color: rgba(245, 158, 11, .3); color: var(--c-warning-text); }
+.absensi-kiosk .kiosk-gps--error   { background: var(--c-danger-soft);  border-color: rgba(239, 68, 68, .3);  color: var(--c-danger-text); }
+.absensi-kiosk .kiosk-gps__icon    { flex: none; display: inline-flex; }
+.absensi-kiosk .kiosk-gps__err     { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+/* Kamera selfie (item Kamera): frame + video/preview + tombol */
+.absensi-kiosk .kiosk-cam        { display: flex; flex-direction: column; gap: 12px; }
+.absensi-kiosk .kiosk-cam__frame {
+  position: relative; width: 100%; aspect-ratio: 3 / 4; max-height: 300px;
+  border-radius: var(--r-lg); overflow: hidden; background: #0F172A;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+}
+.absensi-kiosk .kiosk-cam__frame--idle {
+  aspect-ratio: auto; max-height: none; padding: 28px;
+  background: var(--c-bg); border: 1px dashed var(--c-border); color: var(--c-text-muted);
+}
+.absensi-kiosk .kiosk-cam__video,
+.absensi-kiosk .kiosk-cam__img { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }  /* mirror selfie */
+.absensi-kiosk .kiosk-cam__hint { font-size: 14px; }
+.absensi-kiosk .kiosk-cam__hint--warn { color: var(--c-warning-text); font-weight: 500; padding: 0 12px; }
+
+/* Cegah kedip sebelum Alpine init (kartu hasil) */
+.absensi-kiosk [x-cloak] { display: none !important; }
+
+/* Kartu hasil (item Area Hasil): warna peta status */
+.absensi-kiosk .kiosk-result {
+  display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px;
+  padding: 24px; border-radius: var(--r-lg); border: 1px solid var(--c-border); background: var(--c-bg);
+}
+.absensi-kiosk .kiosk-result__icon  { display: inline-flex; }
+.absensi-kiosk .kiosk-result__title { font-size: 20px; line-height: 28px; font-weight: 700; }
+.absensi-kiosk .kiosk-result__msg   { font-size: 15px; color: var(--c-text-muted); margin: 0; }
+.absensi-kiosk .kiosk-result__meta  { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; font-size: 14px; color: var(--c-text); font-variant-numeric: tabular-nums; }
+.absensi-kiosk .kiosk-result .btn   { margin-top: 6px; }
+.absensi-kiosk .kiosk-result--success { background: var(--c-success-soft); border-color: rgba(34, 197, 94, .3);  color: var(--c-success-text); }
+.absensi-kiosk .kiosk-result--warning { background: var(--c-warning-soft); border-color: rgba(245, 158, 11, .3); color: var(--c-warning-text); }
+.absensi-kiosk .kiosk-result--info    { background: var(--c-info-soft);    border-color: rgba(6, 182, 212, .3);  color: var(--c-info-text); }
+.absensi-kiosk .kiosk-result--danger  { background: var(--c-danger-soft);  border-color: rgba(239, 68, 68, .3);  color: var(--c-danger-text); }
+
+/* Widget Cek Status Hari Ini (item Cek Status) */
+.absensi-kiosk .kiosk-status { display: flex; flex-direction: column; gap: 12px; padding-top: 20px; margin-top: 4px; border-top: 1px solid var(--c-border); }
+.absensi-kiosk .kiosk-status__head { font-size: 16px; line-height: 24px; font-weight: 600; }
+.absensi-kiosk .kiosk-status__result { display: flex; flex-direction: column; gap: 8px; padding: 16px; border: 1px solid var(--c-border); border-radius: var(--r-md); background: var(--c-surface); text-align: left; }
+.absensi-kiosk .kiosk-status__nama { font-size: 16px; font-weight: 600; }
+.absensi-kiosk .kiosk-status__empty { margin: 0; font-size: 14px; color: var(--c-text-muted); }
+.absensi-kiosk .kiosk-status__rekap { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.absensi-kiosk .kiosk-status__rekap .badge { text-transform: capitalize; }
+.absensi-kiosk .kiosk-status__times { display: flex; gap: 16px; flex-wrap: wrap; font-size: 14px; font-variant-numeric: tabular-nums; color: var(--c-text-muted); }
+.absensi-kiosk .kiosk-status__times strong { color: var(--c-text); }
+/* Judul & meta tetap kontras (bukan warna status) di dalam kartu */
+.absensi-kiosk .kiosk-result--success .kiosk-result__title,
+.absensi-kiosk .kiosk-result--warning .kiosk-result__title,
+.absensi-kiosk .kiosk-result--info .kiosk-result__title,
+.absensi-kiosk .kiosk-result--danger .kiosk-result__title { color: var(--c-text); }
+
+/* Toggle sesi (item Toggle sesi): pill segmented Otomatis/Masuk/Pulang */
+.absensi-kiosk .pill-tabs { display: flex; gap: 6px; }
+.absensi-kiosk .pill {
+  flex: 1; min-height: 44px; padding: 10px 12px; border-radius: var(--r-full); border: 1px solid var(--c-border);
+  background: var(--c-surface); font-size: 15px; font-weight: 500; color: var(--c-text-muted);
+  font-family: inherit; cursor: pointer; transition: background .15s, color .15s, border-color .15s;
+}
+.absensi-kiosk .pill:hover { background: var(--c-bg); }
+.absensi-kiosk .pill.is-active { background: var(--c-primary); border-color: var(--c-primary); color: #fff; }
 
 .absensi-kiosk .alert {
   display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-radius: var(--r-md);

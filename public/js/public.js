@@ -681,3 +681,228 @@ document.addEventListener('alpine:init', function () {
   window.absensiToast      = toast;
   window.absensiToastError = toastError;
 })();
+
+/* ─── Komponen kiosk Siswa (pivot v2: absen by nomor_induk + selfie + GPS) ────
+ * Dibangun bertahap per item TODO-FE. Kini: input nomor induk + Ambil GPS.
+ * Berikutnya: indikator akurasi, kamera selfie, toggle sesi, submit, hasil, cek status.
+ * Config: AbsensiConfig (restUrl, nonce, akurasiMax). Endpoint: POST /absen/selfie. */
+document.addEventListener('alpine:init', function () {
+  Alpine.data('kioskSiswa', function () { return {
+    nomorInduk: '',
+    sesi:       '',            // '' = auto server | masuk | pulang (opsional)
+    gps:        null,          // { lat, lng, accuracy }
+    gpsStatus:  'waiting',     // waiting | ok | weak | error
+    gpsError:   null,
+    submitting: false,
+    result:     null,          // { ok, sesi, status, jarak, message, jam } | { ok:false, code, httpStatus, message }
+    // Widget "Cek Status Hari Ini" (GET /absen/status, terpisah dari alur absen)
+    statusNomor:   '',
+    statusLoading: false,
+    statusResult:  null,       // { sudah_absen, nama, tanggal, rekap } | null
+    statusError:   null,
+    isHttps:    location.protocol === 'https:' || location.hostname === 'localhost',
+
+    init: function () { this.startGps(); },
+
+    get gpsAccuracyLabel() { return this.gps ? '±' + Math.round(this.gps.accuracy) + ' m' : '—'; },
+    /* Ambang akurasi maksimal (m) dari admin; > ini = sinyal lemah (warning). */
+    get akurasiMax() { return parseInt((window.AbsensiConfig || {}).akurasiMax || '100', 10) || 100; },
+    /* Bisa submit bila nomor induk terisi + GPS sudah dapat lokasi + tak sedang kirim. */
+    get canSubmit() { return !this.submitting && !!this.gps && this.nomorInduk.trim().length > 0; },
+
+    /* ── Kartu hasil (warna peta status design.md §10) ── */
+    get resultClass() {
+      if (!this.result) return '';
+      if (!this.result.ok) return 'kiosk-result--danger';                 // merah
+      if (this.result.sesi === 'pulang') return 'kiosk-result--info';     // cyan pulang
+      return this.result.status === 'telat' ? 'kiosk-result--warning'     // kuning telat
+                                            : 'kiosk-result--success';    // hijau hadir
+    },
+    get resultIcon() {
+      if (!this.result) return 'info';
+      if (!this.result.ok) return 'x-circle';
+      return this.result.status === 'telat' ? 'alert-triangle' : 'check-circle-2';
+    },
+    get resultTitle() {
+      if (!this.result) return '';
+      if (!this.result.ok) return 'Absen Ditolak';
+      if (this.result.sesi === 'pulang') return 'Absen Pulang Berhasil';
+      return this.result.status === 'telat' ? 'Anda Terlambat' : 'Absen Berhasil';
+    },
+
+    /* One-shot getCurrentPosition; bisa diulang lewat tombol "Coba Lagi". */
+    startGps: function () {
+      var self = this;
+      this.gpsStatus = 'waiting';
+      this.gpsError  = null;
+      if (!navigator.geolocation) {
+        this.gpsStatus = 'error';
+        this.gpsError  = 'Browser tidak mendukung GPS.';
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        function (pos) {
+          self.gps       = { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy };
+          // Akurasi di atas ambang admin → 'weak' (warning), tetap dianggap dapat lokasi.
+          self.gpsStatus = pos.coords.accuracy <= self.akurasiMax ? 'ok' : 'weak';
+          self.gpsError  = null;
+        },
+        function (err) {
+          self.gpsStatus = 'error';
+          self.gpsError  = err.code === 1
+            ? 'Izin lokasi ditolak. Aktifkan lokasi di pengaturan browser.'
+            : 'GPS tidak tersedia: ' + err.message;
+        },
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
+      );
+    },
+
+    /* ── Kamera selfie (opsional) — getUserMedia → capture base64 → preview ── */
+    cam:       'off',          // off | live | preview
+    camDenied: false,          // izin kamera ditolak (foto opsional → absen tetap bisa)
+    stream:    null,
+    photoBlob: null,
+    photoUrl:  null,
+
+    startCamera: function () {
+      if (!this.isHttps) {
+        if (window.absensiToast) window.absensiToast('Kamera butuh koneksi aman (HTTPS).', 'warning');
+        return;
+      }
+      var self = this;
+      this.camDenied = false;
+      navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false
+      }).then(function (stream) {
+        self.stream = stream;
+        self.cam    = 'live';
+      }).catch(function (err) {
+        // Izin ditolak → note inline (foto OPSIONAL, absen tetap jalan tanpa foto).
+        if (err && err.name === 'NotAllowedError') {
+          self.camDenied = true;
+        } else if (window.absensiToast) {
+          window.absensiToast('Kamera tidak dapat diakses. Foto boleh dilewati.', 'warning');
+        }
+      });
+    },
+
+    stopCamera: function () {
+      if (this.stream) {
+        this.stream.getTracks().forEach(function (t) { t.stop(); });
+        this.stream = null;
+      }
+    },
+
+    capturePhoto: function () {
+      var video = this.$refs.video, canvas = this.$refs.canvas;
+      if (!video || !canvas) return;
+      var MAX = 1280, w = video.videoWidth, h = video.videoHeight;
+      if (!w || !h) return;
+      if (w > MAX) { h = Math.round(h * MAX / w); w = MAX; }
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(video, 0, 0, w, h);
+      var self = this;
+      canvas.toBlob(function (blob) {
+        if (self.photoUrl) URL.revokeObjectURL(self.photoUrl);
+        self.photoBlob = blob;
+        self.photoUrl  = URL.createObjectURL(blob);
+        self.stopCamera();
+        self.cam = 'preview';
+      }, 'image/jpeg', 0.7);
+    },
+
+    retakePhoto: function () {
+      if (this.photoUrl) { URL.revokeObjectURL(this.photoUrl); this.photoUrl = null; }
+      this.photoBlob = null;
+      this.startCamera();
+    },
+
+    clearPhoto: function () {
+      this.stopCamera();
+      if (this.photoUrl) { URL.revokeObjectURL(this.photoUrl); this.photoUrl = null; }
+      this.photoBlob = null;
+      this.cam = 'off';
+    },
+
+    /* "Absen Lagi" — bersihkan hasil + foto + input untuk orang/absen berikutnya (GPS tetap). */
+    reset: function () {
+      this.result = null;
+      this.clearPhoto();
+      this.nomorInduk = '';
+      this.sesi = '';
+    },
+
+    /* ── Widget Cek Status Hari Ini (GET /absen/status by nomor_induk) ── */
+    checkStatus: async function () {
+      var n = this.statusNomor.trim();
+      if (!n) return;
+      this.statusLoading = true;
+      this.statusError   = null;
+      this.statusResult  = null;
+      try {
+        var data = await window.api.get('absen/status?nomor_induk=' + encodeURIComponent(n));
+        this.statusResult = data;   // { sudah_absen, nama, tanggal, rekap }
+      } catch (err) {
+        this.statusError = window.absensiApiError(err).message;   // 404/422 dsb
+      } finally {
+        this.statusLoading = false;
+      }
+    },
+
+    /* 'YYYY-MM-DD HH:MM:SS' → 'HH:MM' (null-safe). */
+    jamHM: function (w) { return w ? String(w).slice(11, 16) : '—'; },
+
+    /* Submit ke POST /absen/selfie. Tangani semua state (201/200/4xx/5xx).
+     * Sukses & error disimpan di `result` (kartu hasil dirender item "Area Hasil"). */
+    submit: async function () {
+      if (!this.canSubmit) return;
+      if (!navigator.onLine) {
+        this.result = { ok: false, code: 'offline', httpStatus: 0, message: 'Tidak ada koneksi internet. Coba lagi.' };
+        return;
+      }
+      this.submitting = true;
+      this.result     = null;
+      try {
+        var body = {
+          nomor_induk: this.nomorInduk.trim(),
+          lat:         this.gps.lat,
+          lng:         this.gps.lng
+        };
+        if (this.gps.accuracy) body.accuracy = this.gps.accuracy;   // opsional
+        if (this.sesi)         body.sesi     = this.sesi;           // '' = auto server
+        if (this.photoBlob)    body.foto     = await this._blobToBase64(this.photoBlob);  // opsional (data-URL, BE strip prefix)
+
+        var data = await window.api.post('absen/selfie', body);     // 201 masuk / 200 pulang
+        this.result = {
+          ok:      true,
+          sesi:    data.sesi,                 // masuk | pulang
+          status:  data.status || null,       // hadir | telat (hanya sesi masuk)
+          jarak:   typeof data.jarak === 'number' ? data.jarak : null,
+          message: data.message || '',
+          jam:     new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+        };
+      } catch (err) {
+        // absensiApiError memetakan {code, message, data.status}; pesan server sudah Indonesia.
+        var e = window.absensiApiError(err);
+        this.result = { ok: false, code: e.code, httpStatus: e.status, message: e.message };
+      } finally {
+        this.submitting = false;
+      }
+    },
+
+    _blobToBase64: function (blob) {
+      return new Promise(function (resolve, reject) {
+        var r = new FileReader();
+        r.onload  = function () { resolve(r.result); };  // data:image/jpeg;base64,…
+        r.onerror = function () { reject(r.error); };
+        r.readAsDataURL(blob);
+      });
+    },
+
+    destroy: function () {
+      this.stopCamera();
+      if (this.photoUrl) URL.revokeObjectURL(this.photoUrl);
+    }
+  }; });
+});
