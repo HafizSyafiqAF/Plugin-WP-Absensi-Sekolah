@@ -1,601 +1,367 @@
-/* ─── Design Tokens ──────────────────────────────────────────────────────── */
+/* =============================================================================
+   Absensi Sekolah — ADMIN: Base & Scope  (acuan: design.md §2, §3)
+   -----------------------------------------------------------------------------
+   Halaman admin render DI DALAM wp-admin. FE HANYA mendesain area konten.
+   SEMUA style plugin di-scope di bawah `.absensi-app` agar TIDAK bocor/merusak
+   chrome wp-admin. Tailwind preflight sudah dimatikan BE → reset di sini pun
+   scoped-only. Komponen penuh (button/table/modal/dst) menyusul di item lain,
+   tetap di bawah `.absensi-app`.
+
+   Pemakaian di view admin:
+     <div class="absensi-app"> ... markup halaman ... </div>
+   ============================================================================= */
+
+/* ─── Design Tokens (design.md §2.1 warna, §2.4 radius, §2.5 shadow) ──────────
+   :root aman: hanya variabel, tak merender apa pun. */
 :root {
-  --c-primary:        #4F46E5;
-  --c-primary-hover:  #4338CA;
-  --c-primary-soft:   #EEF2FF;
-  --c-primary-mid:    #C7D2FE;
+  /* Brand & aksen */
+  --c-primary:        #2563EB;               /* aksi utama & item aktif */
+  --c-primary-hover:  #1D4ED8;
+  --c-primary-soft:   rgba(37, 99, 235, .10);
+  --c-secondary:      #60A5FA;
 
-  --c-success:        #059669;
-  --c-success-hover:  #047857;
-  --c-success-soft:   #D1FAE5;
-  --c-success-mid:    #6EE7B7;
+  /* Status kehadiran (teks = versi gelap, soft = latar 12%) */
+  --c-success:        #22C55E;  --c-success-text: #16A34A;  --c-success-soft: rgba(34, 197, 94, .12);   /* Hadir */
+  --c-warning:        #F59E0B;  --c-warning-text: #D97706;  --c-warning-soft: rgba(245, 158, 11, .12);  /* Telat */
+  --c-info:           #06B6D4;  --c-info-text:    #0891B2;  --c-info-soft:    rgba(6, 182, 212, .12);    /* Izin  */
+  --c-purple:         #8B5CF6;  --c-purple-text:  #7C3AED;  --c-purple-soft:  rgba(139, 92, 246, .12);   /* Sakit — JANGAN jadi brand */
+  --c-danger:         #EF4444;  --c-danger-text:  #DC2626;  --c-danger-soft:  rgba(239, 68, 68, .12);    /* Alpha */
 
-  --c-warning:        #D97706;
-  --c-warning-soft:   #FEF3C7;
-  --c-warning-mid:    #FCD34D;
-
-  --c-danger:         #DC2626;
-  --c-danger-hover:   #B91C1C;
-  --c-danger-soft:    #FEE2E2;
-  --c-danger-mid:     #FCA5A5;
-
-  --c-info:           #0284C7;
-  --c-info-soft:      #E0F2FE;
-  --c-info-mid:       #7DD3FC;
-
-  --c-bg:             #F5F7FB;
+  /* Netral */
+  --c-bg:             #F8FAFC;
   --c-surface:        #FFFFFF;
-  --c-surface-2:      #F8FAFC;
-  --c-border:         #E2E8F0;
-  --c-border-strong:  #CBD5E1;
-  --c-text:           #0F172A;
-  --c-text-muted:     #64748B;
-  --c-text-faint:     #94A3B8;
+  --c-border:         #E5E7EB;
+  --c-text:           #1F2937;
+  --c-text-muted:     #6B7280;
+  --c-sidebar-text:   #1E293B;
 
-  --shadow-xs:  0 1px 2px rgba(15,23,42,.04);
-  --shadow-sm:  0 1px 3px rgba(15,23,42,.07), 0 1px 2px rgba(15,23,42,.04);
-  --shadow-md:  0 4px 12px rgba(15,23,42,.08), 0 2px 4px rgba(15,23,42,.04);
-  --shadow-lg:  0 10px 30px rgba(15,23,42,.10), 0 4px 8px rgba(15,23,42,.05);
-  --shadow-xl:  0 20px 50px rgba(15,23,42,.14), 0 8px 16px rgba(15,23,42,.06);
+  /* Radius */
+  --r-sm: 6px;  --r-md: 8px;  --r-lg: 12px;  --r-xl: 16px;  --r-full: 9999px;
 
-  --r-sm:  6px;
-  --r-md:  10px;
-  --r-lg:  14px;
-  --r-xl:  20px;
-  --r-2xl: 28px;
+  /* Shadow */
+  --shadow-xs:    0 1px 2px rgba(16, 24, 40, .05);
+  --shadow-sm:    0 1px 3px rgba(16, 24, 40, .08), 0 1px 2px rgba(16, 24, 40, .04);
+  --shadow-md:    0 4px 8px rgba(16, 24, 40, .08), 0 2px 4px rgba(16, 24, 40, .04);
+  --shadow-lg:    0 12px 24px rgba(16, 24, 40, .12);
+  --shadow-focus: 0 0 0 3px rgba(37, 99, 235, .25);
 }
 
-/* ─── Base ───────────────────────────────────────────────────────────────── */
-*, *::before, *::after { box-sizing: border-box; }
-
-#wpwrap, .wrap, #wpcontent {
-  font-family: 'Plus Jakarta Sans', system-ui, sans-serif !important;
-}
-
-/* ─── Buttons ────────────────────────────────────────────────────────────── */
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  padding: 0.625rem 1rem;
-  border-radius: var(--r-lg);
-  font-weight: 600;
-  font-size: 0.875rem;
-  font-family: inherit;
-  transition: all 150ms;
-  user-select: none;
-  outline: none;
-  cursor: pointer;
-  border: none;
-  min-height: 40px;
-  text-decoration: none;
-}
-.btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
-.btn-primary {
-  color: #fff;
-  background: linear-gradient(135deg, var(--c-primary) 0%, #6D28D9 100%);
-  box-shadow: 0 2px 8px rgba(79,70,229,.30);
-}
-.btn-primary:hover:not(:disabled) {
-  background: linear-gradient(135deg, var(--c-primary-hover) 0%, #5B21B6 100%);
-  box-shadow: 0 4px 14px rgba(79,70,229,.40);
-  transform: translateY(-1px);
-}
-.btn-primary:active:not(:disabled) { transform: translateY(0); }
-
-.btn-secondary {
-  background: #fff;
-  color: var(--c-text);
-  border: 1px solid var(--c-border);
-  box-shadow: var(--shadow-xs);
-}
-.btn-secondary:hover:not(:disabled) {
-  background: var(--c-surface-2);
-  border-color: var(--c-border-strong);
-  box-shadow: var(--shadow-sm);
-}
-
-.btn-success {
-  color: #fff;
-  background: linear-gradient(135deg, var(--c-success) 0%, #065F46 100%);
-  box-shadow: 0 2px 8px rgba(5,150,105,.28);
-}
-.btn-success:hover:not(:disabled) { filter: brightness(1.07); transform: translateY(-1px); }
-
-.btn-danger {
-  color: #fff;
-  background: linear-gradient(135deg, var(--c-danger) 0%, var(--c-danger-hover) 100%);
-  box-shadow: 0 2px 8px rgba(220,38,38,.25);
-}
-.btn-danger:hover:not(:disabled) { filter: brightness(1.07); transform: translateY(-1px); }
-
-.btn-ghost {
-  background: transparent;
-  color: var(--c-text-muted);
-}
-.btn-ghost:hover:not(:disabled) {
-  background: var(--c-surface-2);
-  color: var(--c-text);
-}
-
-.btn-sm { padding: 0.375rem 0.75rem; font-size: 0.75rem; min-height: 32px; }
-.btn-lg { padding: 0.75rem 1.5rem; font-size: 1rem; min-height: 48px; }
-
-/* ─── Cards ──────────────────────────────────────────────────────────────── */
-.card {
-  background: var(--c-surface);
-  border: 1px solid var(--c-border);
-  border-radius: var(--r-lg);
-  box-shadow: var(--shadow-sm);
-  padding: 20px;
-}
-.card-elevated {
-  background: var(--c-surface);
-  border: 1px solid var(--c-border);
-  border-radius: var(--r-lg);
-  box-shadow: var(--shadow-md);
-  padding: 20px;
-}
-.card-flush {
-  background: var(--c-surface);
-  border: 1px solid var(--c-border);
-  border-radius: var(--r-lg);
-  box-shadow: var(--shadow-sm);
-  padding: 0;
-  overflow: hidden;
-}
-
-/* ─── Stat Cards ─────────────────────────────────────────────────────────── */
-.stat-card {
-  background: var(--c-surface);
-  border: 1px solid var(--c-border);
-  border-radius: var(--r-lg);
-  box-shadow: var(--shadow-md);
-  position: relative;
-  overflow: hidden;
-  padding: 20px;
-}
-.stat-card::before {
-  content: '';
-  position: absolute;
-  top: 0; left: 0;
-  width: 4px; height: 100%;
-  border-radius: 4px 0 0 4px;
-}
-.stat-card-primary::before { background: var(--c-primary); }
-.stat-card-success::before { background: var(--c-success); }
-.stat-card-warning::before { background: var(--c-warning); }
-.stat-card-danger::before  { background: var(--c-danger); }
-.stat-card-info::before    { background: var(--c-info); }
-
-.stat-card-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 44px; height: 44px;
-  border-radius: var(--r-md);
-  margin-bottom: 14px;
-}
-
-/* ─── Badges ─────────────────────────────────────────────────────────────── */
-.badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  padding: 0.125rem 0.625rem;
-  border-radius: 9999px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  white-space: nowrap;
-}
-.badge-success { background: var(--c-success-soft); color: var(--c-success); }
-.badge-warning { background: var(--c-warning-soft); color: var(--c-warning); }
-.badge-danger  { background: var(--c-danger-soft);  color: var(--c-danger);  }
-.badge-info    { background: var(--c-info-soft);    color: var(--c-info);    }
-.badge-primary { background: var(--c-primary-soft); color: var(--c-primary); }
-.badge-neutral { background: #F1F5F9; color: #475569; }
-
-.status-hadir { background: var(--c-success-soft); color: var(--c-success); display: inline-flex; align-items: center; gap: .25rem; padding: .125rem .625rem; border-radius: 9999px; font-size: .75rem; font-weight: 600; white-space: nowrap; }
-.status-telat { background: var(--c-warning-soft); color: var(--c-warning); display: inline-flex; align-items: center; gap: .25rem; padding: .125rem .625rem; border-radius: 9999px; font-size: .75rem; font-weight: 600; white-space: nowrap; }
-.status-alpha { background: var(--c-danger-soft);  color: var(--c-danger);  display: inline-flex; align-items: center; gap: .25rem; padding: .125rem .625rem; border-radius: 9999px; font-size: .75rem; font-weight: 600; white-space: nowrap; }
-.status-izin  { background: var(--c-info-soft);    color: var(--c-info);    display: inline-flex; align-items: center; gap: .25rem; padding: .125rem .625rem; border-radius: 9999px; font-size: .75rem; font-weight: 600; white-space: nowrap; }
-.status-sakit { background: var(--c-info-soft);    color: var(--c-info);    display: inline-flex; align-items: center; gap: .25rem; padding: .125rem .625rem; border-radius: 9999px; font-size: .75rem; font-weight: 600; white-space: nowrap; }
-
-/* ─── Form Inputs ────────────────────────────────────────────────────────── */
-.input-field {
-  width: 100%;
-  border: 1.5px solid var(--c-border);
-  border-radius: var(--r-md);
-  padding: 10px 14px;
-  font-size: 14px;
-  font-family: inherit;
-  color: var(--c-text);
-  background: var(--c-surface);
-  transition: border-color .15s, box-shadow .15s;
-  min-height: 44px;
-  outline: none;
-}
-.input-field:focus {
-  border-color: var(--c-primary);
-  box-shadow: 0 0 0 3px rgba(79,70,229,.12);
-}
-.input-field::placeholder { color: var(--c-text-faint); }
-
-.input-label {
-  display: block;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--c-text-muted);
-  text-transform: uppercase;
-  letter-spacing: .05em;
-  margin-bottom: 6px;
-}
-
-.input-group {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-/* ─── Section Header ─────────────────────────────────────────────────────── */
-.section-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 20px;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-.section-title {
-  font-size: 17px;
-  font-weight: 700;
-  color: var(--c-text);
-  margin: 0;
-}
-
-/* ─── Table ──────────────────────────────────────────────────────────────── */
-.absensi-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 14px;
-}
-.absensi-table thead tr {
-  background: var(--c-surface-2);
-  border-bottom: 2px solid var(--c-border);
-}
-.absensi-table th {
-  text-align: left;
-  padding: 12px 16px;
-  color: var(--c-text-muted);
-  font-weight: 700;
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: .04em;
-  white-space: nowrap;
-}
-.absensi-table td {
-  padding: 12px 16px;
-  border-bottom: 1px solid #F1F5F9;
-  color: var(--c-text);
-  vertical-align: middle;
-}
-.absensi-table tbody tr:last-child td { border-bottom: none; }
-.absensi-table tbody tr:nth-child(even) td { background: #FAFBFD; }
-.absensi-table tbody tr { transition: background .1s; }
-.absensi-table tbody tr:hover td { background: var(--c-primary-soft) !important; }
-
-/* ─── Avatar ─────────────────────────────────────────────────────────────── */
-.avatar {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  font-weight: 700;
-  flex-shrink: 0;
-  text-transform: uppercase;
-}
-.avatar-sm { width: 32px; height: 32px; font-size: 12px; }
-.avatar-md { width: 40px; height: 40px; font-size: 14px; }
-.avatar-lg { width: 52px; height: 52px; font-size: 18px; }
-.avatar-primary { background: var(--c-primary-soft); color: var(--c-primary); }
-.avatar-success { background: var(--c-success-soft); color: var(--c-success); }
-
-/* ─── Alert ──────────────────────────────────────────────────────────────── */
-.alert {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 14px 16px;
-  border-radius: var(--r-md);
+/* ─── Wrapper & Scope ─────────────────────────────────────────────────────────
+   FE membungkus SELURUH markup halaman plugin di <div class="absensi-app">.
+   Semua reset & style plugin hanya berlaku di dalamnya → wp-admin aman. */
+.absensi-app {
+  font-family: 'Inter', 'Plus Jakarta Sans', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
   font-size: 14px;
   line-height: 1.5;
+  color: var(--c-text);
+  font-feature-settings: 'cv02', 'cv03', 'cv04';   /* angka tabel rapi (design.md §2.2) */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
-.alert-success { background: var(--c-success-soft); color: var(--c-success); border: 1px solid var(--c-success-mid); }
-.alert-warning { background: var(--c-warning-soft); color: var(--c-warning); border: 1px solid var(--c-warning-mid); }
-.alert-danger  { background: var(--c-danger-soft);  color: var(--c-danger);  border: 1px solid var(--c-danger-mid);  }
-.alert-info    { background: var(--c-info-soft);    color: var(--c-info);    border: 1px solid var(--c-info-mid);    }
-.alert-primary { background: var(--c-primary-soft); color: var(--c-primary); border: 1px solid var(--c-primary-mid); }
+.absensi-app *,
+.absensi-app *::before,
+.absensi-app *::after { box-sizing: border-box; }
 
-/* ─── Modal ──────────────────────────────────────────────────────────────── */
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(15,23,42,.55);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
-  z-index: 99999;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 16px;
-  animation: fadeIn .15s ease;
-}
-.modal-box {
-  background: var(--c-surface);
-  border-radius: var(--r-xl);
-  padding: 28px;
-  width: 100%;
-  max-width: 460px;
-  box-shadow: var(--shadow-xl);
-  animation: slideUp .2s cubic-bezier(.16,1,.3,1);
-}
-.modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 22px;
-}
-.modal-title { font-size: 18px; font-weight: 800; color: var(--c-text); margin: 0; }
-.modal-close {
-  display: flex; align-items: center; justify-content: center;
-  width: 32px; height: 32px;
-  border-radius: 50%;
-  background: var(--c-surface-2);
-  border: none; cursor: pointer;
-  color: var(--c-text-muted);
-  font-size: 18px;
-  transition: background .15s, color .15s;
-}
-.modal-close:hover { background: var(--c-danger-soft); color: var(--c-danger); }
-.modal-footer { display: flex; gap: 10px; margin-top: 24px; }
+/* Reset scoped (preflight Tailwind OFF → normalkan default browser HANYA di app) */
+.absensi-app h1, .absensi-app h2, .absensi-app h3,
+.absensi-app h4, .absensi-app h5, .absensi-app h6,
+.absensi-app p, .absensi-app figure { margin: 0; }
+.absensi-app h1, .absensi-app h2, .absensi-app h3,
+.absensi-app h4, .absensi-app h5, .absensi-app h6 { font-weight: 600; line-height: 1.3; color: var(--c-text); }
+.absensi-app a { color: var(--c-primary); text-decoration: none; }
+.absensi-app a:hover { text-decoration: underline; }
+.absensi-app img, .absensi-app svg { max-width: 100%; }
+.absensi-app ul, .absensi-app ol { margin: 0; padding: 0; list-style: none; }
+.absensi-app :focus-visible { outline: none; box-shadow: var(--shadow-focus); border-radius: var(--r-md); }
 
-/* ─── Page Header ────────────────────────────────────────────────────────── */
-.page-header {
-  background: linear-gradient(135deg, var(--c-primary) 0%, #6D28D9 100%);
-  border-radius: var(--r-xl);
-  padding: 24px 28px;
-  margin-bottom: 24px;
-  color: white;
-  position: relative;
-  overflow: hidden;
+/* ─── Skala Tipografi (design.md §2.2 — Inter) ────────────────────────────────
+   Kelas utility `.t-*` untuk dipakai di markup view. Angka tabel pakai
+   tabular-nums via .t-td/.t-th & .u-num. */
+.absensi-app .t-display     { font-size: 30px; line-height: 38px; font-weight: 700; }
+.absensi-app .t-h1          { font-size: 24px; line-height: 32px; font-weight: 700; }
+.absensi-app .t-h2          { font-size: 18px; line-height: 26px; font-weight: 600; }
+.absensi-app .t-h3          { font-size: 16px; line-height: 24px; font-weight: 600; }
+.absensi-app .t-body        { font-size: 14px; line-height: 22px; font-weight: 400; }
+.absensi-app .t-body-strong { font-size: 14px; line-height: 22px; font-weight: 500; }
+.absensi-app .t-caption     { font-size: 12px; line-height: 18px; font-weight: 400; }
+.absensi-app .t-caption-med { font-size: 12px; line-height: 18px; font-weight: 500; }
+.absensi-app .t-button      { font-size: 14px; line-height: 20px; font-weight: 600; }
+.absensi-app .t-th {
+  font-size: 12px; line-height: 18px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.04em; color: var(--c-text-muted);
 }
-.page-header::after {
-  content: '';
-  position: absolute;
-  right: -30px; top: -30px;
-  width: 180px; height: 180px;
-  border-radius: 50%;
-  background: rgba(255,255,255,.07);
-}
-.page-header::before {
-  content: '';
-  position: absolute;
-  right: 60px; bottom: -40px;
-  width: 120px; height: 120px;
-  border-radius: 50%;
-  background: rgba(255,255,255,.05);
-}
-.wrap .page-header h1 {
-  color: white;
-  font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: 22px;
-  font-weight: 800;
-  margin: 0 0 4px;
-}
-.wrap .page-header p { margin: 0; color: rgba(255,255,255,.75); font-size: 14px; }
+.absensi-app .t-td  { font-size: 14px; line-height: 20px; font-weight: 400; }
+.absensi-app .u-num { font-variant-numeric: tabular-nums; }
 
-/* ─── Segmented Control ──────────────────────────────────────────────────── */
-.seg-group {
-  display: flex;
-  background: var(--c-surface-2);
-  border: 1.5px solid var(--c-border);
-  border-radius: var(--r-md);
-  overflow: hidden;
-  padding: 3px;
-  gap: 3px;
-}
-.seg-btn {
-  flex: 1;
-  padding: 7px 14px;
-  font-size: 13px;
-  font-weight: 600;
-  border: none;
-  border-radius: calc(var(--r-md) - 4px);
-  cursor: pointer;
-  transition: all .2s;
-  color: var(--c-text-muted);
-  background: transparent;
-  min-height: 36px;
-  font-family: inherit;
-}
-.seg-btn:hover:not(.seg-active) { background: white; color: var(--c-text); }
-.seg-btn.seg-active-primary { background: var(--c-primary); color: white; box-shadow: 0 2px 6px rgba(79,70,229,.30); }
-.seg-btn.seg-active-info    { background: var(--c-info);    color: white; box-shadow: 0 2px 6px rgba(2,132,199,.30); }
-.seg-btn.seg-active-success { background: var(--c-success); color: white; box-shadow: 0 2px 6px rgba(5,150,105,.30); }
+/* ─── Kerangka konten (isi .wrap wp-admin — TANPA sidebar/topbar plugin) ──────
+   Navigasi antar-halaman plugin = submenu WordPress (bukan buatan FE). */
+.absensi-app .absensi-page       { display: flex; flex-direction: column; gap: 24px; max-width: 1440px; }
+.absensi-app .absensi-page__head { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.absensi-app .absensi-page__title { font-size: 24px; line-height: 32px; font-weight: 700; }
+.absensi-app .absensi-page__actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
-/* ─── RFID Zone ──────────────────────────────────────────────────────────── */
-.rfid-zone {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
-  padding: 28px;
-  border-radius: var(--r-xl);
-  background: linear-gradient(135deg, #EEF2FF 0%, #E0E7FF 100%);
-  border: 2px dashed var(--c-primary-mid);
-  cursor: pointer;
-  transition: border-color .2s, background .2s;
-}
-.rfid-zone:hover {
-  border-color: var(--c-primary);
-  background: linear-gradient(135deg, #E0E7FF 0%, #C7D2FE 100%);
-}
-.rfid-pulse-ring {
-  position: absolute;
-  border-radius: 50%;
-  background: var(--c-primary-soft);
-  animation: rfid-pulse 2s cubic-bezier(.4,0,.6,1) infinite;
-}
-.rfid-icon-wrap {
-  position: relative;
-  width: 72px; height: 72px;
-  display: flex; align-items: center; justify-content: center;
-}
-
-/* ─── Toast ──────────────────────────────────────────────────────────────── */
-.toast {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 16px;
-  border-radius: var(--r-md);
-  font-size: 14px;
-  font-weight: 600;
-  animation: slideDown .25s cubic-bezier(.16,1,.3,1);
-  box-shadow: var(--shadow-md);
-}
-.toast-success { background: var(--c-success); color: white; }
-.toast-danger  { background: var(--c-danger);  color: white; }
-
-/* ─── Empty State ────────────────────────────────────────────────────────── */
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 48px 24px;
-  text-align: center;
-  color: var(--c-text-muted);
-}
-.empty-state-icon {
-  width: 64px; height: 64px;
-  border-radius: 50%;
-  background: var(--c-surface-2);
-  display: flex; align-items: center; justify-content: center;
-  margin-bottom: 16px;
-  font-size: 28px;
-}
-
-/* ─── Spinner ────────────────────────────────────────────────────────────── */
-.spinner {
-  width: 20px; height: 20px;
-  border: 2px solid var(--c-border);
-  border-top-color: var(--c-primary);
-  border-radius: 50%;
-  animation: spin .7s linear infinite;
-  flex-shrink: 0;
-}
-.spinner-sm { width: 14px; height: 14px; }
-.spinner-lg { width: 28px; height: 28px; border-width: 3px; }
-
-/* ─── Filter Bar ─────────────────────────────────────────────────────────── */
-.filter-bar {
-  background: var(--c-surface);
-  border: 1px solid var(--c-border);
-  border-radius: var(--r-lg);
-  box-shadow: var(--shadow-sm);
-  padding: 16px 20px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: flex-end;
-}
-
-/* ─── Divider ────────────────────────────────────────────────────────────── */
-.divider { height: 1px; background: var(--c-border); margin: 4px 0; }
-
-/* ─── GPS Chip ───────────────────────────────────────────────────────────── */
-.gps-chip {
+/* ─── Badge status + tipe group (design.md §2.1, komponen Badge) ──────────────
+   Pill radius-full, padding 2px 10px, Caption medium. Peta warna = KONTRAK
+   visual (design.md §12 poin 9): hadir hijau · telat kuning · izin cyan ·
+   sakit ungu · alpha merah — tak boleh beda di halaman mana pun.
+   Pakai: <span class="badge badge--hadir">Hadir</span> (dalam .absensi-app). */
+.absensi-app .badge {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border-radius: 999px;
+  gap: 4px;
+  padding: 2px 10px;
+  border-radius: var(--r-full);
   font-size: 12px;
-  font-weight: 600;
+  line-height: 18px;
+  font-weight: 500;
+  white-space: nowrap;
 }
-.gps-chip-ok      { background: var(--c-success-soft); color: var(--c-success); }
-.gps-chip-warn    { background: var(--c-warning-soft); color: var(--c-warning); }
-.gps-chip-loading { background: #F1F5F9; color: var(--c-text-muted); }
+/* Status kehadiran */
+.absensi-app .badge--hadir { color: var(--c-success-text); background: var(--c-success-soft); }
+.absensi-app .badge--telat { color: var(--c-warning-text); background: var(--c-warning-soft); }
+.absensi-app .badge--izin  { color: var(--c-info-text);    background: var(--c-info-soft); }
+.absensi-app .badge--sakit { color: var(--c-purple-text);  background: var(--c-purple-soft); }
+.absensi-app .badge--alpha { color: var(--c-danger-text);  background: var(--c-danger-soft); }
+/* Tipe group (design.md §6): Kelas=Primary · Guru=Purple · Staff=Info */
+.absensi-app .badge--kelas { color: var(--c-primary-hover); background: var(--c-primary-soft); }
+.absensi-app .badge--guru  { color: var(--c-purple-text);   background: var(--c-purple-soft); }
+.absensi-app .badge--staff { color: var(--c-info-text);     background: var(--c-info-soft); }
 
-/* ─── Dropdown ───────────────────────────────────────────────────────────── */
-.dropdown-menu {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 8px);
-  background: var(--c-surface);
-  border: 1px solid var(--c-border);
-  border-radius: var(--r-lg);
-  box-shadow: var(--shadow-xl);
-  z-index: 50;
-  min-width: 192px;
-  overflow: hidden;
-  animation: fadeIn .1s ease;
+/* ─── Ikon (design.md §2.3 — Lucide via helper $icon/absensiIcon) ─────────────
+   Ukuran diset atribut SVG (default 20 · 16 inline · 18 adornment); kelas ini
+   urus alignment + warna ikut teks. Stroke 1.75 sudah di atribut SVG. */
+.absensi-app .icon        { display: inline-block; vertical-align: -0.125em; flex: none; color: inherit; }
+.absensi-app .icon--sm    { width: 16px; height: 16px; }   /* inline/tabel */
+.absensi-app .icon--adorn { width: 18px; height: 18px; }   /* input adornment */
+
+/* ─── Utility ringkas (komponen penuh di item "Komponen UI") ──────────────────*/
+.absensi-app .u-muted   { color: var(--c-text-muted); }
+.absensi-app .u-hidden  { display: none !important; }
+.absensi-app .u-surface { background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--r-lg); box-shadow: var(--shadow-sm); }
+
+/* ═════════════════════════════════════════════════════════════════════════════
+   KOMPONEN UI (design.md §2.9) — semua scoped .absensi-app
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ─── Button ──────────────────────────────────────────────────────────────────*/
+.absensi-app .btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  height: 40px; padding: 0 16px; border-radius: var(--r-md);
+  font-size: 14px; line-height: 20px; font-weight: 600;
+  border: 1px solid transparent; background: transparent; color: var(--c-text);
+  cursor: pointer; white-space: nowrap; transition: background .15s, border-color .15s, opacity .15s;
 }
-.dropdown-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 10px 16px;
-  border: none;
-  background: none;
-  cursor: pointer;
-  font-size: 14px;
-  font-family: inherit;
-  text-align: left;
-  color: var(--c-text);
-  transition: background .1s;
-  text-decoration: none;
-}
-.dropdown-item:hover { background: var(--c-surface-2); }
-.dropdown-item.muted { color: var(--c-text-muted); }
-
-/* ─── Gradient text ──────────────────────────────────────────────────────── */
-.text-gradient {
-  background: linear-gradient(135deg, var(--c-primary) 0%, #7C3AED 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-/* ─── Animations ─────────────────────────────────────────────────────────── */
-@keyframes spin        { to { transform: rotate(360deg); } }
-@keyframes fadeIn      { from { opacity: 0; } to { opacity: 1; } }
-@keyframes slideUp     { from { opacity:0; transform: translateY(16px); } to { opacity:1; transform: translateY(0); } }
-@keyframes slideDown   { from { opacity:0; transform: translateY(-10px); } to { opacity:1; transform: translateY(0); } }
-@keyframes slideIn     { from { opacity:0; transform: translateX(-8px); } to { opacity:1; transform: translateX(0); } }
-@keyframes rfid-pulse  { 0%,100%{transform:scale(1);opacity:.5} 50%{transform:scale(1.6);opacity:.1} }
-@keyframes blink-dot   { 0%,100%{opacity:1} 50%{opacity:.2} }
-@keyframes bounce-in   { 0%{transform:scale(.8);opacity:0} 70%{transform:scale(1.05)} 100%{transform:scale(1);opacity:1} }
-
-/* ─── Global helpers ─────────────────────────────────────────────────────── */
-[x-cloak] { display: none !important; }
-
-/* ─── Print ──────────────────────────────────────────────────────────────── */
-@media print {
-  #adminmenuwrap, #wpadminbar, .wp-header-end,
-  [x-data="filterBar"], .no-print { display: none !important; }
-  body, .wrap { margin: 0 !important; }
-  .absensi-table th, .absensi-table td { border: 1px solid #ccc; padding: 6px 10px; font-size: 12px; }
+.absensi-app .btn--primary       { background: var(--c-primary); color: #fff; }
+.absensi-app .btn--primary:hover { background: var(--c-primary-hover); }
+.absensi-app .btn--outline       { background: var(--c-surface); color: var(--c-text); border-color: var(--c-border); }
+.absensi-app .btn--outline:hover { background: var(--c-bg); }
+.absensi-app .btn--ghost         { background: transparent; color: var(--c-text-muted); }
+.absensi-app .btn--ghost:hover   { background: var(--c-bg); }
+.absensi-app .btn--danger        { background: var(--c-danger); color: #fff; }
+.absensi-app .btn--danger:hover  { background: var(--c-danger-text); }
+.absensi-app .btn--danger-outline       { background: var(--c-surface); color: var(--c-danger-text); border-color: rgba(239, 68, 68, .4); }
+.absensi-app .btn--danger-outline:hover { background: var(--c-danger-soft); }
+.absensi-app .btn--success       { background: var(--c-success); color: #fff; }
+.absensi-app .btn--success:hover { background: var(--c-success-text); }
+/* Ukuran */
+.absensi-app .btn--sm { height: 32px; padding: 0 12px; font-size: 13px; }
+.absensi-app .btn--lg { height: 48px; padding: 0 20px; font-size: 15px; }
+.absensi-app .btn--icon { width: 40px; padding: 0; }
+.absensi-app .btn--icon.btn--sm { width: 32px; }
+.absensi-app .btn--block { width: 100%; }
+/* State */
+.absensi-app .btn:disabled,
+.absensi-app .btn.is-disabled { opacity: .5; cursor: not-allowed; }
+.absensi-app .btn.is-loading  { opacity: .8; cursor: progress; pointer-events: none; }
+.absensi-app .btn.is-loading .btn__label { visibility: hidden; }
+.absensi-app .btn__spin {
+  width: 16px; height: 16px; border-radius: var(--r-full);
+  border: 2px solid currentColor; border-top-color: transparent;
+  animation: absensi-spin .6s linear infinite;
 }
 
-/* ─── Scrollbar ──────────────────────────────────────────────────────────── */
-* { scrollbar-width: thin; scrollbar-color: var(--c-border) transparent; }
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--c-border); border-radius: 99px; }
-::-webkit-scrollbar-thumb:hover { background: var(--c-border-strong); }
+/* ─── Field / Input / Select ─────────────────────────────────────────────────*/
+.absensi-app .field       { display: flex; flex-direction: column; gap: 6px; }
+.absensi-app .field__label { font-size: 12px; line-height: 18px; font-weight: 500; color: var(--c-text-muted); }
+.absensi-app .input, .absensi-app .select, .absensi-app .textarea {
+  width: 100%; height: 40px; padding: 10px 12px; border-radius: var(--r-md);
+  border: 1px solid var(--c-border); background: var(--c-surface); color: var(--c-text);
+  font-size: 14px; line-height: 20px; font-family: inherit; transition: border-color .15s, box-shadow .15s;
+}
+.absensi-app .textarea { height: auto; min-height: 80px; resize: vertical; }
+.absensi-app .input::placeholder, .absensi-app .textarea::placeholder { color: var(--c-text-muted); }
+.absensi-app .input:focus, .absensi-app .select:focus, .absensi-app .textarea:focus {
+  outline: none; border-color: var(--c-primary); box-shadow: var(--shadow-focus);
+}
+.absensi-app .input:disabled, .absensi-app .select:disabled { background: var(--c-bg); color: var(--c-text-muted); cursor: not-allowed; }
+.absensi-app .input--error, .absensi-app .select--error { border-color: var(--c-danger); }
+.absensi-app .field__error { display: flex; align-items: center; gap: 4px; font-size: 12px; line-height: 18px; color: var(--c-danger-text); }
+/* Select: chevron kanan */
+.absensi-app .select {
+  appearance: none; -webkit-appearance: none; padding-right: 34px; cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236B7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 10px center;
+}
+/* Input group (adornment kiri/kanan) — mis. Search, ikon nomor induk */
+.absensi-app .input-group { position: relative; display: flex; align-items: center; }
+.absensi-app .input-group .input { padding-left: 38px; }
+.absensi-app .input-group--right .input { padding-left: 12px; padding-right: 38px; }
+.absensi-app .input-group__icon {
+  position: absolute; left: 12px; display: inline-flex; color: var(--c-text-muted); pointer-events: none;
+}
+.absensi-app .input-group--right .input-group__icon { left: auto; right: 12px; }
+.absensi-app .input-group__clear {
+  position: absolute; right: 8px; display: inline-flex; padding: 4px; border: 0; background: transparent;
+  color: var(--c-text-muted); cursor: pointer; border-radius: var(--r-full);
+}
+.absensi-app .input-group__clear:hover { background: var(--c-bg); }
+
+/* ─── Filter Pill Tabs (segmented) ───────────────────────────────────────────*/
+.absensi-app .pill-tabs { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.absensi-app .pill {
+  padding: 4px 14px; border-radius: var(--r-full); border: 1px solid transparent; background: transparent;
+  font-size: 13px; line-height: 18px; font-weight: 500; color: var(--c-text-muted); cursor: pointer; transition: background .15s, color .15s;
+}
+.absensi-app .pill:hover { background: var(--c-bg); }
+.absensi-app .pill.is-active { background: var(--c-primary); color: #fff; }
+
+/* ─── Card ────────────────────────────────────────────────────────────────────*/
+.absensi-app .card {
+  background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--r-lg);
+  box-shadow: var(--shadow-sm); padding: 20px;
+}
+.absensi-app .card__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+.absensi-app .card__title { font-size: 18px; line-height: 26px; font-weight: 600; }
+
+/* Stat card */
+.absensi-app .stat { display: flex; flex-direction: column; gap: 8px; }
+.absensi-app .stat__icon {
+  display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px;
+  border-radius: var(--r-md); color: var(--c-primary); background: var(--c-primary-soft);
+}
+.absensi-app .stat__label { font-size: 12px; line-height: 18px; color: var(--c-text-muted); }
+.absensi-app .stat__value { font-size: 30px; line-height: 38px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.absensi-app .stat__delta { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; }
+.absensi-app .stat__delta--up   { color: var(--c-success-text); }
+.absensi-app .stat__delta--down { color: var(--c-danger-text); }
+
+/* ─── Table ───────────────────────────────────────────────────────────────────*/
+.absensi-app .table-card {
+  background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--r-lg);
+  box-shadow: var(--shadow-sm); overflow: hidden;
+}
+.absensi-app .table-scroll { overflow-x: auto; }
+.absensi-app .table { width: 100%; border-collapse: collapse; }
+.absensi-app .table thead th {
+  text-align: left; padding: 0 16px; height: 44px; background: var(--c-bg);
+  font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--c-text-muted); border-bottom: 1px solid var(--c-border); white-space: nowrap;
+}
+.absensi-app .table tbody td { padding: 12px 16px; height: 56px; font-size: 14px; border-bottom: 1px solid var(--c-border); vertical-align: middle; }
+.absensi-app .table tbody tr:last-child td { border-bottom: 0; }
+.absensi-app .table tbody tr:hover td { background: rgba(37, 99, 235, .03); }
+.absensi-app .table .col-num { text-align: right; font-variant-numeric: tabular-nums; }
+.absensi-app .table .col-actions { text-align: right; white-space: nowrap; }
+.absensi-app .table__user { display: flex; align-items: center; gap: 10px; }
+.absensi-app .table__avatar {
+  flex: none; width: 32px; height: 32px; border-radius: var(--r-full); object-fit: cover;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--c-primary-soft); color: var(--c-primary); font-size: 12px; font-weight: 600;
+}
+
+/* ─── Modal ───────────────────────────────────────────────────────────────────*/
+.absensi-app .modal-overlay {
+  position: fixed; inset: 0; z-index: 100000; display: flex; align-items: center; justify-content: center;
+  padding: 16px; background: rgba(15, 23, 42, .5);
+}
+.absensi-app .modal {
+  width: 100%; max-width: 480px; max-height: 90vh; overflow-y: auto;
+  background: var(--c-surface); border-radius: var(--r-lg); box-shadow: var(--shadow-lg);
+  animation: absensi-modal-in .15s ease-out;
+}
+.absensi-app .modal--lg { max-width: 640px; }
+.absensi-app .modal__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 20px; border-bottom: 1px solid var(--c-border); }
+.absensi-app .modal__title { font-size: 18px; line-height: 26px; font-weight: 600; }
+.absensi-app .modal__close { display: inline-flex; padding: 6px; border: 0; background: transparent; color: var(--c-text-muted); cursor: pointer; border-radius: var(--r-md); }
+.absensi-app .modal__close:hover { background: var(--c-bg); }
+.absensi-app .modal__body { padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+.absensi-app .modal__footer { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 16px 20px; border-top: 1px solid var(--c-border); }
+
+/* ─── Toast ───────────────────────────────────────────────────────────────────*/
+.absensi-app .toast-stack { position: fixed; top: 40px; right: 20px; z-index: 100001; display: flex; flex-direction: column; gap: 10px; max-width: 360px; }
+.absensi-app .toast {
+  display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; background: var(--c-surface);
+  border-radius: var(--r-md); box-shadow: var(--shadow-md); border-left: 4px solid var(--c-text-muted);
+  animation: absensi-toast-in .15s ease-out;
+}
+.absensi-app .toast--success { border-left-color: var(--c-success); }
+.absensi-app .toast--error   { border-left-color: var(--c-danger); }
+.absensi-app .toast--warning { border-left-color: var(--c-warning); }
+.absensi-app .toast--info    { border-left-color: var(--c-info); }
+.absensi-app .toast__icon    { flex: none; margin-top: 1px; }
+.absensi-app .toast--success .toast__icon { color: var(--c-success-text); }
+.absensi-app .toast--error .toast__icon   { color: var(--c-danger-text); }
+.absensi-app .toast--warning .toast__icon { color: var(--c-warning-text); }
+.absensi-app .toast--info .toast__icon    { color: var(--c-info-text); }
+.absensi-app .toast__body  { flex: 1; font-size: 14px; line-height: 20px; }
+.absensi-app .toast__close { flex: none; padding: 2px; border: 0; background: transparent; color: var(--c-text-muted); cursor: pointer; }
+
+/* ─── Alert (inline persisten) ───────────────────────────────────────────────*/
+.absensi-app .alert {
+  display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-radius: var(--r-md);
+  border: 1px solid var(--c-border); background: var(--c-bg); font-size: 14px; line-height: 20px;
+}
+.absensi-app .alert__icon { flex: none; margin-top: 1px; }
+.absensi-app .alert--success { background: var(--c-success-soft); border-color: rgba(34, 197, 94, .3);  color: var(--c-success-text); }
+.absensi-app .alert--warning { background: var(--c-warning-soft); border-color: rgba(245, 158, 11, .3); color: var(--c-warning-text); }
+.absensi-app .alert--danger  { background: var(--c-danger-soft);  border-color: rgba(239, 68, 68, .3);  color: var(--c-danger-text); }
+.absensi-app .alert--info    { background: var(--c-info-soft);    border-color: rgba(6, 182, 212, .3);  color: var(--c-info-text); }
+
+/* ─── Pagination ─────────────────────────────────────────────────────────────*/
+.absensi-app .pagination { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; flex-wrap: wrap; }
+.absensi-app .pagination__info { font-size: 12px; color: var(--c-text-muted); }
+.absensi-app .pagination__pages { display: inline-flex; align-items: center; gap: 4px; }
+.absensi-app .page-btn {
+  display: inline-flex; align-items: center; justify-content: center; min-width: 32px; height: 32px; padding: 0 6px;
+  border: 0; background: transparent; color: var(--c-text); border-radius: var(--r-md); font-size: 13px; cursor: pointer;
+}
+.absensi-app .page-btn:hover { background: var(--c-bg); }
+.absensi-app .page-btn.is-active { background: var(--c-primary); color: #fff; }
+.absensi-app .page-btn:disabled { opacity: .4; cursor: not-allowed; }
+.absensi-app .page-ellipsis { padding: 0 4px; color: var(--c-text-muted); }
+
+/* ─── Empty / Error state ────────────────────────────────────────────────────*/
+.absensi-app .empty, .absensi-app .error-state {
+  display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px; padding: 48px 24px;
+}
+.absensi-app .empty__icon      { color: var(--c-text-muted); }
+.absensi-app .error-state__icon { color: var(--c-danger-text); }
+.absensi-app .empty__title, .absensi-app .error-state__title { font-size: 16px; line-height: 24px; font-weight: 600; }
+.absensi-app .empty__desc, .absensi-app .error-state__desc { font-size: 14px; color: var(--c-text-muted); max-width: 360px; }
+
+/* ─── Loading / Skeleton ─────────────────────────────────────────────────────*/
+.absensi-app .spinner {
+  width: 20px; height: 20px; border-radius: var(--r-full);
+  border: 2px solid var(--c-border); border-top-color: var(--c-primary);
+  animation: absensi-spin .6s linear infinite;
+}
+.absensi-app .spinner--lg { width: 32px; height: 32px; border-width: 3px; }
+.absensi-app .skeleton {
+  border-radius: var(--r-sm);
+  background: linear-gradient(90deg, var(--c-border) 25%, #eef1f5 37%, var(--c-border) 63%);
+  background-size: 400% 100%; animation: absensi-shimmer 1.5s ease-in-out infinite;
+}
+.absensi-app .skeleton--text { height: 12px; margin: 4px 0; }
+.absensi-app .skeleton--row  { height: 40px; margin: 8px 0; }
+
+/* ─── Keyframes ──────────────────────────────────────────────────────────────*/
+@keyframes absensi-spin { to { transform: rotate(360deg); } }
+@keyframes absensi-shimmer { 0% { background-position: 100% 0; } 100% { background-position: 0 0; } }
+@keyframes absensi-modal-in { from { opacity: 0; transform: scale(.97); } to { opacity: 1; transform: scale(1); } }
+@keyframes absensi-toast-in { from { opacity: 0; transform: translateX(12px); } to { opacity: 1; transform: translateX(0); } }
+
+/* ─── Responsive dasar (breakpoint design.md §2.8) ───────────────────────────*/
+@media (max-width: 640px) {
+  .absensi-app .absensi-page__head { flex-direction: column; align-items: stretch; }
+  .absensi-app .toast-stack { left: 12px; right: 12px; max-width: none; }
+}
