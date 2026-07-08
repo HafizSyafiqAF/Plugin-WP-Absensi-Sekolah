@@ -1,0 +1,450 @@
+<?php
+/**
+ * Admin view — Users.  (design.md §5)
+ *
+ * Kelola master orang yang diabsen (siswa/guru/staff, satu tabel — dibedakan via
+ * tipe group). Konten DI DALAM wp-admin: bungkus `.absensi-app`, tanpa sidebar/topbar
+ * plugin (design.md §3). Endpoint: /users CRUD, /users/{id}/rfid, /users/import.
+ *
+ * Dibangun bertahap per item TODO-FE. Item ini = header halaman (judul + aksi).
+ * Filter bar, tabel, modal (form/bind/import), hapus, state = item berikutnya.
+ */
+defined( 'ABSPATH' ) || exit;
+?>
+<div class="wrap">
+  <div class="absensi-app" x-data="usersManager">
+    <div class="absensi-page">
+
+      <!-- Header halaman (design.md §3.1 / §5): judul kiri + aksi utama kanan -->
+      <div class="absensi-page__head">
+        <h1 class="absensi-page__title"><?php esc_html_e( 'Users', 'absensi-sekolah' ); ?></h1>
+        <div class="absensi-page__actions">
+          <button type="button" class="btn btn--outline" @click="openImport()">
+            <span x-html="$icon( 'upload', 18 )" aria-hidden="true"></span>
+            <?php esc_html_e( 'Import Excel', 'absensi-sekolah' ); ?>
+          </button>
+          <button type="button" class="btn btn--primary" @click="openCreate()">
+            <span x-html="$icon( 'plus', 18 )" aria-hidden="true"></span>
+            <?php esc_html_e( 'Tambah User', 'absensi-sekolah' ); ?>
+          </button>
+        </div>
+      </div>
+
+      <!-- Filter bar (design.md §5): Search (debounce) + Select Group + Reset -->
+      <div class="filter-bar">
+        <div class="input-group filter-bar__search">
+          <span class="input-group__icon" x-html="$icon( 'search', 18 )" aria-hidden="true"></span>
+          <input type="search" class="input" x-model.trim="search"
+                 @input.debounce.300ms="page = 1"
+                 placeholder="<?php esc_attr_e( 'Cari nama / nomor induk…', 'absensi-sekolah' ); ?>"
+                 aria-label="<?php esc_attr_e( 'Cari user', 'absensi-sekolah' ); ?>">
+          <button type="button" class="input-group__clear" x-show="search" x-cloak
+                  @click="search = ''; page = 1"
+                  aria-label="<?php esc_attr_e( 'Bersihkan pencarian', 'absensi-sekolah' ); ?>">
+            <span x-html="$icon( 'x', 16 )"></span>
+          </button>
+        </div>
+
+        <select class="select filter-bar__group" x-model="groupId"
+                @change="page = 1; loadUsers()"
+                aria-label="<?php esc_attr_e( 'Filter group', 'absensi-sekolah' ); ?>">
+          <option value=""><?php esc_html_e( 'Semua Group', 'absensi-sekolah' ); ?></option>
+          <template x-for="g in groups" :key="g.id">
+            <option :value="g.id" x-text="g.nama"></option>
+          </template>
+        </select>
+
+        <button type="button" class="btn btn--ghost" x-show="search || groupId" x-cloak
+                @click="resetFilter()">
+          <span x-html="$icon( 'rotate-ccw', 16 )" aria-hidden="true"></span>
+          <?php esc_html_e( 'Reset', 'absensi-sekolah' ); ?>
+        </button>
+      </div>
+
+      <!-- Tabel Users (design.md §5): skeleton · error · tabel · empty · pagination -->
+      <div class="table-card">
+
+        <!-- Skeleton loading (10 baris: avatar bulat + balok teks) -->
+        <div x-show="loading" x-cloak class="table-scroll" aria-hidden="true">
+          <table class="table users-table">
+            <thead>
+              <tr>
+                <th><?php esc_html_e( 'User', 'absensi-sekolah' ); ?></th>
+                <th><?php esc_html_e( 'Group', 'absensi-sekolah' ); ?></th>
+                <th><?php esc_html_e( 'Tipe', 'absensi-sekolah' ); ?></th>
+                <th><?php esc_html_e( 'RFID', 'absensi-sekolah' ); ?></th>
+                <th class="col-actions"><?php esc_html_e( 'Aksi', 'absensi-sekolah' ); ?></th>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-for="n in 8" :key="n">
+                <tr>
+                  <td><div class="table__user"><span class="skeleton" style="width:32px;height:32px;border-radius:50%"></span><span class="skeleton skeleton--text" style="width:120px"></span></div></td>
+                  <td><span class="skeleton skeleton--text" style="width:80px"></span></td>
+                  <td><span class="skeleton skeleton--text" style="width:56px"></span></td>
+                  <td><span class="skeleton skeleton--text" style="width:70px"></span></td>
+                  <td class="col-actions"><span class="skeleton skeleton--text" style="width:76px;margin-left:auto"></span></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Error state + Coba Lagi -->
+        <div x-show="! loading && error" x-cloak class="error-state">
+          <div class="error-state__icon" x-html="$icon( 'alert-triangle', 32 )" aria-hidden="true"></div>
+          <p class="error-state__title"><?php esc_html_e( 'Gagal memuat data', 'absensi-sekolah' ); ?></p>
+          <p class="error-state__desc"><?php esc_html_e( 'Tidak dapat mengambil daftar user. Periksa koneksi lalu coba lagi.', 'absensi-sekolah' ); ?></p>
+          <button type="button" class="btn btn--outline" @click="loadUsers()">
+            <span x-html="$icon( 'refresh-cw', 16 )" aria-hidden="true"></span>
+            <?php esc_html_e( 'Coba Lagi', 'absensi-sekolah' ); ?>
+          </button>
+        </div>
+
+        <!-- Tabel (ada data) -->
+        <div x-show="! loading && ! error && totalFiltered > 0" x-cloak class="table-scroll">
+          <table class="table users-table">
+            <thead>
+              <tr>
+                <th><?php esc_html_e( 'User', 'absensi-sekolah' ); ?></th>
+                <th><?php esc_html_e( 'Group', 'absensi-sekolah' ); ?></th>
+                <th><?php esc_html_e( 'Tipe', 'absensi-sekolah' ); ?></th>
+                <th><?php esc_html_e( 'RFID', 'absensi-sekolah' ); ?></th>
+                <th class="col-actions"><?php esc_html_e( 'Aksi', 'absensi-sekolah' ); ?></th>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-for="u in pagedUsers" :key="u.id">
+                <tr>
+                  <!-- User: avatar + nama + nomor induk -->
+                  <td data-label="<?php esc_attr_e( 'User', 'absensi-sekolah' ); ?>">
+                    <div class="table__user">
+                      <span class="table__avatar" x-text="inisial(u.nama)" aria-hidden="true"></span>
+                      <div>
+                        <div class="t-body-strong" x-text="u.nama"></div>
+                        <div class="t-caption u-muted u-num" x-text="u.nomor_induk"></div>
+                      </div>
+                    </div>
+                  </td>
+                  <!-- Group -->
+                  <td data-label="<?php esc_attr_e( 'Group', 'absensi-sekolah' ); ?>"><span x-text="u.nama_group || '—'"></span></td>
+                  <!-- Tipe (badge) -->
+                  <td data-label="<?php esc_attr_e( 'Tipe', 'absensi-sekolah' ); ?>">
+                    <span x-show="u.tipe_group" class="badge" :class="tipeBadge(u.tipe_group)" x-text="tipeLabel(u.tipe_group)"></span>
+                    <span x-show="! u.tipe_group" class="u-muted">—</span>
+                  </td>
+                  <!-- RFID (mask) -->
+                  <td data-label="<?php esc_attr_e( 'RFID', 'absensi-sekolah' ); ?>">
+                    <span x-show="u.rfid_uid" class="u-num" x-text="maskRfid(u.rfid_uid)"></span>
+                    <span x-show="! u.rfid_uid" class="u-muted">—</span>
+                  </td>
+                  <!-- Aksi: edit / bind / hapus -->
+                  <td class="col-actions" data-label="<?php esc_attr_e( 'Aksi', 'absensi-sekolah' ); ?>">
+                    <button type="button" class="btn btn--ghost btn--icon btn--sm" @click="openEdit(u)"
+                            :aria-label="'<?php echo esc_js( __( 'Edit user', 'absensi-sekolah' ) ); ?> ' + u.nama">
+                      <span x-html="$icon( 'square-pen', 16 )"></span>
+                    </button>
+                    <button type="button" class="btn btn--ghost btn--icon btn--sm" @click="openBind(u)"
+                            :aria-label="'<?php echo esc_js( __( 'Bind RFID', 'absensi-sekolah' ) ); ?> ' + u.nama">
+                      <span x-html="$icon( 'credit-card', 16 )"></span>
+                    </button>
+                    <button type="button" class="btn btn--ghost btn--icon btn--sm act-del" @click="confirmDelete(u)"
+                            :aria-label="'<?php echo esc_js( __( 'Hapus user', 'absensi-sekolah' ) ); ?> ' + u.nama">
+                      <span x-html="$icon( 'trash-2', 16 )"></span>
+                    </button>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Empty (belum ada user / hasil filter kosong) -->
+        <div x-show="! loading && ! error && totalFiltered === 0" x-cloak class="empty">
+          <div class="empty__icon" x-html="$icon( 'users', 32 )" aria-hidden="true"></div>
+          <p class="empty__title"><?php esc_html_e( 'Belum ada user', 'absensi-sekolah' ); ?></p>
+          <p class="empty__desc" x-text="(search || groupId)
+            ? '<?php echo esc_js( __( 'Tak ada user cocok dengan filter.', 'absensi-sekolah' ) ); ?>'
+            : '<?php echo esc_js( __( 'Tambah user baru atau import dari Excel.', 'absensi-sekolah' ) ); ?>'"></p>
+        </div>
+
+        <!-- Pagination (client-side) -->
+        <div x-show="! loading && ! error && totalPages > 1" x-cloak class="pagination">
+          <span class="pagination__info">
+            <?php esc_html_e( 'Menampilkan', 'absensi-sekolah' ); ?>
+            <span class="u-num" x-text="pageStart"></span>–<span class="u-num" x-text="pageEnd"></span>
+            <?php esc_html_e( 'dari', 'absensi-sekolah' ); ?> <span class="u-num" x-text="totalFiltered"></span>
+          </span>
+          <div class="pagination__pages">
+            <button type="button" class="page-btn" :disabled="page <= 1" @click="goPage(page - 1)"
+                    aria-label="<?php esc_attr_e( 'Halaman sebelumnya', 'absensi-sekolah' ); ?>">
+              <span x-html="$icon( 'chevron-left', 16 )"></span>
+            </button>
+            <template x-for="(p, i) in pageWindow" :key="i">
+              <button type="button" class="page-btn" :class="p === page ? 'is-active' : ''"
+                      :disabled="p === '…'" @click="goPage(p)" x-text="p"></button>
+            </template>
+            <button type="button" class="page-btn" :disabled="page >= totalPages" @click="goPage(page + 1)"
+                    aria-label="<?php esc_attr_e( 'Halaman berikutnya', 'absensi-sekolah' ); ?>">
+              <span x-html="$icon( 'chevron-right', 16 )"></span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal Form (tambah/edit user) — design.md §5. Focus-trap penuh = item State. -->
+      <div x-show="modalOpen" x-cloak class="modal-overlay"
+           @keydown.escape.window="closeModal()" @click.self="closeModal()">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="uf-title" @keydown.tab="trapFocus($event)">
+          <div class="modal__head">
+            <h2 class="modal__title" id="uf-title"
+                x-text="editing
+                  ? '<?php echo esc_js( __( 'Edit User', 'absensi-sekolah' ) ); ?>'
+                  : '<?php echo esc_js( __( 'Tambah User', 'absensi-sekolah' ) ); ?>'"></h2>
+            <button type="button" class="modal__close" @click="closeModal()"
+                    aria-label="<?php esc_attr_e( 'Tutup', 'absensi-sekolah' ); ?>">
+              <span x-html="$icon( 'x', 18 )"></span>
+            </button>
+          </div>
+
+          <form @submit.prevent="save()">
+            <div class="modal__body">
+              <!-- Error tingkat form (409 duplikat / lainnya) -->
+              <div x-show="formError" x-cloak class="alert alert--danger">
+                <span class="alert__icon" x-html="$icon( 'alert-circle', 18 )" aria-hidden="true"></span>
+                <span x-text="formError"></span>
+              </div>
+
+              <!-- Nomor Induk (wajib, ≤30) -->
+              <div class="field">
+                <label class="field__label" for="uf-nomor"><?php esc_html_e( 'Nomor Induk (NIS/NIP) *', 'absensi-sekolah' ); ?></label>
+                <input id="uf-nomor" type="text" class="input" :class="fieldErr.nomor_induk ? 'input--error' : ''"
+                       x-model.trim="form.nomor_induk" maxlength="30" required
+                       @input="fieldErr.nomor_induk = false">
+              </div>
+
+              <!-- Nama (wajib, ≤150) -->
+              <div class="field">
+                <label class="field__label" for="uf-nama"><?php esc_html_e( 'Nama *', 'absensi-sekolah' ); ?></label>
+                <input id="uf-nama" type="text" class="input" :class="fieldErr.nama ? 'input--error' : ''"
+                       x-model.trim="form.nama" maxlength="150" required
+                       @input="fieldErr.nama = false">
+              </div>
+
+              <!-- Group (dropdown, opsional) -->
+              <div class="field">
+                <label class="field__label" for="uf-group"><?php esc_html_e( 'Group', 'absensi-sekolah' ); ?></label>
+                <select id="uf-group" class="select" x-model="form.group_id">
+                  <option value=""><?php esc_html_e( '— Tanpa Group —', 'absensi-sekolah' ); ?></option>
+                  <template x-for="g in groups" :key="g.id">
+                    <option :value="g.id" x-text="g.nama"></option>
+                  </template>
+                </select>
+              </div>
+
+              <!-- RFID UID (opsional; bisa juga lewat tombol Bind di baris) -->
+              <div class="field">
+                <label class="field__label" for="uf-rfid">
+                  <?php esc_html_e( 'RFID UID', 'absensi-sekolah' ); ?>
+                  <span class="u-muted">(<?php esc_html_e( 'opsional', 'absensi-sekolah' ); ?>)</span>
+                </label>
+                <input id="uf-rfid" type="text" class="input" :class="fieldErr.rfid_uid ? 'input--error' : ''"
+                       x-model.trim="form.rfid_uid" maxlength="50"
+                       @input="fieldErr.rfid_uid = false"
+                       placeholder="<?php esc_attr_e( 'Kosongkan / bind lewat tombol kartu', 'absensi-sekolah' ); ?>">
+              </div>
+            </div>
+
+            <div class="modal__footer">
+              <button type="button" class="btn btn--outline" @click="closeModal()"><?php esc_html_e( 'Batal', 'absensi-sekolah' ); ?></button>
+              <button type="submit" class="btn btn--primary" :class="saving ? 'is-loading' : ''" :disabled="! canSave">
+                <span class="btn__spin" x-show="saving" x-cloak aria-hidden="true"></span>
+                <span class="btn__label" x-text="editing
+                  ? '<?php echo esc_js( __( 'Simpan Perubahan', 'absensi-sekolah' ) ); ?>'
+                  : '<?php echo esc_js( __( 'Simpan', 'absensi-sekolah' ) ); ?>'"></span>
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Modal Bind RFID (design.md §5). Input UID auto-focus; guard "Ganti" client-side. -->
+      <div x-show="bindOpen" x-cloak class="modal-overlay"
+           @keydown.escape.window="closeBind()" @click.self="closeBind()">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="bind-title" @keydown.tab="trapFocus($event)">
+          <div class="modal__head">
+            <h2 class="modal__title" id="bind-title"
+                x-text="'<?php echo esc_js( __( 'Bind Kartu RFID —', 'absensi-sekolah' ) ); ?> ' + (bindUser ? bindUser.nama : '')"></h2>
+            <button type="button" class="modal__close" @click="closeBind()"
+                    aria-label="<?php esc_attr_e( 'Tutup', 'absensi-sekolah' ); ?>">
+              <span x-html="$icon( 'x', 18 )"></span>
+            </button>
+          </div>
+
+          <form @submit.prevent="saveBind()">
+            <div class="modal__body">
+              <!-- Error (409 kartu_terpakai / 422) -->
+              <div x-show="bindError" x-cloak class="alert alert--danger">
+                <span class="alert__icon" x-html="$icon( 'alert-circle', 18 )" aria-hidden="true"></span>
+                <span x-text="bindError"></span>
+              </div>
+
+              <!-- Input UID (auto-focus, scanner mengisi) -->
+              <div class="field">
+                <label class="field__label" for="bind-uid"><?php esc_html_e( 'UID Kartu', 'absensi-sekolah' ); ?></label>
+                <div class="input-group">
+                  <span class="input-group__icon" x-html="$icon( 'credit-card', 18 )" aria-hidden="true"></span>
+                  <input id="bind-uid" x-ref="binduid" type="text" class="input" x-model.trim="bindUid"
+                         maxlength="50" autocomplete="off" spellcheck="false"
+                         @input="bindError = ''" aria-describedby="bind-hint"
+                         placeholder="<?php esc_attr_e( 'Tap kartu…', 'absensi-sekolah' ); ?>">
+                </div>
+                <p id="bind-hint" class="field__label"><?php esc_html_e( 'Tap kartu pada scanner — UID terisi otomatis.', 'absensi-sekolah' ); ?></p>
+              </div>
+
+              <!-- Ganti kartu lama (muncul bila user sudah punya kartu) -->
+              <label x-show="bindHasCard" x-cloak class="bind-replace">
+                <input type="checkbox" x-model="bindReplace">
+                <span>
+                  <?php esc_html_e( 'Ganti kartu lama', 'absensi-sekolah' ); ?>
+                  (<span class="u-num" x-text="maskRfid(bindUser ? bindUser.rfid_uid : '')"></span>)
+                </span>
+              </label>
+            </div>
+
+            <div class="modal__footer">
+              <button type="button" class="btn btn--outline" @click="closeBind()"><?php esc_html_e( 'Batal', 'absensi-sekolah' ); ?></button>
+              <button type="submit" class="btn btn--primary" :class="binding ? 'is-loading' : ''" :disabled="! canBind">
+                <span class="btn__spin" x-show="binding" x-cloak aria-hidden="true"></span>
+                <span class="btn__label"><?php esc_html_e( 'Simpan Kartu', 'absensi-sekolah' ); ?></span>
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Modal Import Excel (design.md §5) → POST /users/import (base64). -->
+      <div x-show="importOpen" x-cloak class="modal-overlay"
+           @keydown.escape.window="closeImport()" @click.self="closeImport()">
+        <div class="modal modal--lg" role="dialog" aria-modal="true" aria-labelledby="import-title" @keydown.tab="trapFocus($event)">
+          <div class="modal__head">
+            <h2 class="modal__title" id="import-title"><?php esc_html_e( 'Import User dari Excel', 'absensi-sekolah' ); ?></h2>
+            <button type="button" class="modal__close" @click="closeImport()"
+                    aria-label="<?php esc_attr_e( 'Tutup', 'absensi-sekolah' ); ?>">
+              <span x-html="$icon( 'x', 18 )"></span>
+            </button>
+          </div>
+
+          <div class="modal__body">
+            <!-- Info kolom -->
+            <div class="alert alert--info">
+              <span class="alert__icon" x-html="$icon( 'info', 18 )" aria-hidden="true"></span>
+              <span>
+                <?php esc_html_e( 'Kolom wajib:', 'absensi-sekolah' ); ?>
+                <strong>nama</strong>, <strong>nomor_induk</strong>.
+                <?php esc_html_e( 'Opsional', 'absensi-sekolah' ); ?> <strong>group</strong>
+                (<?php esc_html_e( 'dibuat otomatis bila belum ada', 'absensi-sekolah' ); ?>).
+                <?php esc_html_e( 'Maksimal 2000 baris.', 'absensi-sekolah' ); ?>
+              </span>
+            </div>
+
+            <!-- Area upload -->
+            <label class="import-drop">
+              <span class="import-drop__icon" x-html="$icon( 'file-spreadsheet', 32 )" aria-hidden="true"></span>
+              <span x-show="! importFileName"><?php esc_html_e( 'Pilih file .xlsx', 'absensi-sekolah' ); ?></span>
+              <span x-show="importFileName" x-cloak class="import-drop__file" x-text="importFileName"></span>
+              <input type="file" class="import-drop__input"
+                     accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                     @change="onImportFile($event)">
+            </label>
+
+            <!-- Error tingkat (503 vendor absen / 422 header/baris) -->
+            <div x-show="importError" x-cloak class="alert alert--danger">
+              <span class="alert__icon" x-html="$icon( 'alert-circle', 18 )" aria-hidden="true"></span>
+              <span x-text="importError"></span>
+            </div>
+
+            <!-- Hasil impor -->
+            <template x-if="importResult">
+              <div class="import-result">
+                <div class="import-summary">
+                  <span class="import-stat import-stat--ok">
+                    <span x-html="$icon( 'check-circle-2', 16 )" aria-hidden="true"></span>
+                    <span x-text="importResult.imported"></span> <?php esc_html_e( 'berhasil', 'absensi-sekolah' ); ?>
+                  </span>
+                  <span class="import-stat import-stat--err" x-show="importResult.gagal > 0">
+                    <span x-html="$icon( 'x-circle', 16 )" aria-hidden="true"></span>
+                    <span x-text="importResult.gagal"></span> <?php esc_html_e( 'gagal', 'absensi-sekolah' ); ?>
+                  </span>
+                </div>
+                <!-- Tabel error per baris -->
+                <div class="import-errors" x-show="importResult.errors && importResult.errors.length > 0">
+                  <table class="table">
+                    <thead>
+                      <tr>
+                        <th style="width:80px;"><?php esc_html_e( 'Baris', 'absensi-sekolah' ); ?></th>
+                        <th><?php esc_html_e( 'Pesan', 'absensi-sekolah' ); ?></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <template x-for="(er, i) in importResult.errors" :key="i">
+                        <tr>
+                          <td class="u-num" x-text="er.baris"></td>
+                          <td x-text="er.pesan"></td>
+                        </tr>
+                      </template>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </template>
+          </div>
+
+          <div class="modal__footer">
+            <button type="button" class="btn btn--outline" @click="closeImport()"><?php esc_html_e( 'Tutup', 'absensi-sekolah' ); ?></button>
+            <button type="button" class="btn btn--primary" @click="runImport()"
+                    :class="importing ? 'is-loading' : ''" :disabled="! importFile || importing">
+              <span class="btn__spin" x-show="importing" x-cloak aria-hidden="true"></span>
+              <span class="btn__label"><?php esc_html_e( 'Import', 'absensi-sekolah' ); ?></span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal Konfirmasi Hapus (design.md §5) → DELETE /users/{id} -->
+      <div x-show="delOpen" x-cloak class="modal-overlay"
+           @keydown.escape.window="closeDelete()" @click.self="closeDelete()">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="del-title" @keydown.tab="trapFocus($event)">
+          <div class="modal__head">
+            <h2 class="modal__title" id="del-title"><?php esc_html_e( 'Hapus User', 'absensi-sekolah' ); ?></h2>
+            <button type="button" class="modal__close" @click="closeDelete()"
+                    aria-label="<?php esc_attr_e( 'Tutup', 'absensi-sekolah' ); ?>">
+              <span x-html="$icon( 'x', 18 )"></span>
+            </button>
+          </div>
+          <div class="modal__body">
+            <div class="alert alert--danger">
+              <span class="alert__icon" x-html="$icon( 'alert-triangle', 18 )" aria-hidden="true"></span>
+              <span>
+                <?php esc_html_e( 'Yakin hapus', 'absensi-sekolah' ); ?>
+                <strong x-text="delUser ? delUser.nama : ''"></strong>?
+                <?php esc_html_e( 'Tindakan ini tidak bisa dibatalkan.', 'absensi-sekolah' ); ?>
+              </span>
+            </div>
+          </div>
+          <div class="modal__footer">
+            <button type="button" class="btn btn--outline" @click="closeDelete()"><?php esc_html_e( 'Batal', 'absensi-sekolah' ); ?></button>
+            <button type="button" class="btn btn--danger" @click="runDelete()"
+                    :class="deleting ? 'is-loading' : ''" :disabled="deleting">
+              <span class="btn__spin" x-show="deleting" x-cloak aria-hidden="true"></span>
+              <span class="btn__label"><?php esc_html_e( 'Hapus', 'absensi-sekolah' ); ?></span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <?php // State lengkap (skeleton/error/responsive/a11y) = item berikutnya. ?>
+
+    </div>
+  </div>
+</div>

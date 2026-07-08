@@ -1047,6 +1047,298 @@ tr:nth-child(even) td{background:#f9f9f9}
     },
   }));
 
+  /* ─── Users manager (design.md §5) — pivot v2 ────────────────────────────────
+   * Dibangun bertahap per item TODO-FE. Kini: aksi header + filter bar (search/group).
+   * Berikutnya: tabel (GET /users) + pagination, modal form/bind/import, hapus, state.
+   * Endpoint: /users CRUD, /users/{id}/rfid, /users/import; opsi group GET /group. */
+  Alpine.data('usersManager', () => ({
+    // ── Filter ──
+    // Catatan kontrak BE: GET /users = array polos, hanya honor `group_id` (server);
+    // TAK ADA param `search` & TAK ADA pagination server → search + paging = client-side.
+    search:  '',          // filter client (nama/nomor_induk)
+    groupId: '',          // param `group_id` (server-side)
+    groups:  [],          // opsi group (GET /group) → { id, nama, tipe, jumlah_user }
+    page:    1,           // halaman aktif (client)
+    perPage: 10,
+
+    // ── Data tabel ──
+    users:   [],          // baris GET /users (u.* + nama_group + tipe_group)
+    loading: false,
+    error:   false,
+
+    // ── Modal Form (tambah/edit) ──
+    modalOpen: false,
+    editing:   null,      // id user saat edit; null = tambah
+    saving:    false,
+    form:      { nomor_induk: '', nama: '', group_id: '', rfid_uid: '' },
+    formError: '',        // pesan error tingkat form (409/lainnya)
+    fieldErr:  {},        // { nomor_induk:true, nama:true, rfid_uid:true } → tandai field
+
+    // ── Modal Bind RFID ──
+    // Catatan BE (set_rfid): TAK ada param `replace`/`sudah_punya_kartu`; kartu user sendiri
+    // ditimpa diam-diam, hanya blok bila UID milik user lain (409 kartu_terpakai). Maka guard
+    // "Ganti kartu" = CLIENT-side (deteksi dari u.rfid_uid); `replace` dikirim utk forward-compat.
+    bindOpen:    false,
+    bindUser:    null,    // { id, nama, rfid_uid }
+    bindUid:     '',
+    bindReplace: false,
+    binding:     false,
+    bindError:   '',
+
+    // ── Modal Import Excel ──
+    importOpen:     false,
+    importing:      false,
+    importFile:     null,   // File terpilih
+    importFileName: '',
+    importResult:   null,   // { imported, gagal, errors:[{baris,pesan}] }
+    importError:    '',     // 503 spreadsheet_absen / 422 header/baris/dll
+
+    // ── Konfirmasi Hapus ──
+    delOpen:  false,
+    delUser:  null,         // { id, nama }
+    deleting: false,
+
+    init() { this.loadGroups(); this.loadUsers(); },
+
+    /* Muat opsi group untuk Select (GET /group). Gagal → biarkan kosong (filter tetap jalan). */
+    async loadGroups() {
+      try { this.groups = await window.api.get('group') || []; }
+      catch (e) { this.groups = []; }
+    },
+
+    /* Ambil daftar user. group_id difilter server; search + paging diproses client. */
+    async loadUsers() {
+      this.loading = true; this.error = false;
+      try {
+        var url = this.groupId ? ('users?group_id=' + encodeURIComponent(this.groupId)) : 'users';
+        this.users = await window.api.get(url) || [];
+      } catch (e) {
+        this.error = true; this.users = [];
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    /* Reset filter ke kondisi awal lalu refetch (group berubah → server refetch). */
+    resetFilter() {
+      this.search = ''; this.groupId = ''; this.page = 1;
+      this.loadUsers();
+    },
+
+    // ── Turunan client-side: search + pagination ──
+    get filteredUsers() {
+      var q = this.search.trim().toLowerCase();
+      if (!q) return this.users;
+      return this.users.filter(function (u) {
+        return String(u.nama || '').toLowerCase().indexOf(q) !== -1
+            || String(u.nomor_induk || '').toLowerCase().indexOf(q) !== -1;
+      });
+    },
+    get totalFiltered() { return this.filteredUsers.length; },
+    get totalPages()    { return Math.max(1, Math.ceil(this.totalFiltered / this.perPage)); },
+    get pagedUsers()    {
+      var p = Math.min(this.page, this.totalPages);
+      var start = (p - 1) * this.perPage;
+      return this.filteredUsers.slice(start, start + this.perPage);
+    },
+    get pageStart() { return this.totalFiltered ? ((Math.min(this.page, this.totalPages) - 1) * this.perPage) + 1 : 0; },
+    get pageEnd()   { return Math.min(Math.min(this.page, this.totalPages) * this.perPage, this.totalFiltered); },
+    /* Deret tombol halaman dgn elipsis '…' (windowing bila banyak). */
+    get pageWindow() {
+      var tp = this.totalPages, cur = Math.min(this.page, tp), out = [];
+      if (tp <= 7) { for (var i = 1; i <= tp; i++) out.push(i); return out; }
+      out.push(1);
+      var lo = Math.max(2, cur - 1), hi = Math.min(tp - 1, cur + 1);
+      if (lo > 2) out.push('…');
+      for (var j = lo; j <= hi; j++) out.push(j);
+      if (hi < tp - 1) out.push('…');
+      out.push(tp);
+      return out;
+    },
+    goPage(p) { if (typeof p === 'number' && p >= 1 && p <= this.totalPages) this.page = p; },
+
+    // ── Util tampilan ──
+    inisial(nama) {
+      var parts = String(nama || '?').trim().split(/\s+/).slice(0, 2).map(function (s) { return s.charAt(0); });
+      return (parts.join('') || '?').toUpperCase();
+    },
+    maskRfid(uid) {
+      if (!uid) return '';
+      var s = String(uid);
+      return s.length <= 4 ? s : '••••' + s.slice(-4);
+    },
+    tipeBadge(tipe) {
+      return ({ kelas: 'badge--kelas', guru: 'badge--guru', staff: 'badge--staff' })[tipe] || 'badge--kelas';
+    },
+    tipeLabel(tipe) {
+      return ({ kelas: 'Kelas', guru: 'Guru', staff: 'Staff' })[tipe] || (tipe || '');
+    },
+
+    // ── Modal Form: buka/tutup/simpan ──
+    _resetForm() { this.form = { nomor_induk: '', nama: '', group_id: '', rfid_uid: '' }; this.formError = ''; this.fieldErr = {}; },
+
+    /* Buka modal Tambah User (form kosong). */
+    openCreate() {
+      this._resetForm();
+      this.editing = null;
+      this.modalOpen = true;
+      this._focusById('uf-nomor');
+    },
+
+    /* Buka modal Edit User (form terisi dari baris). */
+    openEdit(u) {
+      this._resetForm();
+      this.editing = u.id;
+      this.form = {
+        nomor_induk: u.nomor_induk || '',
+        nama:        u.nama || '',
+        group_id:    u.group_id ? String(u.group_id) : '',
+        rfid_uid:    u.rfid_uid || '',
+      };
+      this.modalOpen = true;
+      this._focusById('uf-nomor');
+    },
+
+    closeModal() { this.modalOpen = false; },
+
+    _focusById(id) {
+      this.$nextTick(function () { var el = document.getElementById(id); if (el) el.focus(); });
+    },
+
+    /* Focus-trap modal (a11y): Tab di elemen terakhir → balik ke pertama, & sebaliknya.
+     * Dipasang @keydown.tab pada tiap .modal. Esc & aria-* sudah di markup. */
+    trapFocus(e) {
+      var root = e.currentTarget;
+      var els = root.querySelectorAll(
+        'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'
+      );
+      if (!els.length) return;
+      var first = els[0], last = els[els.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    },
+
+    /* Wajib nomor_induk & nama terisi (design.md §5: Simpan disabled bila kosong). */
+    get canSave() { return !this.saving && this.form.nomor_induk.trim() !== '' && this.form.nama.trim() !== ''; },
+
+    /* Simpan (POST tambah / PUT edit). Tangani 422 (field wajib) & 409 (duplikat). */
+    async save() {
+      if (!this.canSave) return;
+      this.saving = true; this.formError = ''; this.fieldErr = {};
+      try {
+        var body = { nomor_induk: this.form.nomor_induk.trim(), nama: this.form.nama.trim() };
+        body.group_id = this.form.group_id ? parseInt(this.form.group_id, 10) : 0;
+        var uid = this.form.rfid_uid.trim();
+        if (uid) body.rfid_uid = uid;                 // omit bila kosong → hindari bentrok UNIQUE ''
+        if (this.editing) await window.api.put('users/' + this.editing, body);
+        else              await window.api.post('users', body);
+        window.absensiToast(this.editing ? 'User diperbarui.' : 'User ditambahkan.', 'success');
+        this.modalOpen = false;
+        this.loadUsers();
+      } catch (err) {
+        var e = window.absensiApiError(err);
+        if (e.status === 422) {
+          this.fieldErr = { nomor_induk: true, nama: true };   // field wajib (server)
+        } else if (e.status === 409) {
+          this.fieldErr = { nomor_induk: true, rfid_uid: true }; // duplikat (BE generik: salah satu unik)
+        }
+        this.formError = e.message;                            // pesan tetap tampil di form
+      } finally {
+        this.saving = false;
+      }
+    },
+
+    // ── Modal Bind RFID: buka/tutup/simpan ──
+    /* Buka modal bind; input UID auto-focus supaya scanner (HID) langsung mengisi. */
+    openBind(u) {
+      this.bindUser = { id: u.id, nama: u.nama, rfid_uid: u.rfid_uid || '' };
+      this.bindUid = ''; this.bindReplace = false; this.bindError = '';
+      this.bindOpen = true;
+      this.$nextTick(function () { if (this.$refs.binduid) this.$refs.binduid.focus(); }.bind(this));
+    },
+    closeBind() { this.bindOpen = false; },
+    /* User sudah punya kartu → wajib centang "Ganti" dulu (guard client, cegah timpa tak sengaja). */
+    get bindHasCard() { return !!(this.bindUser && this.bindUser.rfid_uid); },
+    get canBind() { return !this.binding && this.bindUid.trim() !== '' && (!this.bindHasCard || this.bindReplace); },
+
+    /* Simpan bind (POST /users/{id}/rfid). Tangani 409 kartu_terpakai / 422 uid_kosong. */
+    async saveBind() {
+      if (!this.canBind) return;
+      this.binding = true; this.bindError = '';
+      try {
+        var body = { rfid_uid: this.bindUid.trim() };
+        if (this.bindReplace) body.replace = true;      // BE abaikan; forward-compat
+        await window.api.post('users/' + this.bindUser.id + '/rfid', body);
+        window.absensiToast('Kartu terpasang.', 'success');
+        this.bindOpen = false;
+        this.loadUsers();
+      } catch (err) {
+        this.bindError = window.absensiApiError(err).message;   // 409 kartu_terpakai / 422 uid_kosong
+      } finally {
+        this.binding = false;
+      }
+    },
+
+    // ── Modal Import Excel: buka/tutup/jalankan ──
+    openImport() {
+      this.importFile = null; this.importFileName = '';
+      this.importResult = null; this.importError = '';
+      this.importOpen = true;
+    },
+    closeImport() { this.importOpen = false; },
+    onImportFile(e) {
+      var f = e.target.files && e.target.files[0];
+      this.importFile = f || null;
+      this.importFileName = f ? f.name : '';
+      this.importResult = null; this.importError = '';
+    },
+
+    /* Kirim .xlsx sbg base64 (window.api = JSON; BE terima param `file`). 200 {imported,gagal,errors}. */
+    async runImport() {
+      if (!this.importFile || this.importing) return;
+      this.importing = true; this.importError = ''; this.importResult = null;
+      try {
+        var dataUrl = await this._fileToBase64(this.importFile);
+        var data = await window.api.post('users/import', { file: dataUrl });
+        this.importResult = data;                        // { imported, gagal, errors }
+        if (data && data.imported > 0) {
+          window.absensiToast(data.imported + ' user diimpor.', 'success');
+          this.loadUsers();
+        }
+      } catch (err) {
+        this.importError = window.absensiApiError(err).message;   // 503 / 422 header/baris
+      } finally {
+        this.importing = false;
+      }
+    },
+    _fileToBase64(file) {
+      return new Promise(function (resolve, reject) {
+        var r = new FileReader();
+        r.onload  = function () { resolve(r.result); };  // data:...;base64,XXX (BE strip prefix)
+        r.onerror = function () { reject(r.error); };
+        r.readAsDataURL(file);
+      });
+    },
+
+    // ── Konfirmasi Hapus: buka/tutup/jalankan ──
+    confirmDelete(u) { this.delUser = { id: u.id, nama: u.nama }; this.delOpen = true; },
+    closeDelete() { this.delOpen = false; },
+    async runDelete() {
+      if (!this.delUser || this.deleting) return;
+      this.deleting = true;
+      try {
+        await window.api.delete('users/' + this.delUser.id);
+        window.absensiToast('User dihapus.', 'success');
+        this.delOpen = false;
+        this.loadUsers();
+      } catch (err) {
+        window.absensiToastError(err);   // gagal → toast merah, modal tetap (design.md §5)
+      } finally {
+        this.deleting = false;
+      }
+    },
+  }));
+
 }); // end alpine:init
 
 /* ─── Ikon Lucide (design.md §2.3) — helper render ikon ──────────────────────
@@ -1073,6 +1365,7 @@ tr:nth-child(even) td{background:#f9f9f9}
     'trash-2':          '<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/>',
     'credit-card':      '<rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/>',
     'upload':           '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/>',
+    'file-spreadsheet': '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M8 13h2"/><path d="M14 13h2"/><path d="M8 17h2"/><path d="M14 17h2"/>',
     'download':         '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>',
     'refresh-cw':       '<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>',
     'search':           '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
