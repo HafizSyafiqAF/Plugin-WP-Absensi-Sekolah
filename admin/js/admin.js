@@ -1339,6 +1339,120 @@ tr:nth-child(even) td{background:#f9f9f9}
     },
   }));
 
+  /* ─── Group manager (design.md §6) — pivot v2 ────────────────────────────────
+   * Dibangun bertahap per item TODO-FE. Kini: aksi header (Tambah Group).
+   * Berikutnya: tabel (GET /group) + modal form + hapus (409 group_ada_user) + state.
+   * Endpoint: /group CRUD. */
+  Alpine.data('groupManager', () => ({
+    groups:  [],          // baris GET /group (g.* + jumlah_user)
+    loading: false,
+    error:   false,
+
+    // ── Modal Form (tambah/edit) ──
+    modalOpen: false,
+    editing:   null,      // id group saat edit; null = tambah
+    saving:    false,
+    form:      { nama: '', tipe: 'kelas' },
+    formError: '',
+    fieldErr:  {},
+
+    // ── Konfirmasi Hapus ──
+    delOpen:  false,
+    delGroup: null,       // { id, nama, jumlah_user }
+    deleting: false,
+    delError: '',
+
+    init() { this.loadGroups(); },
+
+    /* Ambil daftar group (GET /group). Tiap baris bawa jumlah_user. */
+    async loadGroups() {
+      this.loading = true; this.error = false;
+      try { this.groups = await window.api.get('group') || []; }
+      catch (e) { this.error = true; this.groups = []; }
+      finally { this.loading = false; }
+    },
+
+    // Peta tipe → badge/label (design.md §6: Kelas primary, Guru purple, Staff info)
+    tipeBadge(t) { return ({ kelas: 'badge--kelas', guru: 'badge--guru', staff: 'badge--staff' })[t] || 'badge--kelas'; },
+    tipeLabel(t) { return ({ kelas: 'Kelas', guru: 'Guru', staff: 'Staff' })[t] || (t || ''); },
+
+    // ── Modal Form: buka/tutup/simpan ──
+    _resetForm() { this.form = { nama: '', tipe: 'kelas' }; this.formError = ''; this.fieldErr = {}; },
+    openCreate() {
+      this._resetForm(); this.editing = null; this.modalOpen = true;
+      this._focusById('gf-nama');
+    },
+    openEdit(g) {
+      this._resetForm();
+      this.editing = g.id;
+      this.form = { nama: g.nama || '', tipe: g.tipe || 'kelas' };
+      this.modalOpen = true;
+      this._focusById('gf-nama');
+    },
+    closeModal() { this.modalOpen = false; },
+    get canSave() { return !this.saving && this.form.nama.trim() !== ''; },
+
+    /* Simpan (POST tambah / PUT edit). Tangani 422 nama_wajib. */
+    async save() {
+      if (!this.canSave) return;
+      this.saving = true; this.formError = ''; this.fieldErr = {};
+      try {
+        var body = { nama: this.form.nama.trim(), tipe: this.form.tipe };
+        if (this.editing) await window.api.put('group/' + this.editing, body);
+        else              await window.api.post('group', body);
+        window.absensiToast(this.editing ? 'Group diperbarui.' : 'Group ditambahkan.', 'success');
+        this.modalOpen = false;
+        this.loadGroups();
+      } catch (err) {
+        var e = window.absensiApiError(err);
+        if (e.status === 422) this.fieldErr = { nama: true };   // nama_wajib
+        this.formError = e.message;
+      } finally {
+        this.saving = false;
+      }
+    },
+
+    _focusById(id) {
+      this.$nextTick(function () { var el = document.getElementById(id); if (el) el.focus(); });
+    },
+    /* Focus-trap modal (a11y, design.md §6): Tab berputar dalam modal. */
+    trapFocus(e) {
+      var root = e.currentTarget;
+      var els = root.querySelectorAll(
+        'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'
+      );
+      if (!els.length) return;
+      var first = els[0], last = els[els.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    },
+
+    // ── Konfirmasi Hapus: buka/tutup/jalankan ──
+    confirmDelete(g) {
+      this.delGroup = { id: g.id, nama: g.nama, jumlah_user: g.jumlah_user || 0 };
+      this.delError = '';
+      this.delOpen = true;
+    },
+    closeDelete() { this.delOpen = false; },
+    /* Proaktif (design.md §6): group masih punya user → cegah hapus sebelum kirim. */
+    get delHasUsers() { return !!(this.delGroup && this.delGroup.jumlah_user > 0); },
+
+    async runDelete() {
+      if (!this.delGroup || this.deleting || this.delHasUsers) return;
+      this.deleting = true; this.delError = '';
+      try {
+        await window.api.delete('group/' + this.delGroup.id);
+        window.absensiToast('Group dihapus.', 'success');
+        this.delOpen = false;
+        this.loadGroups();
+      } catch (err) {
+        this.delError = window.absensiApiError(err).message;   // 409 group_ada_user (pesan bawa N)
+      } finally {
+        this.deleting = false;
+      }
+    },
+  }));
+
 }); // end alpine:init
 
 /* ─── Ikon Lucide (design.md §2.3) — helper render ikon ──────────────────────

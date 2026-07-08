@@ -303,6 +303,10 @@
 .absensi-app .bind-replace { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--c-text); cursor: pointer; }
 .absensi-app .bind-replace input { width: 16px; height: 16px; accent-color: var(--c-primary); cursor: pointer; }
 
+/* Jumlah user per group (tabel Group) */
+.absensi-app .group-count { display: inline-flex; align-items: center; gap: 6px; }
+.absensi-app .group-count__icon { display: inline-flex; color: var(--c-text-muted); }
+
 /* Modal Import Excel */
 .absensi-app .import-drop {
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
@@ -419,4 +423,24 @@
   .absensi-app .users-table td.col-actions { justify-content: flex-end; padding-top: 10px; border-top: 1px solid var(--c-border); margin-top: 6px; }
   .absensi-app .users-table td.col-actions::before { display: none; }
   .absensi-app .users-table .table__user { gap: 10px; }
+
+  /* Group: tabel → card-list (design.md §6 mobile), pola sama */
+  .absensi-app .group-table thead { display: none; }
+  .absensi-app .group-table, .absensi-app .group-table tbody,
+  .absensi-app .group-table tr, .absensi-app .group-table td { display: block; width: 100%; }
+  .absensi-app .group-table tr {
+    padding: 12px 14px; border: 1px solid var(--c-border); border-radius: var(--r-lg);
+    margin-bottom: 12px; background: var(--c-surface);
+  }
+  .absensi-app .group-table tbody tr:hover td { background: transparent; }
+  .absensi-app .group-table td {
+    height: auto; padding: 6px 0; border: 0;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  }
+  .absensi-app .group-table td::before {
+    content: attr(data-label); flex: none; font-size: 12px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .04em; color: var(--c-text-muted);
+  }
+  .absensi-app .group-table td.col-actions { justify-content: flex-end; padding-top: 10px; border-top: 1px solid var(--c-border); margin-top: 6px; }
+  .absensi-app .group-table td.col-actions::before { display: none; }
 }
