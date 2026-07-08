@@ -29,7 +29,6 @@ class Menu {
             [ 'absensi-dashboard',  __( 'Dashboard',    'absensi-sekolah' ), 'manage_options',  [ $this, 'page_dashboard'  ] ],
             [ 'absensi-users',      __( 'Users',        'absensi-sekolah' ), 'manage_options',  [ $this, 'page_users'      ] ],
             [ 'absensi-group',      __( 'Group',        'absensi-sekolah' ), 'manage_options',  [ $this, 'page_group'      ] ],
-            [ 'absensi-rfid',       __( 'Absen RFID',   'absensi-sekolah' ), 'manage_options',  [ $this, 'page_rfid'       ] ],
             [ 'absensi-laporan',    __( 'Laporan',      'absensi-sekolah' ), 'manage_options',  [ $this, 'page_laporan'    ] ],
             [ 'absensi-settings',   __( 'Pengaturan',   'absensi-sekolah' ), 'manage_options',  [ $this, 'page_settings'   ] ],
         ];
@@ -44,7 +43,6 @@ class Menu {
     public function page_dashboard(): void  { $this->render( 'dashboard' ); }
     public function page_users(): void      { $this->render( 'users' ); }
     public function page_group(): void      { $this->render( 'group' ); }
-    public function page_rfid(): void       { $this->render( 'rfid' ); }
     public function page_laporan(): void    { $this->render( 'laporan' ); }
     public function page_settings(): void   { $this->render( 'settings' ); }
 

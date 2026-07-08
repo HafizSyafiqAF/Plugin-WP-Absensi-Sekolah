@@ -778,10 +778,6 @@ tr:nth-child(even) td{background:#f9f9f9}
       return (nama || '?').split(' ').slice(0, 2).map(w => w[0] || '').join('').toUpperCase() || '?';
     },
 
-    openWali(id, nama) {
-      window.dispatchEvent(new CustomEvent('open-wali-linker', { detail: { siswaId: id, siswaName: nama } }));
-    },
-
     init() {
       this.kelasOptions = window._swKelasOpts || [];
       this.loadSiswa();
@@ -859,90 +855,6 @@ tr:nth-child(even) td{background:#f9f9f9}
         this.saving = false;
       }
     },
-  }));
-
-  Alpine.data('waliLinker', () => ({
-    open:        false,
-    siswaId:     null,
-    siswaName:   '',
-    walis:       [],
-    loadingWali: false,
-    search:      '',
-    results:     [],
-    searching:   false,
-    addingId:    null,
-    error:       null,
-
-    init() {
-      window.addEventListener('open-wali-linker', e => {
-        this.siswaId   = e.detail.siswaId;
-        this.siswaName = e.detail.siswaName;
-        this.search    = '';
-        this.results   = [];
-        this.error     = null;
-        this.open      = true;
-        this.loadWali();
-      });
-    },
-
-    async loadWali() {
-      if (!this.siswaId) return;
-      this.loadingWali = true;
-      try {
-        const data = await window.api.get(`wali?siswa_id=${this.siswaId}`);
-        this.walis = data.data ?? data ?? [];
-      } catch {
-        this.walis = [];
-      } finally {
-        this.loadingWali = false;
-      }
-    },
-
-    async searchUsers() {
-      if (this.search.length < 2) { this.results = []; return; }
-      this.searching = true;
-      try {
-        const nonce = window.AbsensiAdmin?.nonce ?? '';
-        const url   = `/wp-json/wp/v2/users?search=${encodeURIComponent(this.search)}&roles=orang_tua&_fields=id,name,slug&context=edit`;
-        const res   = await fetch(url, { headers: { 'X-WP-Nonce': nonce } });
-        const data  = await res.json();
-        this.results = Array.isArray(data) ? data : [];
-      } catch {
-        this.results = [];
-      } finally {
-        this.searching = false;
-      }
-    },
-
-    async addWali(user) {
-      this.addingId = user.id;
-      this.error    = null;
-      try {
-        await window.api.post('wali', { wali_user_id: user.id, siswa_id: this.siswaId });
-        await this.loadWali();
-        this.search  = '';
-        this.results = [];
-      } catch (err) {
-        const code = err.data?.code;
-        this.error = code === 'sudah_terhubung' ? 'Orang tua ini sudah terhubung.'
-                   : code === 'wali_invalid'    ? 'User tidak ditemukan atau bukan orang tua.'
-                   : err.message;
-      } finally {
-        this.addingId = null;
-      }
-    },
-
-    async removeWali(waliId, waliNama) {
-      if (!confirm(`Lepas hubungan "${waliNama}" dari siswa ini?`)) return;
-      try {
-        await window.api.delete(`wali/${waliId}`);
-        this.walis = this.walis.filter(w => w.id !== waliId);
-      } catch (err) {
-        alert(err.message);
-      }
-    },
-
-    close() { this.open = false; },
   }));
 
   Alpine.data('jadwalManager', () => ({
@@ -1343,6 +1255,382 @@ tr:nth-child(even) td{background:#f9f9f9}
    * Dibangun bertahap per item TODO-FE. Kini: aksi header (Tambah Group).
    * Berikutnya: tabel (GET /group) + modal form + hapus (409 group_ada_user) + state.
    * Endpoint: /group CRUD. */
+  /* ─── Laporan manager (design.md §8) — pivot v2 ──────────────────────────────
+   * Dibangun bertahap per item TODO-FE. Kini: aksi header (dropdown Export).
+   * Berikutnya: summary cards, filter server + pill status client, tabel + pagination,
+   * export (unduh + 503), state. Endpoint: /laporan, /laporan/summary, /laporan/export.
+   * Label pakai "Group" & "Nomor Induk". */
+  /* ─── Settings manager (design.md §9) — pivot v2 ─────────────────────────────
+   * Dibangun bertahap per item TODO-FE. Kini: 5 card + prefill (GET /settings).
+   * Berikutnya: map picker, Simpan (PUT /settings) + 422.
+   * Prefill: GET /settings; fallback AbsensiAdmin.settings. Token TAK di-prefill (sensitif). */
+  Alpine.data('settingsManager', () => ({
+    form: {
+      lat: '', lng: '', radius: 100, akurasi_max: 100,
+      jam_masuk: '07:00', jam_keluar: '15:00', telat_menit: 15,
+      rfid_debounce: 3, retensi_hari: 90,
+      wa_gateway: '', wa_token: '',   // wa_token tak di-prefill (placeholder ••••)
+    },
+    hasToken:  false,   // server sudah punya token → placeholder ••••
+    loading:   false,
+    error:     false,
+    saving:    false,
+    fieldErr:  {},
+
+    init() { this.loadSettings(); },
+
+    /* Petakan respons /settings (key absensi_*) → form. */
+    _apply(d) {
+      if (!d) return;
+      this.form.lat           = d.absensi_lat ?? '';
+      this.form.lng           = d.absensi_lng ?? '';
+      this.form.radius        = d.absensi_radius ?? 100;
+      this.form.akurasi_max   = d.absensi_akurasi_max ?? 100;
+      this.form.jam_masuk     = d.absensi_jam_masuk || '07:00';
+      this.form.jam_keluar    = d.absensi_jam_keluar || '15:00';
+      this.form.telat_menit   = d.absensi_telat_menit ?? 15;
+      this.form.rfid_debounce = d.absensi_rfid_debounce ?? 3;
+      this.form.retensi_hari  = d.absensi_retensi_hari ?? 90;
+      this.form.wa_gateway    = d.absensi_wa_gateway || '';
+      this.hasToken           = !!d.absensi_wa_token;   // token ada tapi tak ditaruh di field
+    },
+
+    /* Prefill GET /settings; gagal → fallback AbsensiAdmin.settings. */
+    async loadSettings() {
+      this.loading = true; this.error = false;
+      try {
+        this._apply(await window.api.get('settings'));
+      } catch (e) {
+        var cfg = (window.AbsensiAdmin && window.AbsensiAdmin.settings) || null;
+        if (cfg) { this._apply(cfg); } else { this.error = true; }
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    /* Map picker (design.md §9) — versi tanpa lib peta (BE belum enqueue Leaflet):
+     * isi lat/lng dari GPS perangkat operator (biasanya di sekolah). */
+    locating: false,
+    useMyLocation() {
+      if (!navigator.geolocation) { window.absensiToast('Perangkat tak mendukung GPS.', 'warning'); return; }
+      var self = this;
+      this.locating = true;
+      navigator.geolocation.getCurrentPosition(
+        function (pos) {
+          self.form.lat = Number(pos.coords.latitude.toFixed(6));
+          self.form.lng = Number(pos.coords.longitude.toFixed(6));
+          self.locating = false;
+          window.absensiToast('Lokasi terisi dari GPS perangkat.', 'success');
+        },
+        function (err) {
+          self.locating = false;
+          window.absensiToast(err && err.code === 1 ? 'Izin lokasi ditolak.' : 'Gagal ambil lokasi.', 'error');
+        },
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
+      );
+    },
+    /* Link peta (OSM) untuk verifikasi titik saat ini. */
+    get mapUrl() {
+      var lat = this.form.lat, lng = this.form.lng;
+      if (lat === '' || lng === '' || lat == null || lng == null) return '';
+      return 'https://www.openstreetmap.org/?mlat=' + lat + '&mlon=' + lng + '#map=17/' + lat + '/' + lng;
+    },
+
+    /* Simpan (PUT /settings). Partial update; token dikirim hanya bila diisi (ganti).
+     * 422 → tandai field bermasalah (errors keyed absensi_*) + toast. */
+    async save() {
+      if (this.saving) return;
+      this.saving = true; this.fieldErr = {};
+      try {
+        var f = this.form;
+        var body = {
+          absensi_lat:           Number(f.lat) || 0,
+          absensi_lng:           Number(f.lng) || 0,
+          absensi_radius:        parseInt(f.radius, 10) || 0,
+          absensi_akurasi_max:   parseInt(f.akurasi_max, 10) || 0,
+          absensi_jam_masuk:     f.jam_masuk,
+          absensi_jam_keluar:    f.jam_keluar,
+          absensi_telat_menit:   parseInt(f.telat_menit, 10) || 0,
+          absensi_rfid_debounce: parseInt(f.rfid_debounce, 10) || 0,
+          absensi_retensi_hari:  parseInt(f.retensi_hari, 10) || 0,
+          absensi_wa_gateway:    f.wa_gateway,
+        };
+        if (f.wa_token && f.wa_token.trim()) body.absensi_wa_token = f.wa_token.trim();
+        var data = await window.api.put('settings', body);
+        if (data && data.settings) this._apply(data.settings);   // sync nilai ter-clamp server
+        this.form.wa_token = '';                                  // bersihkan field token
+        window.absensiToast('Pengaturan disimpan.', 'success');
+      } catch (err) {
+        var e = window.absensiApiError(err);
+        if (e.status === 422) {
+          var errs = (err && err.data && err.data.errors) || {};
+          var fe = {};
+          Object.keys(errs).forEach(function (k) { fe[k] = true; });
+          this.fieldErr = fe;
+          window.absensiToast(e.message || 'Sebagian field tidak valid.', 'error');
+        } else {
+          window.absensiToast(e.message, 'error');
+        }
+      } finally {
+        this.saving = false;
+      }
+    },
+  }));
+
+  /* ─── Dashboard manager (design.md §4) — pivot v2 ────────────────────────────
+   * Dibangun bertahap per item TODO-FE. Kini: Quick Stats (6) + Refresh.
+   * Berikutnya: grafik kehadiran, quick action, absensi terbaru, state.
+   * Sumber: /laporan/summary (hadir/telat/izin/alpha), /users (total = panjang array),
+   * /group (total). CATATAN: /users array polos → total = .length (BE tak sedia field total). */
+  Alpine.data('dashboardManager', () => ({
+    stats:      { totalUser: 0, totalGroup: 0, hadir: 0, telat: 0, izin: 0, sakit: 0, alpha: 0 },
+    recent:     [],       // absensi terbaru (GET /laporan, limit kecil)
+    loading:    false,
+    error:      false,
+
+    // Grafik distribusi kehadiran (design.md §4) — 5 status dari summary hari ini.
+    chartStatuses: [
+      { key: 'hadir', label: 'Hadir', tone: 'success' },
+      { key: 'telat', label: 'Telat', tone: 'warning' },
+      { key: 'izin',  label: 'Izin',  tone: 'info' },
+      { key: 'sakit', label: 'Sakit', tone: 'purple' },
+      { key: 'alpha', label: 'Alpha', tone: 'danger' },
+    ],
+    /* Nilai maksimum status (skala bar); minimal 1 agar tak bagi nol. */
+    get chartMax() {
+      var self = this, m = 0;
+      this.chartStatuses.forEach(function (s) { var v = self.stats[s.key] || 0; if (v > m) m = v; });
+      return m || 1;
+    },
+    /* Persen lebar bar utk nilai v. */
+    barPct(v) { return Math.round(((v || 0) / this.chartMax) * 100); },
+    /* Total record status (untuk empty state grafik). */
+    get chartTotal() {
+      var self = this, t = 0;
+      this.chartStatuses.forEach(function (s) { t += self.stats[s.key] || 0; });
+      return t;
+    },
+
+    // 6 kartu Quick Stats (design.md §4): ikon + tone warna.
+    statCards: [
+      { key: 'totalUser',  label: 'Total User',  icon: 'users',           tone: 'primary' },
+      { key: 'totalGroup', label: 'Total Group', icon: 'layers',          tone: 'primary' },
+      { key: 'hadir',      label: 'Hadir',       icon: 'check-circle-2',  tone: 'success', sub: 'hari ini' },
+      { key: 'telat',      label: 'Telat',       icon: 'clock',           tone: 'warning', sub: 'hari ini' },
+      { key: 'izin',       label: 'Izin',        icon: 'info',            tone: 'info',    sub: 'hari ini' },
+      { key: 'alpha',      label: 'Alpha',       icon: 'x-circle',        tone: 'danger',  sub: 'hari ini' },
+    ],
+
+    init() { this.loadStats(); },
+
+    /* Muat Quick Stats (paralel: summary hari ini + jumlah user + jumlah group). */
+    async loadStats() {
+      this.loading = true; this.error = false;
+      try {
+        var r = await Promise.all([
+          window.api.get('laporan/summary'),          // { hadir, telat, izin, sakit, alpha, total }
+          window.api.get('users'),                    // array → total = length
+          window.api.get('group'),                    // array → total = length
+          window.api.get('laporan?per_page=8&page=1'), // { data } → absensi terbaru
+        ]);
+        var sum = r[0] || {}, users = r[1] || [], groups = r[2] || [], recent = r[3] || {};
+        this.stats = {
+          totalUser:  Array.isArray(users)  ? users.length  : 0,
+          totalGroup: Array.isArray(groups) ? groups.length : 0,
+          hadir: sum.hadir || 0, telat: sum.telat || 0, izin: sum.izin || 0,
+          sakit: sum.sakit || 0, alpha: sum.alpha || 0,
+        };
+        this.recent = (recent && recent.data) || [];
+      } catch (e) {
+        this.error = true;
+      } finally {
+        this.loading = false;
+      }
+    },
+    /* Refresh semua data (design.md §4 tombol Refresh). */
+    refresh() { this.loadStats(); },
+
+    // ── Util tampilan (Absensi Terbaru) ──
+    jamHM(w) { return w ? String(w).slice(11, 16) : '—'; },
+    statusBadge(s) { return ({ hadir: 'badge--hadir', telat: 'badge--telat', izin: 'badge--izin', sakit: 'badge--sakit', alpha: 'badge--alpha' })[s] || ''; },
+    statusLabel(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : '—'; },
+    inisial(nama) {
+      var p = String(nama || '?').trim().split(/\s+/).slice(0, 2).map(function (x) { return x.charAt(0); });
+      return (p.join('') || '?').toUpperCase();
+    },
+  }));
+
+  Alpine.data('laporanManager', () => ({
+    exportOpen: false,    // dropdown format export
+
+    // ── Filter server ──
+    // Dikirim ke /laporan & /laporan/summary: dari, sampai, preset, group_id (+ page/per_page tabel).
+    filter: { dari: '', sampai: '', preset: '', group_id: '' },
+    groups:  [],          // opsi Select Group (GET /group)
+    page:    1,           // halaman tabel (pagination item Tabel)
+    perPage: 50,          // per_page ke /laporan
+
+    // ── Summary (GET /laporan/summary) ──
+    summary:        { hadir: 0, telat: 0, izin: 0, sakit: 0, alpha: 0, total: 0 },
+    summaryLoading: false,
+    summaryError:   false,
+
+    // ── Tabel rows (GET /laporan) + filter status client ──
+    rows:           [],   // baris rekap halaman aktif (GET /laporan .data)
+    total:          0,    // total baris (server)
+    totalPage:      1,    // total_page (server)
+    laporanLoading: false,
+    laporanError:   false,
+    statusFilter: '',     // '' = Semua; else saring rows client-side
+    statusPills: [
+      { key: '',      label: 'Semua' },
+      { key: 'hadir', label: 'Hadir' },
+      { key: 'telat', label: 'Telat' },
+      { key: 'izin',  label: 'Izin' },
+      { key: 'sakit', label: 'Sakit' },
+      { key: 'alpha', label: 'Alpha' },
+    ],
+    /* Baris setelah saring status (client — BE tak punya param status). */
+    get filteredRows() {
+      if (!this.statusFilter) return this.rows;
+      var s = this.statusFilter;
+      return this.rows.filter(function (r) { return r.status === s; });
+    },
+
+    // Kartu ringkasan (design.md §8): peta warna status.
+    sumCards: [
+      { key: 'hadir', label: 'Hadir', tone: 'success' },
+      { key: 'telat', label: 'Telat', tone: 'warning' },
+      { key: 'izin',  label: 'Izin',  tone: 'info' },
+      { key: 'sakit', label: 'Sakit', tone: 'purple' },
+      { key: 'alpha', label: 'Alpha', tone: 'danger' },
+      { key: 'total', label: 'Total', tone: 'primary' },
+    ],
+
+    // Format export tersedia (design.md §8): CSV/XLSX/PDF.
+    exportFormats: [
+      { key: 'csv',  label: 'CSV' },
+      { key: 'xlsx', label: 'Excel (XLSX)' },
+      { key: 'pdf',  label: 'PDF' },
+    ],
+
+    init() { this.loadGroups(); this.loadSummary(); this.loadLaporan(); },
+
+    /* Opsi group untuk Select (GET /group). Gagal → kosong (filter lain tetap jalan). */
+    async loadGroups() {
+      try { this.groups = await window.api.get('group') || []; }
+      catch (e) { this.groups = []; }
+    },
+
+    /* Preset dipilih → kosongkan dari/sampai agar preset efektif (BE: dari+sampai > preset). */
+    onPresetChange() { if (this.filter.preset) { this.filter.dari = ''; this.filter.sampai = ''; } },
+    /* Tanggal manual diketik → kosongkan preset. */
+    onDateChange() { if (this.filter.dari || this.filter.sampai) this.filter.preset = ''; },
+
+    /* Terapkan filter: kembali ke halaman 1 lalu refetch summary + tabel. */
+    applyFilter() { this.page = 1; this.loadSummary(); this.loadLaporan(); },
+    /* Reset semua filter ke default (rentang server = hari ini). */
+    resetFilter() {
+      this.filter = { dari: '', sampai: '', preset: '', group_id: '' };
+      this.applyFilter();
+    },
+
+    /* Rakit query string dari filter aktif (abaikan yang kosong). */
+    _filterQuery() {
+      var p = [];
+      if (this.filter.dari)     p.push('dari=' + encodeURIComponent(this.filter.dari));
+      if (this.filter.sampai)   p.push('sampai=' + encodeURIComponent(this.filter.sampai));
+      if (this.filter.preset)   p.push('preset=' + encodeURIComponent(this.filter.preset));
+      if (this.filter.group_id) p.push('group_id=' + encodeURIComponent(this.filter.group_id));
+      return p.join('&');
+    },
+
+    /* Muat ringkasan (GET /laporan/summary + filter). */
+    async loadSummary() {
+      this.summaryLoading = true; this.summaryError = false;
+      try {
+        var q = this._filterQuery();
+        this.summary = await window.api.get('laporan/summary' + (q ? '?' + q : ''));
+      } catch (e) {
+        this.summaryError = true;
+      } finally {
+        this.summaryLoading = false;
+      }
+    },
+
+    /* Ambil baris tabel rekap (GET /laporan + filter + page/per_page). Pagination server. */
+    async loadLaporan() {
+      this.laporanLoading = true; this.laporanError = false;
+      try {
+        var q  = this._filterQuery();
+        var qs = 'per_page=' + this.perPage + '&page=' + this.page + (q ? '&' + q : '');
+        var data = await window.api.get('laporan?' + qs);   // { data, total, page, per_page, total_page }
+        this.rows      = (data && data.data) || [];
+        this.total     = (data && data.total) || 0;
+        this.totalPage = (data && data.total_page) || 1;
+        this.page      = (data && data.page) || this.page;
+      } catch (e) {
+        this.laporanError = true; this.rows = [];
+      } finally {
+        this.laporanLoading = false;
+      }
+    },
+    /* Pindah halaman (server-side) → refetch. */
+    goPage(p) { if (typeof p === 'number' && p >= 1 && p <= this.totalPage && p !== this.page) { this.page = p; this.loadLaporan(); } },
+    /* Deret tombol halaman dgn elipsis '…'. */
+    get pageWindow() {
+      var tp = this.totalPage, cur = Math.min(this.page, tp), out = [];
+      if (tp <= 7) { for (var i = 1; i <= tp; i++) out.push(i); return out; }
+      out.push(1);
+      var lo = Math.max(2, cur - 1), hi = Math.min(tp - 1, cur + 1);
+      if (lo > 2) out.push('…');
+      for (var j = lo; j <= hi; j++) out.push(j);
+      if (hi < tp - 1) out.push('…');
+      out.push(tp);
+      return out;
+    },
+    get pageStart() { return this.total ? ((Math.min(this.page, this.totalPage) - 1) * this.perPage) + 1 : 0; },
+    get pageEnd()   { return Math.min(Math.min(this.page, this.totalPage) * this.perPage, this.total); },
+
+    // ── Util tampilan tabel ──
+    jamHM(w) { return w ? String(w).slice(11, 16) : '—'; },
+    statusBadge(s) { return ({ hadir: 'badge--hadir', telat: 'badge--telat', izin: 'badge--izin', sakit: 'badge--sakit', alpha: 'badge--alpha' })[s] || ''; },
+    statusLabel(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : '—'; },
+
+    /* Unduh export (GET /laporan/export?format=…+filter). Endpoint stream file (butuh
+     * X-WP-Nonce) → pakai fetch blob (bukan anchor polos) supaya bisa tangani 503/422.
+     * 503 export_unavailable (xlsx/pdf tanpa vendor) → toast saran CSV. */
+    async doExport(format) {
+      this.exportOpen = false;
+      var cfg = window.AbsensiAdmin || {};
+      var q   = this._filterQuery();
+      var url = (cfg.restUrl || '/wp-json/absensi/v1/') + 'laporan/export?format=' +
+                encodeURIComponent(format) + (q ? '&' + q : '');
+      try {
+        var res = await fetch(url, { headers: { 'X-WP-Nonce': cfg.nonce || '' } });
+        if (!res.ok) {
+          var err = await res.json().catch(function () { return null; });
+          var msg = (err && err.message) || ('Export gagal (HTTP ' + res.status + ').');
+          if (res.status === 503) { window.absensiToast(msg + ' Gunakan format CSV.', 'warning'); return; }
+          window.absensiToast(msg, 'error');
+          return;
+        }
+        var blob = await res.blob();
+        var fname = 'laporan.' + format;
+        var m = (res.headers.get('Content-Disposition') || '').match(/filename="?([^";]+)"?/);
+        if (m) fname = m[1];
+        var objUrl = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = objUrl; a.download = fname;
+        document.body.appendChild(a); a.click(); a.remove();
+        URL.revokeObjectURL(objUrl);
+        window.absensiToast('File diunduh: ' + fname, 'success');
+      } catch (e) {
+        window.absensiToast('Export gagal. Periksa koneksi lalu coba lagi.', 'error');
+      }
+    },
+  }));
+
   Alpine.data('groupManager', () => ({
     groups:  [],          // baris GET /group (g.* + jumlah_user)
     loading: false,
@@ -1481,6 +1769,7 @@ tr:nth-child(even) td{background:#f9f9f9}
     'upload':           '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/>',
     'file-spreadsheet': '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M8 13h2"/><path d="M14 13h2"/><path d="M8 17h2"/><path d="M14 17h2"/>',
     'download':         '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>',
+    'chevron-down':     '<path d="m6 9 6 6 6-6"/>',
     'refresh-cw':       '<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>',
     'search':           '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
     'filter':           '<polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>',
