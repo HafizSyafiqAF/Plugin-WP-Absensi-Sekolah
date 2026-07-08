@@ -1,5 +1,6 @@
 # ─── Instruksi lokal per-developer (tidak di-share) ──────────────────────────
 CLAUDE.local.md
+CLAUDE.local.*.md
 .claude/settings.local.json
 
 # ─── Dependency (di-bundle saat packaging, bukan di-commit) ───────────────────
@@ -63,3 +64,15 @@ $RECYCLE.BIN/
 !.vscode/settings.json
 
 /tests
+
+TODO-BE-NEW.md
+
+TODO-FE-NEW.md
+
+
+RINCIAN-HALAMAN.md
+
+HANDOFF-FE.md
+
+# Playwright MCP output (snapshot/console junk saat test)
+.playwright-mcp/
