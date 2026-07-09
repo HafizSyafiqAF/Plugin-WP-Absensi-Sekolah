@@ -1657,11 +1657,18 @@ tr:nth-child(even) td{background:#f9f9f9}
     deleting: false,
     delError: '',
 
+    // ── Expand: daftar user di group (klik baris → buka ke bawah) ──
+    expandedId:   null,   // id group yang sedang terbuka (satu per satu)
+    groupUsers:   {},     // { [groupId]: [ {id,nama,nomor_induk,rfid_uid} ] } — cache
+    usersLoading: {},     // { [groupId]: bool }
+    usersError:   {},     // { [groupId]: bool }
+
     init() { this.loadGroups(); },
 
     /* Ambil daftar group (GET /group). Tiap baris bawa jumlah_user. */
     async loadGroups() {
       this.loading = true; this.error = false;
+      this.groupUsers = {};   // buang cache expand (jumlah/anggota bisa berubah setelah edit)
       try { this.groups = await window.api.get('group') || []; }
       catch (e) { this.error = true; this.groups = []; }
       finally { this.loading = false; }
@@ -1670,6 +1677,27 @@ tr:nth-child(even) td{background:#f9f9f9}
     // Peta tipe → badge/label (design.md §6: Kelas primary, Guru purple, Staff info)
     tipeBadge(t) { return ({ kelas: 'badge--kelas', guru: 'badge--guru', staff: 'badge--staff' })[t] || 'badge--kelas'; },
     tipeLabel(t) { return ({ kelas: 'Kelas', guru: 'Guru', staff: 'Staff' })[t] || (t || ''); },
+
+    /* Toggle expand baris group → tampil daftar user di bawahnya. Klik ulang = tutup.
+       Fetch user (GET /users?group_id) sekali lalu di-cache. */
+    toggleExpand(g) {
+      if (this.expandedId === g.id) { this.expandedId = null; return; }
+      this.expandedId = g.id;
+      if (this.groupUsers[g.id] === undefined) this.loadGroupUsers(g.id);
+    },
+    async loadGroupUsers(id) {
+      this.usersLoading = Object.assign({}, this.usersLoading, { [id]: true });
+      this.usersError   = Object.assign({}, this.usersError, { [id]: false });
+      try {
+        var rows = await window.api.get('users?group_id=' + id);
+        this.groupUsers = Object.assign({}, this.groupUsers, { [id]: rows || [] });
+      } catch (e) {
+        this.usersError = Object.assign({}, this.usersError, { [id]: true });
+        this.groupUsers = Object.assign({}, this.groupUsers, { [id]: [] });
+      } finally {
+        this.usersLoading = Object.assign({}, this.usersLoading, { [id]: false });
+      }
+    },
 
     // ── Modal Form: buka/tutup/simpan ──
     _resetForm() { this.form = { nama: '', tipe: 'kelas' }; this.formError = ''; this.fieldErr = {}; },

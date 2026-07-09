@@ -74,12 +74,22 @@ defined( 'ABSPATH' ) || exit;
                 <th class="col-actions"><?php esc_html_e( 'Aksi', 'absensi-sekolah' ); ?></th>
               </tr>
             </thead>
-            <tbody>
-              <template x-for="g in groups" :key="g.id">
-                <tr>
-                  <!-- Nama -->
+            <!-- Satu <tbody> per group (valid HTML) → memuat baris utama + baris expand user -->
+            <template x-for="g in groups" :key="g.id">
+              <tbody>
+                <!-- Baris group: klik → buka/tutup daftar user di bawahnya -->
+                <tr class="group-row" :class="expandedId === g.id ? 'is-expanded' : ''"
+                    @click="toggleExpand(g)" role="button" tabindex="0"
+                    @keydown.enter.prevent="toggleExpand(g)" @keydown.space.prevent="toggleExpand(g)"
+                    :aria-expanded="expandedId === g.id"
+                    :aria-label="'<?php echo esc_js( __( 'Lihat user di group', 'absensi-sekolah' ) ); ?> ' + g.nama">
+                  <!-- Nama + chevron -->
                   <td data-label="<?php esc_attr_e( 'Nama Group', 'absensi-sekolah' ); ?>">
-                    <span class="t-body-strong" x-text="g.nama"></span>
+                    <span class="group-row__toggle">
+                      <span class="group-row__chevron" :class="expandedId === g.id ? 'is-open' : ''"
+                            x-html="$icon( 'chevron-right', 16 )" aria-hidden="true"></span>
+                      <span class="t-body-strong" x-text="g.nama"></span>
+                    </span>
                   </td>
                   <!-- Tipe (badge) -->
                   <td data-label="<?php esc_attr_e( 'Tipe', 'absensi-sekolah' ); ?>">
@@ -92,20 +102,61 @@ defined( 'ABSPATH' ) || exit;
                       <span class="u-num" x-text="g.jumlah_user || 0"></span>
                     </span>
                   </td>
-                  <!-- Aksi: edit / hapus -->
+                  <!-- Aksi: edit / hapus (@click.stop → tak ikut toggle expand) -->
                   <td class="col-actions" data-label="<?php esc_attr_e( 'Aksi', 'absensi-sekolah' ); ?>">
-                    <button type="button" class="btn btn--ghost btn--icon btn--sm" @click="openEdit(g)"
+                    <button type="button" class="btn btn--ghost btn--icon btn--sm" @click.stop="openEdit(g)"
                             :aria-label="'<?php echo esc_js( __( 'Edit group', 'absensi-sekolah' ) ); ?> ' + g.nama">
                       <span x-html="$icon( 'square-pen', 16 )"></span>
                     </button>
-                    <button type="button" class="btn btn--ghost btn--icon btn--sm act-del" @click="confirmDelete(g)"
+                    <button type="button" class="btn btn--ghost btn--icon btn--sm act-del" @click.stop="confirmDelete(g)"
                             :aria-label="'<?php echo esc_js( __( 'Hapus group', 'absensi-sekolah' ) ); ?> ' + g.nama">
                       <span x-html="$icon( 'trash-2', 16 )"></span>
                     </button>
                   </td>
                 </tr>
-              </template>
-            </tbody>
+
+                <!-- Baris expand: daftar user di group ini (GET /users?group_id) -->
+                <tr class="group-users-row" x-show="expandedId === g.id" x-cloak>
+                  <td colspan="4">
+                    <div class="group-users">
+                      <!-- Loading -->
+                      <div x-show="usersLoading[g.id]" class="group-users__state">
+                        <span class="skeleton skeleton--text" style="width:180px"></span>
+                        <span class="skeleton skeleton--text" style="width:140px"></span>
+                      </div>
+                      <!-- Error -->
+                      <div x-show="! usersLoading[g.id] && usersError[g.id]" class="group-users__state group-users__state--error">
+                        <span x-html="$icon( 'alert-circle', 16 )" aria-hidden="true"></span>
+                        <?php esc_html_e( 'Gagal memuat user.', 'absensi-sekolah' ); ?>
+                        <button type="button" class="btn btn--ghost btn--sm" @click.stop="loadGroupUsers(g.id)">
+                          <?php esc_html_e( 'Coba lagi', 'absensi-sekolah' ); ?>
+                        </button>
+                      </div>
+                      <!-- Kosong -->
+                      <div x-show="! usersLoading[g.id] && ! usersError[g.id] && (groupUsers[g.id] || []).length === 0"
+                           class="group-users__state group-users__state--empty">
+                        <span x-html="$icon( 'users', 16 )" aria-hidden="true"></span>
+                        <?php esc_html_e( 'Belum ada user di group ini.', 'absensi-sekolah' ); ?>
+                      </div>
+                      <!-- Daftar user -->
+                      <ul x-show="! usersLoading[g.id] && ! usersError[g.id] && (groupUsers[g.id] || []).length > 0"
+                          class="group-users__list">
+                        <template x-for="u in (groupUsers[g.id] || [])" :key="u.id">
+                          <li class="group-users__item">
+                            <span class="group-users__name" x-text="u.nama"></span>
+                            <span class="group-users__nis" x-text="u.nomor_induk"></span>
+                            <span class="group-users__rfid" x-show="u.rfid_uid"
+                                  :title="'<?php echo esc_js( __( 'Kartu RFID terpasang', 'absensi-sekolah' ) ); ?>'">
+                              <span x-html="$icon( 'credit-card', 13 )" aria-hidden="true"></span>
+                            </span>
+                          </li>
+                        </template>
+                      </ul>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </template>
           </table>
         </div>
 

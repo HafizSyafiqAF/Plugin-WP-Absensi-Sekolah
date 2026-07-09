@@ -461,6 +461,32 @@
 }
 .absensi-app .group-count__icon { display: inline-flex; color: var(--c-primary); }
 
+/* Baris group klik-expand → daftar user di bawahnya */
+.absensi-app .group-row { cursor: pointer; transition: background .12s ease; }
+.absensi-app .group-row:hover td { background: var(--c-bg); }
+.absensi-app .group-row.is-expanded td { background: var(--c-primary-soft, var(--c-bg)); }
+.absensi-app .group-row__toggle { display: inline-flex; align-items: center; gap: 8px; }
+.absensi-app .group-row__chevron { display: inline-flex; color: var(--c-text-muted); transition: transform .15s ease; }
+.absensi-app .group-row__chevron.is-open { transform: rotate(90deg); color: var(--c-primary); }
+.absensi-app .group-row:focus-visible { outline: 2px solid var(--c-primary); outline-offset: -2px; }
+
+/* Baris expand: panel daftar user */
+.absensi-app .group-users-row td { background: var(--c-bg); padding: 0; border-top: 0; }
+.absensi-app .group-users { padding: 8px 14px 14px 38px; }
+.absensi-app .group-users__state {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 8px 0; color: var(--c-text-muted); font-size: 13px;
+}
+.absensi-app .group-users__state--error { color: var(--c-danger-text, #b91c1c); }
+.absensi-app .group-users__list { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.absensi-app .group-users__item {
+  display: flex; align-items: center; gap: 12px; padding: 7px 10px; border-radius: 8px;
+}
+.absensi-app .group-users__item:hover { background: var(--c-surface, #fff); }
+.absensi-app .group-users__name { font-weight: 600; color: var(--c-text); }
+.absensi-app .group-users__nis { font-size: 12.5px; color: var(--c-text-muted); font-variant-numeric: tabular-nums; }
+.absensi-app .group-users__rfid { display: inline-flex; color: var(--c-primary); margin-left: auto; }
+
 /* RFID cell (Users): terpasang = chip mono; belum = muted (design.md §5 mask) */
 .absensi-app .rfid-chip {
   display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: var(--r-full);
