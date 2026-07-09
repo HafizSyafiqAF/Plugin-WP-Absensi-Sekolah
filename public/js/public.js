@@ -579,7 +579,7 @@ document.addEventListener('alpine:init', function () {
 document.addEventListener('alpine:init', function () {
   Alpine.data('kioskSiswa', function () { return {
     nomorInduk: '',
-    sesi:       '',            // '' = auto server | masuk | pulang (opsional)
+    sesi:       'masuk',       // WAJIB terpilih: masuk (default) | pulang
     gps:        null,          // { lat, lng, accuracy }
     gpsStatus:  'waiting',     // waiting | ok | weak | error
     gpsError:   null,
@@ -597,8 +597,8 @@ document.addEventListener('alpine:init', function () {
     get gpsAccuracyLabel() { return this.gps ? '±' + Math.round(this.gps.accuracy) + ' m' : '—'; },
     /* Ambang akurasi maksimal (m) dari admin; > ini = sinyal lemah (warning). */
     get akurasiMax() { return parseInt((window.AbsensiConfig || {}).akurasiMax || '100', 10) || 100; },
-    /* Bisa submit bila nomor induk terisi + GPS sudah dapat lokasi + tak sedang kirim. */
-    get canSubmit() { return !this.submitting && !!this.gps && this.nomorInduk.trim().length > 0; },
+    /* Bisa submit bila nomor induk terisi + GPS dapat lokasi + FOTO SELFIE diambil (wajib) + tak sedang kirim. */
+    get canSubmit() { return !this.submitting && !!this.gps && !!this.photoBlob && this.nomorInduk.trim().length > 0; },
 
     /* ── Kartu hasil (warna peta status design.md §10) ── */
     get resultClass() {
@@ -615,7 +615,10 @@ document.addEventListener('alpine:init', function () {
     },
     get resultTitle() {
       if (!this.result) return '';
-      if (!this.result.ok) return 'Absen Ditolak';
+      if (!this.result.ok) {
+        return (this.result.code === 'belum_waktu_masuk' || this.result.code === 'belum_waktu_pulang')
+          ? 'Belum Waktunya Absen' : 'Absen Ditolak';
+      }
       if (this.result.sesi === 'pulang') return 'Absen Pulang Berhasil';
       return this.result.status === 'telat' ? 'Anda Terlambat' : 'Absen Berhasil';
     },
@@ -720,7 +723,7 @@ document.addEventListener('alpine:init', function () {
       this.result = null;
       this.clearPhoto();
       this.nomorInduk = '';
-      this.sesi = '';
+      this.sesi = 'masuk';
     },
 
     /* ── Widget Cek Status Hari Ini (GET /absen/status by nomor_induk) ── */
@@ -803,6 +806,7 @@ document.addEventListener('alpine:init', function () {
    * Config: AbsensiConfig.rfidDebounce. Endpoint: POST /absen/rfid. */
   Alpine.data('kioskGuru', function () { return {
     jam: '',                   // 'HH:MM:SS' — jam dinding berjalan
+    sesi: 'masuk',             // sesi terpilih (toggle Masuk/Pulang) — dikirim ke server
     uid: '',                   // nilai field UID (x-model) — scanner HID isi / ketik manual
     fb:  null,                 // feedback tap: { ok, tone, nama, statusLabel, message } | null (idle)
     _clockTimer: null,
@@ -859,7 +863,7 @@ document.addEventListener('alpine:init', function () {
       if (this._busy) return;               // abaikan tap yang tumpang tindih
       this._busy = true;
       try {
-        var data = await window.api.post('absen/rfid', { rfid_uid: uid });   // 201 masuk / 200 keluar
+        var data = await window.api.post('absen/rfid', { rfid_uid: uid, sesi: this.sesi });   // 201 masuk / 200 keluar
         if (data.action === 'keluar') {
           this.fb = { ok: true, tone: 'info', nama: data.siswa || '',
                       statusLabel: 'KELUAR', message: data.message || '' };
@@ -921,17 +925,21 @@ document.addEventListener('alpine:init', function () {
       this._fbTimer = setTimeout(function () { self.fb = null; }, 2500);
     },
 
-    /* Warna error (design.md §11): double_tap kuning, sudah_absen info, selain itu merah. */
+    /* Warna error (design.md §11): double_tap kuning, sudah_absen* info, belum_absen_masuk kuning, selain itu merah. */
     _errTone: function (code, status) {
-      if (code === 'double_tap'  || status === 429) return 'warning';
-      if (code === 'sudah_absen' || status === 409) return 'info';
+      if (code === 'double_tap'        || status === 429) return 'warning';
+      if (code === 'belum_absen_masuk')                    return 'warning';
+      if (code === 'sudah_absen' || code === 'sudah_absen_keluar' || status === 409) return 'info';
       return 'danger';
     },
     /* Label badge besar untuk error. */
     _errLabel: function (code, status) {
       if (code === 'uid_tidak_terdaftar' || status === 404) return 'Kartu Tidak Terdaftar';
       if (code === 'double_tap'          || status === 429) return 'Tunggu Sebentar';
+      if (code === 'belum_absen_masuk')                     return 'Belum Absen Masuk';
+      if (code === 'sudah_absen_keluar')                    return 'Sudah Pulang';
       if (code === 'sudah_absen'         || status === 409) return 'Sudah Absen';
+      if (code === 'belum_waktu_masuk'   || code === 'belum_waktu_pulang') return 'Belum Waktunya';
       return 'Gagal';
     },
 

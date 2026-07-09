@@ -77,9 +77,9 @@ defined( 'ABSPATH' ) || exit;
 			<div class="kiosk-cam">
 				<div x-show="cam === 'off'" class="kiosk-cam__frame kiosk-cam__frame--idle">
 					<span class="kiosk-cam__ico" x-html="$icon('camera', 40)" aria-hidden="true"></span>
-					<p class="kiosk-cam__hint" x-show="!camDenied"><?php esc_html_e( 'Foto selfie (opsional)', 'absensi-sekolah' ); ?></p>
+					<p class="kiosk-cam__hint" x-show="!camDenied"><?php esc_html_e( 'Foto selfie (wajib)', 'absensi-sekolah' ); ?></p>
 					<p class="kiosk-cam__hint kiosk-cam__hint--warn" x-show="camDenied" role="alert">
-						<?php esc_html_e( 'Izin kamera ditolak — foto opsional, absen tetap bisa tanpa foto.', 'absensi-sekolah' ); ?>
+						<?php esc_html_e( 'Izin kamera ditolak — aktifkan kamera, selfie wajib untuk absen.', 'absensi-sekolah' ); ?>
 					</p>
 				</div>
 
@@ -112,16 +112,16 @@ defined( 'ABSPATH' ) || exit;
 				</button>
 			</div>
 
-			<?php // Toggle sesi (opsional): Masuk / Pulang. Tak terpilih = kosong (server tentukan). Tap aktif lagi = lepas ke auto. ?>
+			<?php // Toggle sesi: Masuk / Pulang. Wajib terpilih (default Masuk), klik = set (tak bisa lepas ke kosong). ?>
 			<div class="field">
-				<span class="field__label"><?php esc_html_e( 'Sesi', 'absensi-sekolah' ); ?> <span class="field__hint"><?php esc_html_e( '(opsional)', 'absensi-sekolah' ); ?></span></span>
+				<span class="field__label"><?php esc_html_e( 'Sesi', 'absensi-sekolah' ); ?></span>
 				<div class="pill-tabs" role="group" aria-label="<?php esc_attr_e( 'Pilih sesi absen', 'absensi-sekolah' ); ?>">
 					<button type="button" class="pill" :class="sesi === 'masuk' ? 'is-active' : ''"
-					        @click="sesi = sesi === 'masuk' ? '' : 'masuk'" :aria-pressed="sesi === 'masuk'">
+					        @click="sesi = 'masuk'" :aria-pressed="sesi === 'masuk'">
 						<?php esc_html_e( 'Masuk', 'absensi-sekolah' ); ?>
 					</button>
 					<button type="button" class="pill" :class="sesi === 'pulang' ? 'is-active' : ''"
-					        @click="sesi = sesi === 'pulang' ? '' : 'pulang'" :aria-pressed="sesi === 'pulang'">
+					        @click="sesi = 'pulang'" :aria-pressed="sesi === 'pulang'">
 						<?php esc_html_e( 'Pulang', 'absensi-sekolah' ); ?>
 					</button>
 				</div>
@@ -140,6 +140,11 @@ defined( 'ABSPATH' ) || exit;
 				        ? '<?php echo esc_js( __( 'Mengirim…', 'absensi-sekolah' ) ); ?>'
 				        : '<?php echo esc_js( __( 'Absen Sekarang', 'absensi-sekolah' ) ); ?>'"></span>
 			</button>
+
+			<?php // Petunjuk kenapa tombol nonaktif: selfie wajib (foto belum diambil). ?>
+			<p class="kiosk-submit-hint" x-show="!photoBlob && !submitting" x-cloak>
+				<?php esc_html_e( 'Ambil foto selfie dulu untuk bisa absen.', 'absensi-sekolah' ); ?>
+			</p>
 
 			<?php // Area hasil: kartu feedback warna peta status (hijau hadir / kuning telat / info pulang / merah error). ?>
 			<div x-show="result" x-cloak

@@ -52,6 +52,21 @@ defined( 'ABSPATH' ) || exit;
 
   </div>
 
+  <!-- Toggle sesi: operator pilih Masuk / Pulang SEBELUM tap kartu. Default Masuk.
+       Klik pill set sesi + refocus input (jaga fokus scanner HID). -->
+  <div class="kioskg-sesi" role="group" aria-label="<?php esc_attr_e( 'Pilih sesi absen', 'absensi-sekolah' ); ?>">
+    <div class="pill-tabs">
+      <button type="button" class="pill" :class="sesi === 'masuk' ? 'is-active' : ''"
+              @click="sesi = 'masuk'; focusInput()" :aria-pressed="sesi === 'masuk'">
+        <?php esc_html_e( 'Masuk', 'absensi-sekolah' ); ?>
+      </button>
+      <button type="button" class="pill" :class="sesi === 'pulang' ? 'is-active' : ''"
+              @click="sesi = 'pulang'; focusInput()" :aria-pressed="sesi === 'pulang'">
+        <?php esc_html_e( 'Pulang', 'absensi-sekolah' ); ?>
+      </button>
+    </div>
+  </div>
+
   <!-- Form UID: scanner RFID (HID) auto-ketik UID lalu Enter → submit; bisa juga
        ketik manual + Enter / tombol Kirim. Autofokus dijaga (scanner butuh fokus). -->
   <form class="kioskg-form" @submit.prevent="onEnter()">

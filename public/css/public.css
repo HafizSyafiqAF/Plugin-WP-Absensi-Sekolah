@@ -239,6 +239,7 @@ html:has(.absensi-kiosk) .entry-content { margin-block: 0 !important; padding-bl
 .absensi-kiosk .kiosk-cam__img { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }  /* mirror selfie */
 .absensi-kiosk .kiosk-cam__hint { font-size: 14px; }
 .absensi-kiosk .kiosk-cam__hint--warn { color: var(--c-warning-text); font-weight: 500; padding: 0 12px; }
+.absensi-kiosk .kiosk-submit-hint { margin-top: 8px; text-align: center; font-size: 13px; color: var(--c-text-muted); }
 
 /* Cegah kedip sebelum Alpine init (kartu hasil) */
 .absensi-kiosk [x-cloak] { display: none !important; }
@@ -355,6 +356,10 @@ html:has(.absensi-kiosk) .entry-content { margin-block: 0 !important; padding-bl
 
 /* Petunjuk bawah */
 .kiosk-guru .kioskg-hint { color: var(--c-text-muted); font-size: 14px; }
+
+/* Toggle sesi (Masuk/Pulang) — operator pilih sebelum tap kartu. Pill besar, tengah. */
+.kiosk-guru .kioskg-sesi { display: flex; justify-content: center; margin-bottom: 16px; }
+.kiosk-guru .kioskg-sesi .pill { min-width: 120px; font-size: 16px; padding: 12px 22px; }
 
 /* Form UID (design.md §11 + req kiosk): input UID TAMPIL. Scanner RFID = HID
    auto-ketik UID ke field ini lalu Enter (submit); bisa juga ketik manual + Enter
