@@ -1,19 +1,20 @@
-/* ─── Bootstrap Alpine.js (lokal) ───────────────────────────────────────────
- * Cari URL public.js untuk derive path alpine.min.js di folder yang sama.
- * public.js dijalankan di footer, listener alpine:init sudah terdaftar sebelum
- * Alpine selesai load (async), sehingga komponen Alpine.data teregistrasi tepat waktu.
- */
-(function () {
-  if (window.Alpine || document.querySelector('script[src*="alpine"]')) return;
-  var tag = document.querySelector('script[src*="plugin-wp-absensi-sekolah/public/js/public.js"]')
-         || document.querySelector('script[src*="public/js/public.js"]');
-  var src = tag
-    ? tag.src.replace(/public\.js(\?.*)?$/, 'alpine.min.js')
-    : 'https://cdn.jsdelivr.net/npm/alpinejs@3.14.3/dist/cdn.min.js';
+/* ─── Alpine.js: CDN utama + fallback lokal ──────────────────────────────────
+ * Alpine di-enqueue BE (Plugin.php, CDN, `defer`) — sumber UTAMA (sesuai CLAUDE.md).
+ * FALLBACK: bila CDN GAGAL load (internet gangguan / server WP di LAN tanpa akses
+ * keluar), kiosk tetap hidup dengan `alpine.min.js` LOKAL. Dicek saat `window load`
+ * — script CDN yang `defer` pasti sudah selesai/gagal di titik ini, jadi:
+ *   window.Alpine ADA  → CDN sukses, tak muat apa-apa (TIDAK double-load).
+ *   window.Alpine TIADA → CDN gagal → suntik Alpine lokal (jaring pengaman).
+ * Listener alpine:init di bawah tetap terdaftar → komponen teregistrasi saat
+ * Alpine (CDN atau fallback) init. */
+window.addEventListener('load', function () {
+  if (window.Alpine) return;                                  // CDN sukses → cukup
+  var tag = document.querySelector('script[src*="public/js/public.js"]');
+  if (!tag) return;
   var s = document.createElement('script');
-  s.src = src;
-  document.head.appendChild(s);
-}());
+  s.src = tag.src.replace(/public\.js(\?.*)?$/, 'alpine.min.js');
+  document.head.appendChild(s);                               // fallback: Alpine lokal
+});
 
 /* ─── API Client (public) ────────────────────────────────────────────────── */
 (function () {
@@ -467,6 +468,7 @@ document.addEventListener('alpine:init', function () {
 (function () {
   'use strict';
   var P = {
+    'clipboard-check':  '<rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/>',
     'id-card':          '<path d="M16 10h2"/><path d="M16 14h2"/><path d="M6.17 15a3 3 0 0 1 5.66 0"/><circle cx="9" cy="11" r="2"/><rect width="20" height="14" x="2" y="5" rx="2"/>',
     'camera':           '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/>',
     'map-pin':          '<path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/>',
@@ -801,6 +803,7 @@ document.addEventListener('alpine:init', function () {
    * Config: AbsensiConfig.rfidDebounce. Endpoint: POST /absen/rfid. */
   Alpine.data('kioskGuru', function () { return {
     jam: '',                   // 'HH:MM:SS' — jam dinding berjalan
+    uid: '',                   // nilai field UID (x-model) — scanner HID isi / ketik manual
     fb:  null,                 // feedback tap: { ok, tone, nama, statusLabel, message } | null (idle)
     _clockTimer: null,
     _fbTimer: null,            // timer auto-reset feedback → idle
@@ -828,13 +831,20 @@ document.addEventListener('alpine:init', function () {
       if (el) setTimeout(function () { el.focus(); }, 0);
     },
 
+    /* Blur input: refocus HANYA bila fokus pindah ke dalam kiosk (jaga target
+     * scanner HID). Bila pindah ke LUAR (mis. link navbar) → JANGAN rebut fokus,
+     * biar user bisa navigasi ke halaman lain. */
+    onBlur: function (e) {
+      var to = e && e.relatedTarget;
+      if (to && this.$root && ! this.$root.contains( to )) return;
+      this.focusInput();
+    },
+
     /* Scanner tekan Enter setelah "mengetik" UID → ambil nilai, bersihkan, refokus,
      * lalu proses tap (loop tap berikutnya siap). Submit ke server = item Kirim. */
     onEnter: function () {
-      var el = this.$refs.rfid;
-      if (!el) return;
-      var uid = el.value.trim();
-      el.value = '';              // clear → siap tap berikut
+      var uid = (this.uid || '').trim();
+      this.uid = '';              // clear (x-model kosongkan field) → siap tap berikut
       this.focusInput();          // refocus (loop tap)
       if (!uid) return;
       this.submit(uid);

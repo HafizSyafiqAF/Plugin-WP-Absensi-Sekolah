@@ -22,6 +22,7 @@ defined( 'ABSPATH' ) || exit;
 <div class="absensi-kiosk" x-data="kioskSiswa">
 	<div class="kiosk-card">
 		<header class="kiosk-head">
+			<span class="kiosk-brand" x-html="$icon('clipboard-check', 28)" aria-hidden="true"></span>
 			<h1 class="kiosk-title"><?php esc_html_e( 'Absensi', 'absensi-sekolah' ); ?></h1>
 			<p class="kiosk-sub"><?php esc_html_e( 'Selamat datang, silakan absen.', 'absensi-sekolah' ); ?></p>
 		</header>

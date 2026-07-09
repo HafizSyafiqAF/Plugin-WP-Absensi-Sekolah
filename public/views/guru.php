@@ -52,14 +52,22 @@ defined( 'ABSPATH' ) || exit;
 
   </div>
 
-  <!-- Petunjuk bawah -->
-  <p class="kioskg-hint"><?php esc_html_e( 'Klik di mana saja jika scanner tidak merespons.', 'absensi-sekolah' ); ?></p>
+  <!-- Form UID: scanner RFID (HID) auto-ketik UID lalu Enter → submit; bisa juga
+       ketik manual + Enter / tombol Kirim. Autofokus dijaga (scanner butuh fokus). -->
+  <form class="kioskg-form" @submit.prevent="onEnter()">
+    <label class="kioskg-form__label" for="kioskg-uid"><?php esc_html_e( 'UID Kartu', 'absensi-sekolah' ); ?></label>
+    <div class="kioskg-form__row">
+      <input id="kioskg-uid" type="text" x-ref="rfid" class="input kioskg-input"
+             autocomplete="off" spellcheck="false"
+             x-model.trim="uid"
+             @blur="onBlur($event)"
+             placeholder="<?php esc_attr_e( 'Tap kartu / ketik UID…', 'absensi-sekolah' ); ?>"
+             aria-label="<?php esc_attr_e( 'Input kartu RFID', 'absensi-sekolah' ); ?>">
+      <button type="submit" class="btn btn--primary btn--lg"><?php esc_html_e( 'Kirim', 'absensi-sekolah' ); ?></button>
+    </div>
+  </form>
 
-  <!-- Input UID tersembunyi (HID keyboard): autofokus permanen, Enter → submit → clear → refocus. -->
-  <input type="text" x-ref="rfid" class="kioskg-hidden-input" autocomplete="off"
-         spellcheck="false" tabindex="-1"
-         @keydown.enter.prevent="onEnter()"
-         @blur="focusInput()"
-         aria-label="<?php esc_attr_e( 'Input kartu RFID', 'absensi-sekolah' ); ?>">
+  <!-- Petunjuk bawah -->
+  <p class="kioskg-hint"><?php esc_html_e( 'Tap kartu ke scanner, atau ketik UID lalu Enter.', 'absensi-sekolah' ); ?></p>
 
 </div>

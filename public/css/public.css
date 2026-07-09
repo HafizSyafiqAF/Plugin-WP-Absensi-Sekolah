@@ -42,14 +42,26 @@
    Kiosk mengisi seluruh layar, konten di-center. Semua reset scoped. */
 .absensi-kiosk {
   box-sizing: border-box;
+  /* IN-FLOW full-bleed: header & footer tema tetap TAMPIL dan IKUT scroll (bukan
+     di-cover overlay fixed, bukan sticky). Full-bleed = lebar viewport walau kiosk
+     berada di kolom konten tema yang di-constrain (max-width + margin auto). */
+  width: 100vw;
+  max-width: 100vw;
+  position: relative;
+  left: 50%;
+  transform: translateX(-50%);         /* full-bleed center ke tengah viewport, tahan root-padding tema */
   min-height: 100vh;
   min-height: 100dvh;                 /* mobile: hitung bar browser */
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  /* Center vertikal via margin:auto pada kiosk-card (scroll-safe). Guru pakai
+     justify-content space-between sendiri (override). */
   padding: 24px;
-  background: var(--c-bg);
+  /* Latar immersif soft-blue (depth+aksen): halo primary di atas + gradient lembut */
+  background:
+    radial-gradient(1200px 600px at 50% -10%, rgba(37, 99, 235, .08), transparent 60%),
+    linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 40%, #EEF2FF 100%);
   color: var(--c-text);
   text-align: center;
   font-family: 'Plus Jakarta Sans', 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
@@ -62,6 +74,23 @@
 .absensi-kiosk *,
 .absensi-kiosk *::before,
 .absensi-kiosk *::after { box-sizing: border-box; }
+
+/* Sembunyikan scrollbar HALAMAN hanya di halaman kiosk (via :has, browser modern):
+   scroll tetap jalan (wheel/touch), cuma bar-nya tak tampil. Scoped ke kiosk =
+   tak ganggu halaman frontend lain (public.css di-enqueue global). */
+html:has(.absensi-kiosk) { scrollbar-width: none; -ms-overflow-style: none; overflow-x: hidden; }
+html:has(.absensi-kiosk)::-webkit-scrollbar { width: 0; height: 0; display: none; }
+/* Kiosk = fokus halaman: sembunyikan FOOTER tema (footer.wp-block-template-part)
+   + JUDUL WP page ("Absensi Siswa/Guru" di atas kartu) biar langsung ke kiosk.
+   HEADER (header.wp-block-template-part) DIBIARKAN (nav antar-kiosk berguna). */
+html:has(.absensi-kiosk) footer.wp-block-template-part { display: none; }
+html:has(.absensi-kiosk) .wp-block-post-title { display: none; }
+/* Kiosk nempel: buang padding/margin vertikal tema (global-padding 70px, margin
+   main/entry) di sekitar kiosk → immersif langsung setelah navbar & sampai bawah,
+   tanpa strip putih bg tema yang beda warna. */
+html:has(.absensi-kiosk) main { margin-block: 0 !important; padding-block: 0 !important; }
+html:has(.absensi-kiosk) main .has-global-padding { padding-block: 0 !important; }
+html:has(.absensi-kiosk) .entry-content { margin-block: 0 !important; padding-block: 0 !important; }
 
 /* Reset scoped */
 .absensi-kiosk h1, .absensi-kiosk h2, .absensi-kiosk h3, .absensi-kiosk p { margin: 0; }
@@ -77,16 +106,33 @@
 
 /* ─── Kerangka dasar kiosk ────────────────────────────────────────────────────*/
 .absensi-kiosk .kiosk-card {
+  position: relative;
   width: 100%;
   max-width: 480px;
+  flex-shrink: 0;                     /* JANGAN shrink: sbg flex item, tanpa ini kartu
+                                          mengecil ke tinggi layar + overflow:hidden motong
+                                          konten (tak bisa scroll). Biar kontainer yg scroll. */
+  margin: auto;                       /* scroll-safe: center vertikal, tak kepotong saat form panjang */
   background: var(--c-surface);
   border: 1px solid var(--c-border);
   border-radius: var(--r-xl);
-  box-shadow: var(--shadow-md);
-  padding: 32px 24px;
+  box-shadow: var(--shadow-lg), 0 0 0 1px rgba(37, 99, 235, .03);
+  padding: 32px 28px;
+  overflow: hidden;
+}
+/* Aksen tipis atas kartu (depth+aksen) — identitas tanpa berisik */
+.absensi-kiosk .kiosk-card::before {
+  content: ""; position: absolute; inset: 0 0 auto 0; height: 4px;
+  background: linear-gradient(90deg, var(--c-primary), var(--c-secondary));
 }
 .absensi-kiosk .kiosk-title { font-size: 24px; line-height: 32px; font-weight: 700; }
 .absensi-kiosk .kiosk-head  { margin-bottom: 24px; }
+/* Brand chip (depth+aksen): identitas kiosk di atas judul */
+.absensi-kiosk .kiosk-brand {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 56px; height: 56px; margin: 0 auto 14px; border-radius: var(--r-lg);
+  background: var(--c-primary-soft); color: var(--c-primary);
+}
 .absensi-kiosk .kiosk-sub   { margin-top: 4px; color: var(--c-text-muted); font-size: 15px; }
 .absensi-kiosk .kiosk-flow  { display: flex; flex-direction: column; gap: 20px; text-align: left; transition: opacity .15s; }
 /* Loading overlay ringan saat submit (design.md §10 Loading): redup + kunci interaksi */
@@ -272,9 +318,10 @@
    Feedback terbaca dari jauh; input UID tersembunyi (HID). */
 .absensi-kiosk.kiosk-guru { justify-content: space-between; gap: 24px; }
 
-/* Jam dinding (tengah-atas) */
+/* Jam dinding (tengah-atas) — jam prominent (dark), ikon muted */
 .kiosk-guru .kioskg-topbar { display: flex; align-items: center; justify-content: center; gap: 12px; color: var(--c-text-muted); }
-.kiosk-guru .kioskg-clock-icon { display: inline-flex; }
+.kiosk-guru .kioskg-topbar .kiosk-clock { color: var(--c-text); }
+.kiosk-guru .kioskg-clock-icon { display: inline-flex; color: var(--c-primary); }
 
 /* Panggung tengah (idle / feedback) */
 .kiosk-guru .kioskg-stage {
@@ -309,13 +356,49 @@
 /* Petunjuk bawah */
 .kiosk-guru .kioskg-hint { color: var(--c-text-muted); font-size: 14px; }
 
-/* Input UID tersembunyi (tetap fokusable utk scanner HID) */
-.kiosk-guru .kioskg-hidden-input { position: fixed; left: -9999px; top: 0; width: 1px; height: 1px; opacity: 0; }
+/* Form UID (design.md §11 + req kiosk): input UID TAMPIL. Scanner RFID = HID
+   auto-ketik UID ke field ini lalu Enter (submit); bisa juga ketik manual + Enter
+   / tombol Kirim. Input BESAR terbaca. Autofokus dijaga (scanner butuh fokus). */
+.kiosk-guru .kioskg-form { width: 100%; max-width: 460px; display: flex; flex-direction: column; gap: 10px; }
+.kiosk-guru .kioskg-form__label { font-size: 15px; font-weight: 600; color: var(--c-text-muted); text-align: center; }
+.kiosk-guru .kioskg-form__row { display: flex; gap: 10px; }
+.kiosk-guru .kioskg-input {
+  flex: 1; height: 56px; font-size: 20px; font-weight: 600; text-align: center;
+  letter-spacing: .06em; font-variant-numeric: tabular-nums;
+}
 
 /* Toggle bunyi (pojok kanan-atas, ikon saja) */
 .kiosk-guru .kioskg-mute { position: fixed; top: 16px; right: 16px; z-index: 10; width: 44px; padding: 0; }
 
 @keyframes kioskg-pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.08); opacity: .65; } }
+
+/* ─── Responsive Absensi (siswa): 2-kolom di layar lebar ──────────────────────
+   HP (default) = 1-kolom flex (kamera di tengah alur, ideal selfie). Layar lebar
+   (laptop/desktop/tablet-landscape ≥760px) = 2-kolom: input+GPS+sesi+tombol KIRI,
+   kamera KANAN → tinggi form turun, muat tanpa scroll. Pakai :has() (browser
+   modern kiosk) → penempatan tanpa ubah markup/binding Alpine. */
+@media (min-width: 760px) {
+  .absensi-kiosk .kiosk-card { max-width: 780px; }
+  .absensi-kiosk .kiosk-flow {
+    display: grid; gap: 16px 28px; align-items: start;
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      "nomor  cam"
+      "gps    cam"
+      "sesi   cam"
+      "submit cam"
+      "result result"
+      "status status";
+  }
+  .absensi-kiosk .kiosk-flow > .field:has(#absensi-nomor-induk) { grid-area: nomor; }
+  .absensi-kiosk .kiosk-flow > .kiosk-gps                       { grid-area: gps; }
+  .absensi-kiosk .kiosk-flow > .kiosk-cam                       { grid-area: cam; align-self: stretch; display: flex; flex-direction: column; }
+  .absensi-kiosk .kiosk-flow > .kiosk-cam .kiosk-cam__frame--idle { flex: 1; min-height: 220px; }
+  .absensi-kiosk .kiosk-flow > .field:has(.pill-tabs)          { grid-area: sesi; }
+  .absensi-kiosk .kiosk-flow > .btn--lg                        { grid-area: submit; }
+  .absensi-kiosk .kiosk-flow > .kiosk-result                   { grid-area: result; }
+  .absensi-kiosk .kiosk-flow > .kiosk-status                   { grid-area: status; }
+}
 
 /* Layar besar (kiosk TV/tablet): perbesar ke batas atas rentang §2.2 */
 @media (min-width: 1024px) {
