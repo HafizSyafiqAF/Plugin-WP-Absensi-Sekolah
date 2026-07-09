@@ -49,13 +49,13 @@ Tabel custom dibuat di [includes/Installer.php](includes/Installer.php) via `dbD
 | Tabel | Isi | Index penting |
 |---|---|---|
 | `absensi_users` | master orang yang diabsen (siswa/guru/staff), `nomor_induk`, `rfid_uid`, `group_id`, `foto_path`. **Tanpa akun WP.** | UNIQUE `nomor_induk`, UNIQUE `rfid_uid` |
-| `absensi_group` | kelompok absen: `nama` + `tipe` ENUM(`kelas,guru,staff`) | PK |
+| `absensi_group` | kelompok absen: `nama` + `tipe` **VARCHAR(50) kustom bebas** (v2.1.0; default `kelas`, eks-ENUM) | PK |
 | `absensi_jadwal` | jam masuk/keluar per `group_id` per `hari` (1=Senin) | KEY `group_id` |
 | `absensi_rekap` | **1 baris per user per tanggal** | UNIQUE `(user_id, tanggal)`, KEY `tanggal`, `group_id` |
 
 **Model rekap (penting):** satu hari = satu baris. Kolom `waktu_masuk` + `waktu_keluar` di baris sama. Tap/selfie pertama → insert (`waktu_masuk`), kedua → `UPDATE` set `waktu_keluar`. **Bukan** dua baris terpisah. `status` ENUM(`hadir,telat,izin,sakit,alpha`), `mode`/`metode_masuk`/`metode_keluar` ENUM(`selfie,rfid,manual`). Kolom `izin_tipe`/`bukti_status`/`bukti_path` **ADA tapi dormant** (izin/sakit luar MVP — lihat §Gap).
 
-**Versi skema + migration runner (ADA):** `Installer::DB_VERSION` (`2.0.0`) + option `absensi_db_version`. `maybe_upgrade()` jalan tiap `plugins_loaded`: bila versi tersimpan < `DB_VERSION` → jalankan migrasi + `create_tables()` (dbDelta) + re-seed options. **Tak perlu deactivate/activate** untuk sinkron skema. Migrasi breaking (rename tabel/kolom) yang dbDelta tak bisa → `migrate_to_v2()` (RENAME TABLE + ALTER, idempotent via cek `table_exists`/`column_exists`/`index_exists`) dipanggil SEBELUM `create_tables()`.
+**Versi skema + migration runner (ADA):** `Installer::DB_VERSION` (`2.1.0`) + option `absensi_db_version`. `maybe_upgrade()` jalan tiap `plugins_loaded`: bila versi tersimpan < `DB_VERSION` → jalankan migrasi per-versi + `create_tables()` (dbDelta) + re-seed options. **Tak perlu deactivate/activate** untuk sinkron skema. Migrasi breaking (rename tabel/kolom / ubah tipe kolom) yang dbDelta tak bisa: `migrate_to_v2()` (RENAME TABLE + ALTER, idempotent) untuk <2.0.0, `migrate_to_v2_1()` (ALTER MODIFY `group.tipe` ENUM→VARCHAR, guard `column_is_enum`) untuk <2.1.0 — dipanggil SEBELUM `create_tables()`. Idempotent via cek `table_exists`/`column_exists`/`column_is_enum`/`index_exists`.
 
 **Settings = wp_options individual** (BUKAN blob serialized), di-seed `Installer::seed_default_options()` (idempotent, ikut re-seed di `maybe_upgrade`): `absensi_lat`, `absensi_lng`, `absensi_radius` (100), `absensi_jam_masuk` (`07:00`), `absensi_jam_keluar` (`15:00`), `absensi_telat_menit` (15), `absensi_akurasi_max` (100), `absensi_rfid_debounce` (3), `absensi_retensi_hari` (90), `absensi_wa_gateway`, `absensi_wa_token`. Runtime juga pakai `absensi_selfie_rl_detik` (rate-limit selfie, default 5). `absensi_wa_*` masih di-seed tapi **notifikasi WA dicabut** (§Gap).
 
@@ -149,7 +149,7 @@ Namespace `absensi/v1` (`/wp-json/absensi/v1/`). Konstanta `NAMESPACE` diulang d
 - **Notifikasi WA = LUAR MVP, dicabut.** `includes/Notifikasi.php` dihapus, `Notifikasi::init()` dilepas dari boot. Action `absensi_absen_masuk`/`absensi_absen_keluar` **tetap di-fire** endpoint (titik colok). Resep hidupkan lagi tanpa role: kolom `no_wa` di `absensi_users` + `recipients()` = `SELECT no_wa`.
 - **Residu role DB:** role `guru`/`absensi_admin`/`absensi_siswa`/`orang_tua` mungkin masih ada di DB dari instalasi pra-pivot (+ user assigned). **Tak berbahaya** (tak ada gate yang membacanya). Kehapus saat DELETE plugin (`uninstall.php`).
 - **uninstall.php ADA** (drop tabel absensi_* + hapus option saat plugin dihapus). `deactivate()` = `remove_pages()` + unschedule retensi + flush.
-- Param `foto` di `/absen/selfie` `required => false` (absen tanpa foto diperbolehkan).
+- Param `foto` di `/absen/selfie`: arg `required => false` (agar sesi **pulang** tak wajib foto), TAPI sesi **masuk** di-enforce handler → foto **WAJIB**, kosong = `422 foto_wajib` (kebijakan kiosk: selfie = bukti hadir). Nama file: `selfie_{NIS}_{DD-MM-YYYY}-{Masuk|Keluar}_{8hex}.{ext}` (`FileHelper::save_selfie( $b64, $id, $nomor_induk, $sesi )`).
 - Belum ada: CI, cek relasi ortu (dibuang), granular caps (semua `manage_options`).
 
 ---
