@@ -79,7 +79,7 @@ Lima prinsip yang mengikat seluruh keputusan visual:
 
 ### 2.2 Typography
 
-**Font utama:** `Inter` (fallback: `Plus Jakarta Sans`, `system-ui`, `sans-serif`). Font-feature `cv02, cv03, cv04` aktif untuk angka tabel yang rapi.
+**Font utama:** `Plus Jakarta Sans` (fallback: `Inter`, `system-ui`, `-apple-system`, `Segoe UI`, `sans-serif`). Dimuat via `@import` Google Fonts di `admin/css/admin.css` & `public/css/public.css` (no-build, `display=swap`) — weight 400/500/600/700/800. Angka pakai `font-variant-numeric: tabular-nums`; `font-feature-settings cv02/cv03/cv04` dipertahankan (berlaku bila fallback Inter dipakai). Lebih berkarakter & premium dari system font, tetap profesional/terbaca.
 
 | Level | Ukuran / Line-height | Weight | Pemakaian |
 |---|---|---|---|
@@ -162,8 +162,10 @@ Aturan: card selalu `radius-lg` (12px). Tombol & input selalu `radius-md` (8px).
 | `shadow-md` | `0 4px 8px rgba(16,24,40,0.08), 0 2px 4px rgba(16,24,40,0.04)` | Dropdown, hover card, popover |
 | `shadow-lg` | `0 12px 24px rgba(16,24,40,0.12)` | Modal, drawer |
 | `shadow-focus` | `0 0 0 3px rgba(37,99,235,0.25)` | Ring fokus input/tombol (Primary 25%) |
+| `shadow-depth` | `0 1px 2px rgba(16,24,40,.04), 0 12px 28px -14px rgba(16,24,40,.13)` | **Card & tabel di admin** — diffusion shadow (lebar & lembut) beri kedalaman tanpa berat |
+| `shadow-depth-hover` | `0 1px 2px rgba(16,24,40,.06), 0 20px 40px -16px rgba(16,24,40,.26)` | Card interaktif saat hover (stat/summary card angkat 2px) |
 
-Prinsip: shadow **lembut & rendah** (soft shadow). Card diam pakai `shadow-sm`; naik ke `shadow-md` saat hover interaktif. Modal/drawer `shadow-lg`.
+Prinsip: shadow **lembut & rendah** (soft shadow). **Card admin pakai `shadow-depth`** (diffusion — beri kedalaman, bukan flat); stat/summary card naik ke `shadow-depth-hover` + `translateY(-2px)` saat hover. Modal/drawer `shadow-lg`.
 
 ### 2.6 Grid System
 
@@ -264,9 +266,11 @@ Ukuran: **sm** (h32, px12, font 13px), **md** (h40, px16, font 14px — default)
 
 #### Card
 
-- Latar putih, radius 12px, `shadow-sm`, border `#E5E7EB`, padding 20px.
+- Latar putih, radius 12px, **`shadow-depth`** (§2.5), border `#E5E7EB`, padding 20px.
 - Header card: judul H2/H3 kiri, aksi (⋯ atau tombol) kanan, border-bottom opsional.
-- **Stat card:** ikon kecil di sudut (dalam kotak lembut warna status 12%), label (Caption), angka (Display/H1), delta/trend (Caption + panah, hijau naik / merah turun) — sesuai referensi Quick Stats.
+- **Stat card (depth + aksen):** kartu ber-**aksen tone** — bar tipis 3px di atas (warna tone), **chip ikon filled** (kotak 38px latar tone penuh + ikon putih + soft shadow tone) kiri-atas, **badge** kanan-atas (kehadiran = share % `hadir/total`, jujur dari data; populasi = label statis mis. "Terdaftar"), **angka besar** (34px, weight 800, kehadiran diwarnai tone), label (Caption). Glow radial tone lembut di sudut + `shadow-depth` + hover angkat 2px. Dipakai: Dashboard Quick Stats & Laporan Summary (pola identik). ⚠️ delta/tren panah **tak dipakai** (data tak punya sumber tren — jangan mengarang; share % = satu-satunya angka turunan yang jujur).
+- **Eyebrow section label:** teks mungil uppercase tracked (11px, 700, `letter-spacing .09em`, Text Secondary) + garis gradient di kanannya — penanda grup kartu (mis. "POPULASI" vs "KEHADIRAN HARI INI" di Dashboard). Menegaskan hierarki tanpa menambah chrome.
+- **Aksen halus lain (depth):** bar grafik distribusi pakai **gradient** (terang→tone, tetap peta warna status); avatar tabel = gradient indigo→primary teks putih; tombol primary Aksi Cepat = gradient + shadow tone.
 
 #### Modal
 
