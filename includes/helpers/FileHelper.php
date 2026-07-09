@@ -10,12 +10,16 @@ class FileHelper {
 
     /**
      * Simpan selfie base64 ke folder uploads WP.
-     * Return: path relatif dari ABSPATH, atau WP_Error.
+     * Nama file: selfie_{NIS/NIP}_{DD-MM-YYYY}-{Masuk|Keluar}_{8hex}.{ext}
+     * (suffix random anti-enumerasi — folder melayani gambar via URL langsung).
+     * Return: path relatif dari basedir uploads, atau WP_Error.
      *
-     * @param string $base64   Data URI atau raw base64 JPEG/PNG.
-     * @param int    $siswa_id ID siswa untuk penamaan file.
+     * @param string $base64      Data URI atau raw base64 JPEG/PNG.
+     * @param int    $siswa_id    ID user (audit + fallback nama bila nomor_induk kosong).
+     * @param string $nomor_induk NIS/NIP untuk nama file (disanitasi [A-Za-z0-9_-]).
+     * @param string $sesi        'masuk' → "Masuk", 'pulang' → "Keluar" (default 'masuk').
      */
-    public static function save_selfie( string $base64, int $siswa_id ): string|\WP_Error {
+    public static function save_selfie( string $base64, int $siswa_id, string $nomor_induk = '', string $sesi = 'masuk' ): string|\WP_Error {
         // Strip data URI prefix jika ada: "data:image/jpeg;base64,..."
         if ( str_contains( $base64, ',' ) ) {
             [ , $base64 ] = explode( ',', $base64, 2 );
@@ -57,9 +61,18 @@ class FileHelper {
         // Pasang guard folder (idempotent): tolak eksekusi script + listing.
         self::protect_dir( $base );
 
-        // Nama file random (anti-enumerasi/tebak URL). Tetap diawali siswa_id untuk audit.
-        $token    = bin2hex( random_bytes( 16 ) );
-        $filename = sprintf( 'selfie-%d-%s.%s', $siswa_id, $token, $ext );
+        // Nama file deskriptif: selfie_{NIS/NIP}_{DD-MM-YYYY}-{Masuk|Keluar}_{random}.{ext}
+        // Suffix random 8-hex WAJIB dipertahankan: folder upload melayani gambar via URL
+        // langsung, jadi tanpa random nama jadi KETEBAK (siapa pun tau NIS+tanggal bisa
+        // unduh foto). Random = anti-enumerasi. NIS disanitasi (hanya [A-Za-z0-9_-]).
+        $nis_safe = preg_replace( '/[^A-Za-z0-9_-]/', '', $nomor_induk );
+        if ( '' === $nis_safe ) {
+            $nis_safe = (string) $siswa_id; // fallback bila nomor_induk kosong
+        }
+        $tgl        = current_time( 'd-m-Y' ); // tanggal lokal (timezone WP), konsisten rekap.tanggal
+        $sesi_label = 'pulang' === $sesi ? 'Keluar' : 'Masuk';
+        $token      = bin2hex( random_bytes( 4 ) ); // 8 hex → anti-tebak URL
+        $filename   = sprintf( 'selfie_%s_%s-%s_%s.%s', $nis_safe, $tgl, $sesi_label, $token, $ext );
         $filepath = $folder . '/' . $filename;
 
         if ( false === file_put_contents( $filepath, $binary ) ) {

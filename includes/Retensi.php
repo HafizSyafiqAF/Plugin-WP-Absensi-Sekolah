@@ -55,8 +55,9 @@ class Retensi {
             if ( ! $file->isFile() ) {
                 continue;
             }
-            // Hanya foto selfie (jaga index.php/.htaccess & file lain).
-            if ( ! str_starts_with( $file->getFilename(), 'selfie-' ) ) {
+            // Hanya foto selfie (nama diawali 'selfie'): format lama 'selfie-{id}-{hex}'
+            // & format baru 'selfie_{NIS}_{tgl}-{sesi}_{hex}'. Jaga index.php/.htaccess & file lain.
+            if ( ! str_starts_with( $file->getFilename(), 'selfie' ) ) {
                 continue;
             }
             if ( $file->getMTime() < $cutoff ) {
