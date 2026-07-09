@@ -37,8 +37,11 @@ defined( 'ABSPATH' ) || exit;
       <div class="settings-grid">
 
         <!-- Card: Lokasi & GPS -->
-        <div class="card">
-          <div class="card__head"><h3 class="card__title"><?php esc_html_e( 'Lokasi & GPS', 'absensi-sekolah' ); ?></h3></div>
+        <div class="card settings-card--wide">
+          <div class="card__head"><div class="card-head-ic">
+            <span class="card-chip card-chip--primary" x-html="$icon( 'map-pin', 18 )" aria-hidden="true"></span>
+            <h3 class="card__title"><?php esc_html_e( 'Lokasi & GPS', 'absensi-sekolah' ); ?></h3>
+          </div></div>
           <p class="t-caption u-muted" style="margin:-8px 0 12px;"><?php esc_html_e( 'Titik sekolah + radius toleransi absen selfie.', 'absensi-sekolah' ); ?></p>
           <div class="settings-row">
             <div class="field">
@@ -85,8 +88,11 @@ defined( 'ABSPATH' ) || exit;
         </div>
 
         <!-- Card: Jam Kerja -->
-        <div class="card">
-          <div class="card__head"><h3 class="card__title"><?php esc_html_e( 'Jam Kerja', 'absensi-sekolah' ); ?></h3></div>
+        <div class="card settings-card--wide">
+          <div class="card__head"><div class="card-head-ic">
+            <span class="card-chip card-chip--info" x-html="$icon( 'clock', 18 )" aria-hidden="true"></span>
+            <h3 class="card__title"><?php esc_html_e( 'Jam Kerja', 'absensi-sekolah' ); ?></h3>
+          </div></div>
           <p class="t-caption u-muted" style="margin:-8px 0 12px;"><?php esc_html_e( 'Jam masuk/keluar + toleransi telat.', 'absensi-sekolah' ); ?></p>
           <div class="settings-row settings-row--3">
             <div class="field">
@@ -108,7 +114,10 @@ defined( 'ABSPATH' ) || exit;
 
         <!-- Card: RFID -->
         <div class="card">
-          <div class="card__head"><h3 class="card__title"><?php esc_html_e( 'RFID', 'absensi-sekolah' ); ?></h3></div>
+          <div class="card__head"><div class="card-head-ic">
+            <span class="card-chip card-chip--purple" x-html="$icon( 'credit-card', 18 )" aria-hidden="true"></span>
+            <h3 class="card__title"><?php esc_html_e( 'RFID', 'absensi-sekolah' ); ?></h3>
+          </div></div>
           <p class="t-caption u-muted" style="margin:-8px 0 12px;"><?php esc_html_e( 'Jeda anti double-tap kartu.', 'absensi-sekolah' ); ?></p>
           <div class="field" style="max-width:280px;">
             <label class="field__label" for="s-debounce"><?php esc_html_e( 'Debounce Anti Double-Tap (detik)', 'absensi-sekolah' ); ?></label>
@@ -118,7 +127,10 @@ defined( 'ABSPATH' ) || exit;
 
         <!-- Card: Retensi -->
         <div class="card">
-          <div class="card__head"><h3 class="card__title"><?php esc_html_e( 'Retensi', 'absensi-sekolah' ); ?></h3></div>
+          <div class="card__head"><div class="card-head-ic">
+            <span class="card-chip card-chip--warning" x-html="$icon( 'rotate-ccw', 18 )" aria-hidden="true"></span>
+            <h3 class="card__title"><?php esc_html_e( 'Retensi', 'absensi-sekolah' ); ?></h3>
+          </div></div>
           <p class="t-caption u-muted" style="margin:-8px 0 12px;"><?php esc_html_e( 'Umur simpan foto selfie sebelum dihapus otomatis.', 'absensi-sekolah' ); ?></p>
           <div class="field" style="max-width:280px;">
             <label class="field__label" for="s-retensi"><?php esc_html_e( 'Retensi Foto Selfie (hari)', 'absensi-sekolah' ); ?></label>
@@ -127,8 +139,9 @@ defined( 'ABSPATH' ) || exit;
         </div>
 
         <!-- Card: WhatsApp (luar MVP) -->
-        <div class="card settings-card--muted">
+        <div class="card settings-card--muted settings-card--wide">
           <div class="card__head" style="justify-content:flex-start;gap:10px;">
+            <span class="card-chip card-chip--muted" x-html="$icon( 'send', 18 )" aria-hidden="true"></span>
             <h3 class="card__title"><?php esc_html_e( 'WhatsApp', 'absensi-sekolah' ); ?></h3>
             <span class="badge badge--izin"><?php esc_html_e( 'Belum aktif — luar MVP', 'absensi-sekolah' ); ?></span>
           </div>

@@ -1411,15 +1411,22 @@ tr:nth-child(even) td{background:#f9f9f9}
       return t;
     },
 
-    // 6 kartu Quick Stats (design.md §4): ikon + tone warna.
+    // 6 kartu Quick Stats (design.md §4): ikon + tone warna. Dua grup:
+    // 'pop' (populasi, badge label statis) + 'keh' (kehadiran, badge = share %).
     statCards: [
-      { key: 'totalUser',  label: 'Total User',  icon: 'users',           tone: 'primary' },
-      { key: 'totalGroup', label: 'Total Group', icon: 'layers',          tone: 'primary' },
-      { key: 'hadir',      label: 'Hadir',       icon: 'check-circle-2',  tone: 'success', sub: 'hari ini' },
-      { key: 'telat',      label: 'Telat',       icon: 'clock',           tone: 'warning', sub: 'hari ini' },
-      { key: 'izin',       label: 'Izin',        icon: 'info',            tone: 'info',    sub: 'hari ini' },
-      { key: 'alpha',      label: 'Alpha',       icon: 'x-circle',        tone: 'danger',  sub: 'hari ini' },
+      { key: 'totalUser',  label: 'Total User',  icon: 'users',           tone: 'primary', group: 'pop', chip: 'Terdaftar' },
+      { key: 'totalGroup', label: 'Total Group', icon: 'layers',          tone: 'primary', group: 'pop', chip: 'Aktif' },
+      { key: 'hadir',      label: 'Hadir',       icon: 'check-circle-2',  tone: 'success', group: 'keh' },
+      { key: 'telat',      label: 'Telat',       icon: 'clock',           tone: 'warning', group: 'keh' },
+      { key: 'izin',       label: 'Izin',        icon: 'info',            tone: 'info',    group: 'keh' },
+      { key: 'alpha',      label: 'Alpha',       icon: 'x-circle',        tone: 'danger',  group: 'keh' },
     ],
+    /* Share % status kehadiran atas total tercatat hari ini (badge kartu keh).
+     * Jujur dari data (chartTotal = hadir+telat+izin+sakit+alpha); 0 bila kosong. */
+    sharePct(key) {
+      var t = this.chartTotal;
+      return t ? Math.round(((this.stats[key] || 0) / t) * 100) : 0;
+    },
 
     init() { this.loadStats(); },
 

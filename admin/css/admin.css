@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 /* =============================================================================
    Absensi Sekolah — ADMIN: Base & Scope  (acuan: design.md §2, §3)
    -----------------------------------------------------------------------------
@@ -50,7 +51,7 @@
    FE membungkus SELURUH markup halaman plugin di <div class="absensi-app">.
    Semua reset & style plugin hanya berlaku di dalamnya → wp-admin aman. */
 .absensi-app {
-  font-family: 'Inter', 'Plus Jakarta Sans', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  font-family: 'Plus Jakarta Sans', 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   font-size: 14px;
   line-height: 1.5;
   color: var(--c-text);
@@ -108,7 +109,7 @@
 .absensi-app .badge {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   padding: 2px 10px;
   border-radius: var(--r-full);
   font-size: 12px;
@@ -116,6 +117,9 @@
   font-weight: 500;
   white-space: nowrap;
 }
+/* Titik warna depan (depth+aksen): status/tipe lebih terbaca sekilas. Warna ikut
+   teks badge (currentColor = tone). */
+.absensi-app .badge::before { content: ""; flex: none; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 /* Status kehadiran */
 .absensi-app .badge--hadir { color: var(--c-success-text); background: var(--c-success-soft); }
 .absensi-app .badge--telat { color: var(--c-warning-text); background: var(--c-warning-soft); }
@@ -135,6 +139,10 @@
 .absensi-app .icon--adorn { width: 18px; height: 18px; }   /* input adornment */
 
 /* ─── Utility ringkas (komponen penuh di item "Komponen UI") ──────────────────*/
+/* Cegah FOUC (flash "popup blink"): sembunyikan elemen x-cloak sampai Alpine init.
+   Tanpa ini, modal-overlay/skeleton/empty (x-show + x-cloak) sekilas tampil saat
+   load — paling kentara di Users/Group (modal-overlay fullscreen). Mirror kiosk. */
+.absensi-app [x-cloak] { display: none !important; }
 .absensi-app .u-muted   { color: var(--c-text-muted); }
 .absensi-app .u-hidden  { display: none !important; }
 .absensi-app .u-surface { background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--r-lg); box-shadow: var(--shadow-sm); }
@@ -149,8 +157,13 @@
   height: 40px; padding: 0 16px; border-radius: var(--r-md);
   font-size: 14px; line-height: 20px; font-weight: 600;
   border: 1px solid transparent; background: transparent; color: var(--c-text);
-  cursor: pointer; white-space: nowrap; transition: background .15s, border-color .15s, opacity .15s;
+  cursor: pointer; white-space: nowrap; text-decoration: none;
+  transition: background .15s, border-color .15s, opacity .15s;
 }
+/* Tombol berbasis <a> (Quick Action dsb): cegah underline default wp-admin */
+.absensi-app a.btn:hover, .absensi-app a.btn:focus { text-decoration: none; }
+/* Tactile pressed feedback (skill Rule 5): tombol "ketekan" saat :active */
+.absensi-app .btn:active:not(:disabled):not(.is-loading) { transform: translateY(1px); }
 .absensi-app .btn--primary       { background: var(--c-primary); color: #fff; }
 .absensi-app .btn--primary:hover { background: var(--c-primary-hover); }
 .absensi-app .btn--outline       { background: var(--c-surface); color: var(--c-text); border-color: var(--c-border); }
@@ -242,28 +255,42 @@
 /* ─── Summary cards Laporan (design.md §8): 6 kartu, peta warna status ───────*/
 .absensi-app .summary-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; }
 .absensi-app .sum-card {
-  display: flex; flex-direction: column; gap: 6px; padding: 16px;
-  background: var(--c-surface); border: 1px solid var(--c-border); border-left-width: 3px;
-  border-radius: var(--r-lg); box-shadow: var(--shadow-sm);
+  position: relative; overflow: hidden; display: flex; flex-direction: column; gap: 6px; padding: 16px;
+  background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--r-lg);
+  box-shadow: 0 1px 2px rgba(16,24,40,.04), 0 12px 28px -14px rgba(16,24,40,.14);
+  transition: transform .18s ease, box-shadow .18s ease;
+}
+.absensi-app .sum-card:hover { transform: translateY(-2px); box-shadow: 0 1px 2px rgba(16,24,40,.06), 0 18px 36px -16px rgba(16,24,40,.24); }
+/* Top-bar aksen + glow radial per tone (konsisten stat card Dashboard) */
+.absensi-app .sum-card::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 3px; background: var(--tone, var(--c-primary)); }
+.absensi-app .sum-card::after {
+  content: ""; position: absolute; top: -34px; right: -26px; width: 110px; height: 110px; border-radius: 50%;
+  background: radial-gradient(circle, var(--tone-glow, rgba(37,99,235,.12)) 0%, transparent 70%); pointer-events: none;
 }
 .absensi-app .sum-card__label { font-size: 12px; font-weight: 500; color: var(--c-text-muted); }
-.absensi-app .sum-card__value { font-size: 28px; line-height: 1.1; font-weight: 700; font-variant-numeric: tabular-nums; }
-.absensi-app .sum-card--success { border-left-color: var(--c-success); } .absensi-app .sum-card--success .sum-card__value { color: var(--c-success-text); }
-.absensi-app .sum-card--warning { border-left-color: var(--c-warning); } .absensi-app .sum-card--warning .sum-card__value { color: var(--c-warning-text); }
-.absensi-app .sum-card--info    { border-left-color: var(--c-info); }    .absensi-app .sum-card--info .sum-card__value    { color: var(--c-info-text); }
-.absensi-app .sum-card--purple  { border-left-color: var(--c-purple); }  .absensi-app .sum-card--purple .sum-card__value  { color: var(--c-purple-text); }
-.absensi-app .sum-card--danger  { border-left-color: var(--c-danger); }  .absensi-app .sum-card--danger .sum-card__value  { color: var(--c-danger-text); }
-.absensi-app .sum-card--primary { border-left-color: var(--c-primary); } .absensi-app .sum-card--primary .sum-card__value { color: var(--c-primary-hover); }
+.absensi-app .sum-card__value { font-size: 30px; line-height: 1.05; font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; color: var(--tone-text, var(--c-text)); }
+.absensi-app .sum-card--success { --tone: var(--c-success); --tone-text: var(--c-success-text); --tone-glow: rgba(34,197,94,.16); }
+.absensi-app .sum-card--warning { --tone: var(--c-warning); --tone-text: var(--c-warning-text); --tone-glow: rgba(245,158,11,.16); }
+.absensi-app .sum-card--info    { --tone: var(--c-info);    --tone-text: var(--c-info-text);    --tone-glow: rgba(6,182,212,.16); }
+.absensi-app .sum-card--purple  { --tone: var(--c-purple);  --tone-text: var(--c-purple-text);  --tone-glow: rgba(139,92,246,.16); }
+.absensi-app .sum-card--danger  { --tone: var(--c-danger);  --tone-text: var(--c-danger-text);  --tone-glow: rgba(239,68,68,.16); }
+.absensi-app .sum-card--primary { --tone: var(--c-primary); --tone-text: var(--c-primary-hover); --tone-glow: rgba(37,99,235,.14); }
 @media (max-width: 1024px) { .absensi-app .summary-grid { grid-template-columns: repeat(3, 1fr); } }
 @media (max-width: 640px)  { .absensi-app .summary-grid { grid-template-columns: repeat(2, 1fr); } }
 
 /* ─── Pengaturan (design.md §9): 5 card + baris field ────────────────────────*/
-.absensi-app .settings-grid { display: flex; flex-direction: column; gap: 16px; max-width: 860px; }
+/* Grid 2-kolom (design.md §9): kartu kecil (RFID/Retensi) berdampingan, kartu
+   lebar (Lokasi/Jam Kerja/WhatsApp) span penuh. Hindari whitespace boros. */
+.absensi-app .settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; max-width: 980px; align-items: start; }
+.absensi-app .settings-card--wide { grid-column: 1 / -1; }
 .absensi-app .settings-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .absensi-app .settings-row + .settings-row { margin-top: 16px; }
 .absensi-app .settings-row--3 { grid-template-columns: 1fr 1fr 1fr; }
 .absensi-app .settings-card--muted { background: var(--c-bg); }
 .absensi-app .settings-map { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+@media (max-width: 782px) {
+  .absensi-app .settings-grid { grid-template-columns: 1fr; }
+}
 @media (max-width: 640px) {
   .absensi-app .settings-row, .absensi-app .settings-row--3 { grid-template-columns: 1fr; }
 }
@@ -294,7 +321,7 @@
 /* ─── Card ────────────────────────────────────────────────────────────────────*/
 .absensi-app .card {
   background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--r-lg);
-  box-shadow: var(--shadow-sm); padding: 20px;
+  box-shadow: 0 1px 2px rgba(16,24,40,.04), 0 12px 28px -14px rgba(16,24,40,.13); padding: 20px;
 }
 .absensi-app .card__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
 .absensi-app .card__title { font-size: 18px; line-height: 26px; font-weight: 600; }
@@ -303,48 +330,75 @@
 .absensi-app .dash-main { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; align-items: start; }
 @media (max-width: 900px) { .absensi-app .dash-main { grid-template-columns: 1fr; } }
 .absensi-app .quick-actions { display: flex; flex-direction: column; gap: 8px; }
-.absensi-app .quick-actions .btn { justify-content: flex-start; }
+.absensi-app .quick-actions .btn { justify-content: flex-start; height: 46px; }
+/* Primary Aksi Cepat: gradient + depth (aksen), hover angkat halus */
+.absensi-app .quick-actions .btn--primary { background: linear-gradient(135deg, #3B82F6, var(--c-primary)); box-shadow: 0 10px 20px -8px rgba(37,99,235,.5); }
+.absensi-app .quick-actions .btn--primary:hover { background: linear-gradient(135deg, #2563EB, var(--c-primary-hover)); }
+.absensi-app .quick-actions .btn:not(.btn--primary):hover { transform: translateX(2px); }
 
 /* Dashboard grafik kehadiran (design.md §4): bar horizontal, peta warna status */
 .absensi-app .chart-bars { display: flex; flex-direction: column; gap: 12px; }
 .absensi-app .chart-row { display: grid; grid-template-columns: 64px 1fr 40px; align-items: center; gap: 12px; }
 .absensi-app .chart-row__label { font-size: 13px; color: var(--c-text-muted); }
-.absensi-app .chart-row__track { height: 14px; background: var(--c-bg); border-radius: var(--r-full); overflow: hidden; }
+.absensi-app .chart-row__track { height: 12px; background: #F1F5F9; border-radius: var(--r-full); overflow: hidden; }
 .absensi-app .chart-row__bar { height: 100%; border-radius: var(--r-full); min-width: 2px; transition: width .3s ease; }
-.absensi-app .chart-row__bar--success { background: var(--c-success); }
-.absensi-app .chart-row__bar--warning { background: var(--c-warning); }
-.absensi-app .chart-row__bar--info    { background: var(--c-info); }
-.absensi-app .chart-row__bar--purple  { background: var(--c-purple); }
-.absensi-app .chart-row__bar--danger  { background: var(--c-danger); }
+/* Gradient lembut (depth+aksen): terang→tone, tetap peta warna status design.md */
+.absensi-app .chart-row__bar--success { background: linear-gradient(90deg, #34D399, var(--c-success)); }
+.absensi-app .chart-row__bar--warning { background: linear-gradient(90deg, #FBBF24, var(--c-warning)); }
+.absensi-app .chart-row__bar--info    { background: linear-gradient(90deg, #22D3EE, var(--c-info)); }
+.absensi-app .chart-row__bar--purple  { background: linear-gradient(90deg, #A78BFA, var(--c-purple)); }
+.absensi-app .chart-row__bar--danger  { background: linear-gradient(90deg, #F87171, var(--c-danger)); }
 .absensi-app .chart-row__val { font-size: 14px; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
 
-/* Dashboard Quick Stats grid (design.md §4): 6/3/2 kolom responsive */
-.absensi-app .dash-stats { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; }
-@media (max-width: 1024px) { .absensi-app .dash-stats { grid-template-columns: repeat(3, 1fr); } }
-@media (max-width: 640px)  { .absensi-app .dash-stats { grid-template-columns: repeat(2, 1fr); } }
-
-/* Stat card */
-.absensi-app .stat { display: flex; flex-direction: column; gap: 8px; }
-/* Ikon stat per tone (Quick Stats) */
-.absensi-app .stat__icon--primary { color: var(--c-primary);      background: var(--c-primary-soft); }
-.absensi-app .stat__icon--success { color: var(--c-success-text); background: var(--c-success-soft); }
-.absensi-app .stat__icon--warning { color: var(--c-warning-text); background: var(--c-warning-soft); }
-.absensi-app .stat__icon--info    { color: var(--c-info-text);    background: var(--c-info-soft); }
-.absensi-app .stat__icon--danger  { color: var(--c-danger-text);  background: var(--c-danger-soft); }
-.absensi-app .stat__icon {
-  display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px;
-  border-radius: var(--r-md); color: var(--c-primary); background: var(--c-primary-soft);
+/* ─── Dashboard Quick Stats v2 (design.md §4 — depth + aksen) ─────────────────
+   Dua grup ber-eyebrow: Populasi (2 kolom) + Kehadiran (4 kolom). Kartu ber-aksen
+   tone: bar atas + chip ikon filled + glow radial + depth shadow. */
+.absensi-app .dash-eyebrow {
+  font-size: 11px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase;
+  color: var(--c-text-muted); margin: 0 0 12px 2px; display: flex; align-items: center; gap: 8px;
 }
-.absensi-app .stat__label { font-size: 12px; line-height: 18px; color: var(--c-text-muted); }
-.absensi-app .stat__value { font-size: 30px; line-height: 38px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.absensi-app .stat__delta { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; }
-.absensi-app .stat__delta--up   { color: var(--c-success-text); }
-.absensi-app .stat__delta--down { color: var(--c-danger-text); }
+.absensi-app .dash-eyebrow::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, var(--c-border), transparent); }
+.absensi-app .dash-stats + .dash-eyebrow { margin-top: 24px; }
+.absensi-app .dash-stats { display: grid; gap: 14px; margin-bottom: 4px; }
+.absensi-app .dash-stats--pop { grid-template-columns: repeat(2, 1fr); }
+.absensi-app .dash-stats--keh { grid-template-columns: repeat(4, 1fr); }
+@media (max-width: 1024px) { .absensi-app .dash-stats--keh { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 640px)  { .absensi-app .dash-stats--pop, .absensi-app .dash-stats--keh { grid-template-columns: 1fr; } }
+
+/* Stat card v2: default tone = primary; modifier .stat--{tone} override var. */
+.absensi-app .stat {
+  position: relative; overflow: hidden; display: flex; flex-direction: column; gap: 6px; padding: 18px;
+  --tone: var(--c-primary); --tone-text: var(--c-primary-hover); --tone-soft: var(--c-primary-soft);
+  --tone-glow: rgba(37,99,235,.14); --tone-shadow: rgba(37,99,235,.42);
+  box-shadow: 0 1px 2px rgba(16,24,40,.04), 0 12px 28px -14px rgba(16,24,40,.16);
+  transition: transform .18s ease, box-shadow .18s ease;
+}
+.absensi-app .stat:hover { transform: translateY(-2px); box-shadow: 0 1px 2px rgba(16,24,40,.06), 0 20px 40px -16px rgba(16,24,40,.26); }
+.absensi-app .stat::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 3px; background: var(--tone); }
+.absensi-app .stat::after {
+  content: ""; position: absolute; top: -40px; right: -30px; width: 130px; height: 130px; border-radius: 50%;
+  background: radial-gradient(circle, var(--tone-glow) 0%, transparent 70%); pointer-events: none;
+}
+.absensi-app .stat--primary { --tone: var(--c-primary);  --tone-text: var(--c-primary-hover); --tone-soft: var(--c-primary-soft);  --tone-glow: rgba(37,99,235,.14);  --tone-shadow: rgba(37,99,235,.42); }
+.absensi-app .stat--success { --tone: var(--c-success);  --tone-text: var(--c-success-text);  --tone-soft: var(--c-success-soft);  --tone-glow: rgba(34,197,94,.16);  --tone-shadow: rgba(34,197,94,.42); }
+.absensi-app .stat--warning { --tone: var(--c-warning);  --tone-text: var(--c-warning-text);  --tone-soft: var(--c-warning-soft);  --tone-glow: rgba(245,158,11,.16); --tone-shadow: rgba(245,158,11,.42); }
+.absensi-app .stat--info    { --tone: var(--c-info);     --tone-text: var(--c-info-text);     --tone-soft: var(--c-info-soft);     --tone-glow: rgba(6,182,212,.16);  --tone-shadow: rgba(6,182,212,.42); }
+.absensi-app .stat--danger  { --tone: var(--c-danger);   --tone-text: var(--c-danger-text);   --tone-soft: var(--c-danger-soft);   --tone-glow: rgba(239,68,68,.16);  --tone-shadow: rgba(239,68,68,.42); }
+.absensi-app .stat--purple  { --tone: var(--c-purple);   --tone-text: var(--c-purple-text);   --tone-soft: var(--c-purple-soft);   --tone-glow: rgba(139,92,246,.16); --tone-shadow: rgba(139,92,246,.42); }
+.absensi-app .stat__top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.absensi-app .stat__chip {
+  width: 38px; height: 38px; border-radius: 11px; display: inline-flex; align-items: center; justify-content: center;
+  background: var(--tone); color: #fff; box-shadow: 0 6px 14px -4px var(--tone-shadow);
+}
+.absensi-app .stat__badge { font-size: 12px; font-weight: 600; color: var(--tone-text); background: var(--tone-soft); padding: 3px 9px; border-radius: var(--r-full); }
+.absensi-app .stat__label { font-size: 12.5px; line-height: 18px; color: var(--c-text-muted); font-weight: 500; }
+.absensi-app .stat__value { font-size: 34px; line-height: 1; font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.absensi-app .stat__value--tone { color: var(--tone-text); }
 
 /* ─── Table ───────────────────────────────────────────────────────────────────*/
 .absensi-app .table-card {
   background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--r-lg);
-  box-shadow: var(--shadow-sm); overflow: hidden;
+  box-shadow: 0 1px 2px rgba(16,24,40,.04), 0 12px 28px -14px rgba(16,24,40,.13); overflow: hidden;
 }
 .absensi-app .table-scroll { overflow-x: auto; }
 .absensi-app .table { width: 100%; border-collapse: collapse; }
@@ -361,12 +415,19 @@
 .absensi-app .table__user { display: flex; align-items: center; gap: 10px; }
 /* Aksi baris Hapus: hover → merah (design.md §5 danger ghost) */
 .absensi-app .act-del:hover { color: var(--c-danger-text); background: var(--c-danger-soft); }
+/* Affordance ikon aksi baris: default ikut warna teks (bukan pucat), hover jelas */
+.absensi-app .table .col-actions .btn--icon { color: var(--c-text); }
+.absensi-app .table .col-actions .btn--icon:hover { background: var(--c-bg); }
+/* Laporan (design.md §8): 10 kolom → jangan wrap, biar SCROLL-X di .table-scroll.
+   width:100% bikin sel membungkus; min-width + nowrap memaksa tabel meluber → scroll. */
+.absensi-app .report-table { min-width: 880px; }
+.absensi-app .report-table thead th, .absensi-app .report-table tbody td { white-space: nowrap; }
 /* Baris state (loading ringkas) di dalam table-card; skeleton penuh menyusul */
 .absensi-app .table-state { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 32px; color: var(--c-text-muted); font-size: 14px; }
 .absensi-app .table__avatar {
   flex: none; width: 32px; height: 32px; border-radius: var(--r-full); object-fit: cover;
   display: inline-flex; align-items: center; justify-content: center;
-  background: var(--c-primary-soft); color: var(--c-primary); font-size: 12px; font-weight: 600;
+  background: linear-gradient(135deg, #6366F1, var(--c-primary)); color: #fff; font-size: 12px; font-weight: 700;
 }
 
 /* ─── Modal ───────────────────────────────────────────────────────────────────*/
@@ -380,19 +441,47 @@
   animation: absensi-modal-in .15s ease-out;
 }
 .absensi-app .modal--lg { max-width: 640px; }
-.absensi-app .modal__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 20px; border-bottom: 1px solid var(--c-border); }
+.absensi-app .modal__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--c-border); background: var(--c-bg); border-radius: var(--r-lg) var(--r-lg) 0 0; }
+.absensi-app .modal__head-ic { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .absensi-app .modal__title { font-size: 18px; line-height: 26px; font-weight: 600; }
 .absensi-app .modal__close { display: inline-flex; padding: 6px; border: 0; background: transparent; color: var(--c-text-muted); cursor: pointer; border-radius: var(--r-md); }
 .absensi-app .modal__close:hover { background: var(--c-bg); }
 .absensi-app .modal__body { padding: 20px; display: flex; flex-direction: column; gap: 16px; }
-.absensi-app .modal__footer { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 16px 20px; border-top: 1px solid var(--c-border); }
+.absensi-app .modal__footer { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 16px 20px; border-top: 1px solid var(--c-border); background: var(--c-bg); border-radius: 0 0 var(--r-lg) var(--r-lg); }
 /* Checkbox "Ganti kartu" (modal Bind RFID) */
 .absensi-app .bind-replace { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--c-text); cursor: pointer; }
 .absensi-app .bind-replace input { width: 16px; height: 16px; accent-color: var(--c-primary); cursor: pointer; }
 
 /* Jumlah user per group (tabel Group) */
-.absensi-app .group-count { display: inline-flex; align-items: center; gap: 6px; }
-.absensi-app .group-count__icon { display: inline-flex; color: var(--c-text-muted); }
+/* Jumlah user Group → pill lembut (depth+aksen): ikon users + angka mono */
+.absensi-app .group-count {
+  display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 8px;
+  background: var(--c-bg); border: 1px solid var(--c-border); border-radius: var(--r-full);
+  font-weight: 600; color: var(--c-text);
+}
+.absensi-app .group-count__icon { display: inline-flex; color: var(--c-primary); }
+
+/* RFID cell (Users): terpasang = chip mono; belum = muted (design.md §5 mask) */
+.absensi-app .rfid-chip {
+  display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: var(--r-full);
+  background: var(--c-info-soft); color: var(--c-info-text); font-size: 12px; font-weight: 600;
+  font-variant-numeric: tabular-nums; letter-spacing: .02em;
+}
+.absensi-app .rfid-chip svg { width: 14px; height: 14px; }
+.absensi-app .rfid-none { color: var(--c-text-muted); font-size: 13px; }
+
+/* Icon-chip header kartu (Settings): chip lembut tone + judul — nyambung stat card */
+.absensi-app .card-chip {
+  width: 36px; height: 36px; flex: none; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center;
+  background: var(--tone-soft, var(--c-primary-soft)); color: var(--tone-text, var(--c-primary));
+}
+.absensi-app .card-chip--primary { --tone-soft: var(--c-primary-soft); --tone-text: var(--c-primary); }
+.absensi-app .card-chip--info    { --tone-soft: var(--c-info-soft);    --tone-text: var(--c-info-text); }
+.absensi-app .card-chip--purple  { --tone-soft: var(--c-purple-soft);  --tone-text: var(--c-purple-text); }
+.absensi-app .card-chip--warning { --tone-soft: var(--c-warning-soft); --tone-text: var(--c-warning-text); }
+.absensi-app .card-chip--danger  { --tone-soft: var(--c-danger-soft);  --tone-text: var(--c-danger-text); }
+.absensi-app .card-chip--muted   { --tone-soft: var(--c-bg);           --tone-text: var(--c-text-muted); }
+.absensi-app .card-head-ic { display: flex; align-items: center; gap: 12px; }
 
 /* Modal Import Excel */
 .absensi-app .import-drop {
@@ -530,4 +619,14 @@
   }
   .absensi-app .group-table td.col-actions { justify-content: flex-end; padding-top: 10px; border-top: 1px solid var(--c-border); margin-top: 6px; }
   .absensi-app .group-table td.col-actions::before { display: none; }
+}
+
+/* ─── Reduced motion (aksesibilitas): hormati preferensi kurangi gerak ────────
+   Matikan transisi/animasi non-esensial + transform hover/active (depth+aksen). */
+@media (prefers-reduced-motion: reduce) {
+  .absensi-app *, .absensi-app *::before, .absensi-app *::after {
+    transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important;
+  }
+  .absensi-app .stat:hover, .absensi-app .sum-card:hover,
+  .absensi-app .quick-actions .btn:hover, .absensi-app .btn:active { transform: none !important; }
 }

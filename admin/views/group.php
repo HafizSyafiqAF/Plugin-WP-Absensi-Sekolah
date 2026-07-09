@@ -126,10 +126,13 @@ defined( 'ABSPATH' ) || exit;
            @keydown.escape.window="closeModal()" @click.self="closeModal()">
         <div class="modal" role="dialog" aria-modal="true" aria-labelledby="gf-title" @keydown.tab="trapFocus($event)">
           <div class="modal__head">
-            <h2 class="modal__title" id="gf-title"
-                x-text="editing
-                  ? '<?php echo esc_js( __( 'Edit Group', 'absensi-sekolah' ) ); ?>'
-                  : '<?php echo esc_js( __( 'Tambah Group', 'absensi-sekolah' ) ); ?>'"></h2>
+            <div class="modal__head-ic">
+              <span class="card-chip card-chip--primary" x-html="$icon( 'layers', 18 )" aria-hidden="true"></span>
+              <h2 class="modal__title" id="gf-title"
+                  x-text="editing
+                    ? '<?php echo esc_js( __( 'Edit Group', 'absensi-sekolah' ) ); ?>'
+                    : '<?php echo esc_js( __( 'Tambah Group', 'absensi-sekolah' ) ); ?>'"></h2>
+            </div>
             <button type="button" class="modal__close" @click="closeModal()"
                     aria-label="<?php esc_attr_e( 'Tutup', 'absensi-sekolah' ); ?>">
               <span x-html="$icon( 'x', 18 )"></span>
@@ -180,7 +183,10 @@ defined( 'ABSPATH' ) || exit;
            @keydown.escape.window="closeDelete()" @click.self="closeDelete()">
         <div class="modal" role="dialog" aria-modal="true" aria-labelledby="gdel-title" @keydown.tab="trapFocus($event)">
           <div class="modal__head">
-            <h2 class="modal__title" id="gdel-title"><?php esc_html_e( 'Hapus Group', 'absensi-sekolah' ); ?></h2>
+            <div class="modal__head-ic">
+              <span class="card-chip card-chip--danger" x-html="$icon( 'trash-2', 18 )" aria-hidden="true"></span>
+              <h2 class="modal__title" id="gdel-title"><?php esc_html_e( 'Hapus Group', 'absensi-sekolah' ); ?></h2>
+            </div>
             <button type="button" class="modal__close" @click="closeDelete()"
                     aria-label="<?php esc_attr_e( 'Tutup', 'absensi-sekolah' ); ?>">
               <span x-html="$icon( 'x', 18 )"></span>

@@ -37,15 +37,38 @@ defined( 'ABSPATH' ) || exit;
         <button type="button" class="btn btn--outline btn--sm" @click="refresh()"><?php esc_html_e( 'Coba Lagi', 'absensi-sekolah' ); ?></button>
       </div>
 
-      <!-- Quick Stats (6) — design.md §4: kehadiran hari ini + populasi -->
-      <div class="dash-stats">
-        <template x-for="c in statCards" :key="c.key">
-          <div class="card stat">
-            <span class="stat__icon" :class="'stat__icon--' + c.tone" x-html="$icon(c.icon, 20)" aria-hidden="true"></span>
-            <span x-show="loading" class="skeleton skeleton--text" style="width:44px;height:28px;"></span>
+      <!-- Quick Stats (design.md §4): 2 grup ber-eyebrow — Populasi + Kehadiran.
+           Kartu ber-aksen tone (bar atas + chip ikon filled + glow). Kehadiran:
+           angka berwarna tone + badge share %. Populasi: badge label statis. -->
+      <p class="dash-eyebrow"><?php esc_html_e( 'Populasi', 'absensi-sekolah' ); ?></p>
+      <div class="dash-stats dash-stats--pop">
+        <template x-for="c in statCards.filter(s => s.group === 'pop')" :key="c.key">
+          <div class="card stat" :class="'stat--' + c.tone">
+            <div class="stat__top">
+              <span class="stat__chip" x-html="$icon(c.icon, 20)" aria-hidden="true"></span>
+              <span class="stat__badge" x-text="c.chip"></span>
+            </div>
+            <span x-show="loading" class="skeleton skeleton--text" style="width:56px;height:34px;"></span>
             <span x-show="! loading" class="stat__value u-num" x-text="error ? '–' : (stats[c.key] ?? 0)"
                   :aria-label="c.label + ': ' + (error ? '-' : (stats[c.key] ?? 0))"></span>
-            <span class="stat__label" x-text="c.label + (c.sub ? ' (' + c.sub + ')' : '')"></span>
+            <span class="stat__label" x-text="c.label"></span>
+          </div>
+        </template>
+      </div>
+
+      <p class="dash-eyebrow"><?php esc_html_e( 'Kehadiran Hari Ini', 'absensi-sekolah' ); ?></p>
+      <div class="dash-stats dash-stats--keh">
+        <template x-for="c in statCards.filter(s => s.group === 'keh')" :key="c.key">
+          <div class="card stat" :class="'stat--' + c.tone">
+            <div class="stat__top">
+              <span class="stat__chip" x-html="$icon(c.icon, 20)" aria-hidden="true"></span>
+              <span class="stat__badge" x-show="! loading && ! error && chartTotal > 0" x-cloak
+                    x-text="sharePct(c.key) + '%'"></span>
+            </div>
+            <span x-show="loading" class="skeleton skeleton--text" style="width:56px;height:34px;"></span>
+            <span x-show="! loading" class="stat__value stat__value--tone u-num" x-text="error ? '–' : (stats[c.key] ?? 0)"
+                  :aria-label="c.label + ': ' + (error ? '-' : (stats[c.key] ?? 0))"></span>
+            <span class="stat__label" x-text="c.label"></span>
           </div>
         </template>
       </div>

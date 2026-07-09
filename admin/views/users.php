@@ -133,10 +133,13 @@ defined( 'ABSPATH' ) || exit;
                     <span x-show="u.tipe_group" class="badge" :class="tipeBadge(u.tipe_group)" x-text="tipeLabel(u.tipe_group)"></span>
                     <span x-show="! u.tipe_group" class="u-muted">—</span>
                   </td>
-                  <!-- RFID (mask) -->
+                  <!-- RFID: terpasang = chip (ikon + mask); belum = muted (design.md §5) -->
                   <td data-label="<?php esc_attr_e( 'RFID', 'absensi-sekolah' ); ?>">
-                    <span x-show="u.rfid_uid" class="u-num" x-text="maskRfid(u.rfid_uid)"></span>
-                    <span x-show="! u.rfid_uid" class="u-muted">—</span>
+                    <span x-show="u.rfid_uid" class="rfid-chip">
+                      <span x-html="$icon( 'credit-card', 14 )" aria-hidden="true"></span>
+                      <span class="u-num" x-text="maskRfid(u.rfid_uid)"></span>
+                    </span>
+                    <span x-show="! u.rfid_uid" class="rfid-none"><?php esc_html_e( 'Belum', 'absensi-sekolah' ); ?></span>
                   </td>
                   <!-- Aksi: edit / bind / hapus -->
                   <td class="col-actions" data-label="<?php esc_attr_e( 'Aksi', 'absensi-sekolah' ); ?>">
@@ -197,10 +200,13 @@ defined( 'ABSPATH' ) || exit;
            @keydown.escape.window="closeModal()" @click.self="closeModal()">
         <div class="modal" role="dialog" aria-modal="true" aria-labelledby="uf-title" @keydown.tab="trapFocus($event)">
           <div class="modal__head">
-            <h2 class="modal__title" id="uf-title"
-                x-text="editing
-                  ? '<?php echo esc_js( __( 'Edit User', 'absensi-sekolah' ) ); ?>'
-                  : '<?php echo esc_js( __( 'Tambah User', 'absensi-sekolah' ) ); ?>'"></h2>
+            <div class="modal__head-ic">
+              <span class="card-chip card-chip--primary" x-html="$icon( 'users', 18 )" aria-hidden="true"></span>
+              <h2 class="modal__title" id="uf-title"
+                  x-text="editing
+                    ? '<?php echo esc_js( __( 'Edit User', 'absensi-sekolah' ) ); ?>'
+                    : '<?php echo esc_js( __( 'Tambah User', 'absensi-sekolah' ) ); ?>'"></h2>
+            </div>
             <button type="button" class="modal__close" @click="closeModal()"
                     aria-label="<?php esc_attr_e( 'Tutup', 'absensi-sekolah' ); ?>">
               <span x-html="$icon( 'x', 18 )"></span>
@@ -273,8 +279,11 @@ defined( 'ABSPATH' ) || exit;
            @keydown.escape.window="closeBind()" @click.self="closeBind()">
         <div class="modal" role="dialog" aria-modal="true" aria-labelledby="bind-title" @keydown.tab="trapFocus($event)">
           <div class="modal__head">
-            <h2 class="modal__title" id="bind-title"
-                x-text="'<?php echo esc_js( __( 'Bind Kartu RFID —', 'absensi-sekolah' ) ); ?> ' + (bindUser ? bindUser.nama : '')"></h2>
+            <div class="modal__head-ic">
+              <span class="card-chip card-chip--purple" x-html="$icon( 'credit-card', 18 )" aria-hidden="true"></span>
+              <h2 class="modal__title" id="bind-title"
+                  x-text="'<?php echo esc_js( __( 'Bind Kartu RFID —', 'absensi-sekolah' ) ); ?> ' + (bindUser ? bindUser.nama : '')"></h2>
+            </div>
             <button type="button" class="modal__close" @click="closeBind()"
                     aria-label="<?php esc_attr_e( 'Tutup', 'absensi-sekolah' ); ?>">
               <span x-html="$icon( 'x', 18 )"></span>
@@ -328,7 +337,10 @@ defined( 'ABSPATH' ) || exit;
            @keydown.escape.window="closeImport()" @click.self="closeImport()">
         <div class="modal modal--lg" role="dialog" aria-modal="true" aria-labelledby="import-title" @keydown.tab="trapFocus($event)">
           <div class="modal__head">
-            <h2 class="modal__title" id="import-title"><?php esc_html_e( 'Import User dari Excel', 'absensi-sekolah' ); ?></h2>
+            <div class="modal__head-ic">
+              <span class="card-chip card-chip--primary" x-html="$icon( 'upload', 18 )" aria-hidden="true"></span>
+              <h2 class="modal__title" id="import-title"><?php esc_html_e( 'Import User dari Excel', 'absensi-sekolah' ); ?></h2>
+            </div>
             <button type="button" class="modal__close" @click="closeImport()"
                     aria-label="<?php esc_attr_e( 'Tutup', 'absensi-sekolah' ); ?>">
               <span x-html="$icon( 'x', 18 )"></span>
@@ -416,7 +428,10 @@ defined( 'ABSPATH' ) || exit;
            @keydown.escape.window="closeDelete()" @click.self="closeDelete()">
         <div class="modal" role="dialog" aria-modal="true" aria-labelledby="del-title" @keydown.tab="trapFocus($event)">
           <div class="modal__head">
-            <h2 class="modal__title" id="del-title"><?php esc_html_e( 'Hapus User', 'absensi-sekolah' ); ?></h2>
+            <div class="modal__head-ic">
+              <span class="card-chip card-chip--danger" x-html="$icon( 'trash-2', 18 )" aria-hidden="true"></span>
+              <h2 class="modal__title" id="del-title"><?php esc_html_e( 'Hapus User', 'absensi-sekolah' ); ?></h2>
+            </div>
             <button type="button" class="modal__close" @click="closeDelete()"
                     aria-label="<?php esc_attr_e( 'Tutup', 'absensi-sekolah' ); ?>">
               <span x-html="$icon( 'x', 18 )"></span>
