@@ -140,7 +140,7 @@ class GroupEndpoint {
     private function group_args( bool $required ): array {
         return [
             'nama' => [ 'required' => $required, 'type' => 'string', 'maxLength' => 100 ],
-            'tipe' => [ 'required' => false,     'type' => 'string', 'enum' => [ 'kelas', 'guru', 'staff' ] ],
+            'tipe' => [ 'required' => false,     'type' => 'string', 'maxLength' => 50 ],
         ];
     }
 }

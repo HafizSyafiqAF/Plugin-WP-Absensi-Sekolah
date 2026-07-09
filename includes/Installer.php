@@ -10,7 +10,7 @@ defined( 'ABSPATH' ) || exit;
 class Installer {
 
     /** Versi skema DB – naikkan setiap ada perubahan tabel. */
-    const DB_VERSION = '2.0.0';
+    const DB_VERSION = '2.1.0';
 
     public static function activate(): void {
         self::create_tables();
@@ -41,6 +41,10 @@ class Installer {
         // dbDelta hanya CREATE/ALTER-tambah, tak bisa RENAME. Idempotent → aman diulang.
         if ( version_compare( $installed, '2.0.0', '<' ) ) {
             self::migrate_to_v2();
+        }
+        // v2.1.0: tipe group ENUM → VARCHAR (tipe kustom). dbDelta tak bisa ubah ENUM→VARCHAR.
+        if ( version_compare( $installed, '2.1.0', '<' ) ) {
+            self::migrate_to_v2_1();
         }
         self::create_tables(); // dbDelta + update_option( 'absensi_db_version', DB_VERSION )
         // Re-seed option default (idempotent) supaya upgrade lewat maybe_upgrade tetap
@@ -75,7 +79,7 @@ class Installer {
         dbDelta( "CREATE TABLE {$wpdb->prefix}absensi_group (
             id         BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
             nama       VARCHAR(100) NOT NULL,
-            tipe       ENUM('kelas','guru','staff') NOT NULL DEFAULT 'kelas',
+            tipe       VARCHAR(50) NOT NULL DEFAULT 'kelas' COMMENT 'Tipe kustom bebas (mis. kelas/guru/staff/ekskul)',
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (id)
         ) $charset;" );
@@ -216,6 +220,26 @@ class Installer {
         $wpdb->query( "DROP TABLE IF EXISTS {$p}absensi_wali" );
     }
 
+    /**
+     * Migrasi v2.1.0: kolom `tipe` group ENUM('kelas','guru','staff') → VARCHAR(50)
+     * agar tipe bisa diisi bebas oleh admin (mis. "Ekskul", "Panitia"). Data lama tetap.
+     * Idempotent: hanya MODIFY bila kolom masih ENUM.
+     */
+    private static function migrate_to_v2_1(): void {
+        global $wpdb;
+        $group = "{$wpdb->prefix}absensi_group";
+        if ( self::table_exists( $group ) && self::column_is_enum( $group, 'tipe' ) ) {
+            $wpdb->query( "ALTER TABLE `{$group}` MODIFY tipe VARCHAR(50) NOT NULL DEFAULT 'kelas'" );
+        }
+    }
+
+    /** True bila tipe kolom masih ENUM (dipakai migrasi ke VARCHAR, idempotent). */
+    private static function column_is_enum( string $table, string $column ): bool {
+        global $wpdb;
+        $row = $wpdb->get_row( $wpdb->prepare( "SHOW COLUMNS FROM `{$table}` WHERE Field = %s", $column ) );
+        return $row && 0 === stripos( (string) $row->Type, 'enum' );
+    }
+
     /** True bila tabel ada. */
     private static function table_exists( string $table ): bool {
         global $wpdb;
@@ -277,7 +301,7 @@ class Installer {
      */
     private static function seed_pages(): void {
         $defs = [
-            'siswa' => [ 'title' => 'Absensi Siswa', 'slug' => 'absensi-siswa', 'shortcode' => '[absensi_siswa]' ],
+            'siswa' => [ 'title' => 'Absensi',       'slug' => 'absensi-siswa', 'shortcode' => '[absensi_siswa]' ],
             'guru'  => [ 'title' => 'Absensi Guru',  'slug' => 'absensi-guru',  'shortcode' => '[absensi_guru]' ],
         ];
 

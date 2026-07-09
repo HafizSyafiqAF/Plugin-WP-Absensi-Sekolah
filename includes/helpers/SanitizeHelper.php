@@ -29,12 +29,18 @@ class SanitizeHelper {
 
     /**
      * Sanitasi data group (skema v2: absensi_group) untuk INSERT/UPDATE.
-     * Kolom: nama (≤100), tipe (whitelist kelas/guru/staff; invalid → 'kelas').
+     * Kolom: nama (≤100), tipe (string BEBAS tersanitasi ≤50; kosong → 'kelas').
+     * (v2.1.0: tipe kustom — tak lagi whitelist kelas/guru/staff.)
      */
     public static function group( array $data ): array {
         $clean = [];
         if ( isset( $data['nama'] ) ) $clean['nama'] = substr( sanitize_text_field( $data['nama'] ), 0, 100 );
-        if ( isset( $data['tipe'] ) ) $clean['tipe'] = in_array( $data['tipe'], [ 'kelas', 'guru', 'staff' ], true ) ? $data['tipe'] : 'kelas';
+        if ( isset( $data['tipe'] ) ) {
+            // Bebas diisi admin (mis. "Ekskul", "Panitia"); rapikan spasi, batasi 50 char.
+            $tipe = trim( (string) preg_replace( '/\s+/', ' ', sanitize_text_field( (string) $data['tipe'] ) ) );
+            $tipe = function_exists( 'mb_substr' ) ? mb_substr( $tipe, 0, 50 ) : substr( $tipe, 0, 50 );
+            $clean['tipe'] = '' !== $tipe ? $tipe : 'kelas';
+        }
         return $clean;
     }
 
