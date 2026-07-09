@@ -149,6 +149,11 @@ class AbsensiEndpoint {
             if ( ! empty( $existing->waktu_keluar ) ) {
                 return $this->error( 'sudah_absen_keluar', 'Anda sudah absen pulang hari ini.', 409 );
             }
+            // Gate jam: tolak pulang sebelum jam keluar jadwal (tak update baris).
+            $gate = $this->gate_jam( (int) $user->group_id, 'pulang' );
+            if ( $gate ) {
+                return $gate;
+            }
             $wpdb->update(
                 $wpdb->prefix . 'absensi_rekap',
                 SanitizeHelper::rekap( [
@@ -171,14 +176,22 @@ class AbsensiEndpoint {
             return $this->error( 'sudah_absen', 'Anda sudah absen masuk hari ini.', 409 );
         }
 
-        // Simpan foto selfie (base64) – hanya sesi masuk (skema 1 foto/hari)
+        // Gate jam: tolak masuk sebelum jam masuk jadwal (tak insert baris).
+        $gate = $this->gate_jam( (int) $user->group_id, 'masuk' );
+        if ( $gate ) {
+            return $gate;
+        }
+
+        // Foto selfie WAJIB untuk absen masuk (kebijakan kiosk: bukti kehadiran).
+        // Enforce di server (boundary) walau FE juga blokir submit tanpa foto.
         $foto_base64 = $req->get_param( 'foto' );
-        $foto_path   = '';
-        if ( $foto_base64 ) {
-            $foto_path = FileHelper::save_selfie( $foto_base64, (int) $user->id );
-            if ( is_wp_error( $foto_path ) ) {
-                return $this->error( 'foto_gagal', $foto_path->get_error_message() );
-            }
+        if ( empty( $foto_base64 ) ) {
+            return $this->error( 'foto_wajib', 'Foto selfie wajib untuk absen masuk.', 422 );
+        }
+        // Simpan foto selfie (base64) – hanya sesi masuk (skema 1 foto/hari)
+        $foto_path = FileHelper::save_selfie( $foto_base64, (int) $user->id, $nomor, 'masuk' );
+        if ( is_wp_error( $foto_path ) ) {
+            return $this->error( 'foto_gagal', $foto_path->get_error_message() );
         }
 
         // Tentukan status masuk (hadir/telat) – konsisten timezone WP
@@ -233,14 +246,22 @@ class AbsensiEndpoint {
         }
 
         // Anti double-tap: tolak UID sama dalam window (detik). 0 = nonaktif.
-        $window = (int) get_option( 'absensi_rfid_debounce', 3 );
+        // Debounce hanya di-ARM setelah rekap SUKSES (lihat arm_debounce di bawah); tap yang
+        // DITOLAK (gate jam / 404 / 409) tak arm → retap kasih alasan asli, bukan double_tap
+        // yang menutupi (mis. "Belum waktunya absen masuk" ketimbang "Kartu baru saja di-tap").
+        $window  = (int) get_option( 'absensi_rfid_debounce', 3 );
+        $tap_key = '';
         if ( $window > 0 ) {
             $tap_key = 'absensi_rfid_tap_' . md5( $uid );
             if ( false !== get_transient( $tap_key ) ) {
                 return $this->error( 'double_tap', 'Kartu baru saja di-tap, tunggu sebentar.', 429 );
             }
-            set_transient( $tap_key, time(), $window );
         }
+        $arm_debounce = function () use ( &$tap_key, $window ) {
+            if ( '' !== $tap_key ) {
+                set_transient( $tap_key, time(), $window );
+            }
+        };
 
         // Cari user (siswa/guru/staff) berdasarkan UID kartu
         $user = $wpdb->get_row( $wpdb->prepare(
@@ -257,8 +278,27 @@ class AbsensiEndpoint {
             $user->id, $today
         ) );
 
-        // Tap kedua = catat waktu keluar
-        if ( $existing && empty( $existing->waktu_keluar ) ) {
+        // Tentukan sesi: EKSPLISIT dari kiosk (toggle Masuk/Pulang) atau AUTO by kondisi rekap.
+        // Auto: belum ada baris → masuk; sudah masuk belum keluar → pulang; selain itu masuk.
+        // (Selaras selfie; `sesi` kosong = backward-compatible dengan perilaku tap lama.)
+        $sesi = $req->get_param( 'sesi' );
+        if ( ! in_array( $sesi, [ 'masuk', 'pulang' ], true ) ) {
+            $sesi = ! $existing ? 'masuk' : ( empty( $existing->waktu_keluar ) ? 'pulang' : 'masuk' );
+        }
+
+        // ── Sesi PULANG: catat waktu keluar (update baris hari ini) ──
+        if ( 'pulang' === $sesi ) {
+            if ( ! $existing ) {
+                return $this->error( 'belum_absen_masuk', "{$user->nama} belum absen masuk hari ini.", 409 );
+            }
+            if ( ! empty( $existing->waktu_keluar ) ) {
+                return $this->error( 'sudah_absen_keluar', "{$user->nama} sudah absen pulang hari ini.", 409 );
+            }
+            // Gate jam: tolak pulang sebelum jam keluar jadwal (tak update baris).
+            $gate = $this->gate_jam( (int) $user->group_id, 'pulang' );
+            if ( $gate ) {
+                return $gate;
+            }
             $wpdb->update(
                 $wpdb->prefix . 'absensi_rekap',
                 SanitizeHelper::rekap( [
@@ -267,6 +307,7 @@ class AbsensiEndpoint {
                 ] ),
                 [ 'id' => (int) $existing->id ]
             );
+            $arm_debounce();
             do_action( 'absensi_absen_keluar', $user );
             return new \WP_REST_Response( [
                 'success' => true,
@@ -276,8 +317,15 @@ class AbsensiEndpoint {
             ] );
         }
 
+        // ── Sesi MASUK: insert baris baru ──
         if ( $existing ) {
-            return $this->error( 'sudah_absen', "{$user->nama} sudah absen masuk dan keluar hari ini.", 409 );
+            return $this->error( 'sudah_absen', "{$user->nama} sudah absen masuk hari ini.", 409 );
+        }
+
+        // Gate jam: tolak masuk sebelum jam masuk jadwal (tak insert baris).
+        $gate = $this->gate_jam( (int) $user->group_id, 'masuk' );
+        if ( $gate ) {
+            return $gate;
         }
 
         // Tap pertama = catat masuk. Status hadir/telat konsisten timezone WP.
@@ -296,6 +344,7 @@ class AbsensiEndpoint {
             ] )
         );
 
+        $arm_debounce();
         do_action( 'absensi_absen_masuk', $user, $status );
 
         return new \WP_REST_Response( [
@@ -414,8 +463,88 @@ class AbsensiEndpoint {
         return $now > $batas ? 'telat' : 'hadir';
     }
 
-    private function error( string $code, string $message, int $status = 400 ): \WP_REST_Response {
-        return new \WP_REST_Response( [ 'code' => $code, 'message' => $message, 'data' => [ 'status' => $status ] ], $status );
+    private function error( string $code, string $message, int $status = 400, array $extra = [] ): \WP_REST_Response {
+        return new \WP_REST_Response(
+            array_merge( [ 'code' => $code, 'message' => $message, 'data' => [ 'status' => $status ] ], $extra ),
+            $status
+        );
+    }
+
+    /**
+     * Ambil jam jadwal (`jam_masuk`/`jam_keluar`) group untuk hari ini, fallback option global.
+     * Return 'H:i:s' (normalisasi) atau '' bila tak ada. $kolom whitelisted (aman interpolasi).
+     */
+    private function jam_jadwal( int $group_id, string $kolom ): string {
+        global $wpdb;
+        if ( ! in_array( $kolom, [ 'jam_masuk', 'jam_keluar' ], true ) ) {
+            return '';
+        }
+        $tz  = wp_timezone();
+        $now = new \DateTimeImmutable( 'now', $tz );
+
+        $jam = '';
+        if ( $group_id > 0 ) {
+            $hari = (int) $now->format( 'N' ); // 1=Senin .. 7=Minggu
+            $jam  = (string) $wpdb->get_var( $wpdb->prepare(
+                "SELECT {$kolom} FROM {$wpdb->prefix}absensi_jadwal WHERE group_id = %d AND hari = %d LIMIT 1",
+                $group_id, $hari
+            ) );
+        }
+        if ( '' === $jam ) {
+            $jam = 'jam_masuk' === $kolom
+                ? (string) get_option( 'absensi_jam_masuk', '07:00' )
+                : (string) get_option( 'absensi_jam_keluar', '15:00' );
+        }
+        if ( preg_match( '/^\d{1,2}:\d{2}$/', $jam ) ) {
+            $jam .= ':00';
+        }
+        return $jam;
+    }
+
+    /**
+     * Gate jam jadwal: tolak absen di luar jam.
+     *   sesi 'masuk'  → tolak bila now < (jam_masuk - grace)  → 403 belum_waktu_masuk
+     *   sesi 'pulang' → tolak bila now < jam_keluar           → 403 belum_waktu_pulang
+     * Grace masuk dari option `absensi_dini_menit` (default 0 = strict). Timezone WP.
+     *
+     * @return \WP_REST_Response|null  error bila ditolak, null bila lolos / jam invalid.
+     */
+    private function gate_jam( int $group_id, string $sesi ): ?\WP_REST_Response {
+        $tz    = wp_timezone();
+        $now   = new \DateTimeImmutable( 'now', $tz );
+        $kolom = 'pulang' === $sesi ? 'jam_keluar' : 'jam_masuk';
+        $jam   = $this->jam_jadwal( $group_id, $kolom );
+
+        $batas = \DateTimeImmutable::createFromFormat( 'Y-m-d H:i:s', $now->format( 'Y-m-d' ) . ' ' . $jam, $tz );
+        if ( false === $batas ) {
+            return null; // jam invalid → jangan blokir (konsisten tentukan_status_masuk)
+        }
+        $jam_hi = substr( $jam, 0, 5 );
+
+        if ( 'pulang' === $sesi ) {
+            if ( $now < $batas ) {
+                return $this->error(
+                    'belum_waktu_pulang',
+                    sprintf( 'Belum waktunya absen pulang. Jadwal pulang jam %s.', $jam_hi ),
+                    403,
+                    [ 'jam_keluar' => $jam_hi, 'sekarang' => $now->format( 'H:i' ) ]
+                );
+            }
+            return null;
+        }
+
+        // Sesi masuk: boleh mulai grace menit sebelum jam masuk.
+        $grace = (int) get_option( 'absensi_dini_menit', 0 );
+        $buka  = $grace > 0 ? $batas->modify( "-{$grace} minutes" ) : $batas;
+        if ( $now < $buka ) {
+            return $this->error(
+                'belum_waktu_masuk',
+                sprintf( 'Belum waktunya absen masuk. Jadwal masuk jam %s.', $jam_hi ),
+                403,
+                [ 'jam_masuk' => $jam_hi, 'sekarang' => $now->format( 'H:i' ) ]
+            );
+        }
+        return null;
     }
 
     // ─── Args Validasi ────────────────────────────────────────────────────────
@@ -433,7 +562,8 @@ class AbsensiEndpoint {
 
     private function rfid_args(): array {
         return [
-            'rfid_uid' => [ 'required' => true, 'type' => 'string', 'maxLength' => 50 ],
+            'rfid_uid' => [ 'required' => true,  'type' => 'string', 'maxLength' => 50 ],
+            'sesi'     => [ 'required' => false, 'type' => 'string', 'enum' => [ 'masuk', 'pulang' ] ],
         ];
     }
 
