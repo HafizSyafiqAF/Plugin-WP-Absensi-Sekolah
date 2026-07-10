@@ -2,15 +2,17 @@
 
 Panduan untuk Claude Code saat bekerja di plugin ini. **Kode = sumber kebenaran.** Dokumen `plans/` dan `README.md` bersifat aspiratif dan menyimpang jauh dari implementasi (lihat §Divergensi). Plugin sudah **pivot ke model kiosk v2** (tanpa login/role publik) — riwayat & rasional pivot ada di `TODO-BE-PIVOT.md` + `tests/manual/UC-pivot-*.md`.
 
+> ⚠️ **Update fitur "Akun Guru" (2026-07-10) — sebagian membalik pivot.** Kiosk **RFID** kini **login-gated**: hanya user ber-cap `absensi_rfid` (role **`guru`** yang di-*re-add*, + administrator) yang boleh buka page `/absensi/guru` & hit `POST /absen/rfid`. Kiosk **selfie siswa (`/absensi`) TETAP publik tanpa login**. Detail: **§Akun Guru** + `TODO-BE-AKUN-GURU.md` + `tests/manual/UC-akun-guru-*.md`.
+
 ---
 
 ## Ringkasan
 
-Plugin WordPress untuk absensi sekolah, MVP. **Model kiosk tanpa login:** tak ada akun/role publik. Yang login ke `/wp-admin` cuma **operator (WP administrator)**. Guru/siswa/staff = **data** (baris di `absensi_users`), **bukan** user WP.
+Plugin WordPress untuk absensi sekolah, MVP. **Model kiosk:** siswa/staff = **data** (baris di `absensi_users`), **bukan** user WP. Yang punya akun WP: **administrator** (`manage_options`) + sejak fitur Akun Guru, **guru** (role `guru`, cap `absensi_rfid`, akses terbatas ke kiosk RFID — TIDAK bisa wp-admin).
 
-Dua mode absen, keduanya di halaman publik tanpa login:
-1. **Selfie + GPS** — orang ketik **nomor induk (NIS/NIP)** di kiosk `/absensi-siswa`, ambil selfie, kirim (validasi radius haversine + akurasi GPS).
-2. **RFID USB scanner** — kiosk `/absensi-guru`, tap kartu (scanner = HID keyboard, "ketik" UID + Enter).
+Dua mode absen:
+1. **Selfie + GPS** (**publik, tanpa login**) — orang ketik **nomor induk (NIS/NIP)** di kiosk `/absensi` (page siswa), ambil selfie, kirim (validasi radius haversine + akurasi GPS).
+2. **RFID USB scanner** (**login-gated: guru/admin**) — guru buka kiosk `/absensi/guru` dari device masing-masing (login dulu), tap kartu **siswa** (scanner = HID keyboard, "ketik" UID + Enter). Login = gerbang akses device; identitas absen tetap dari `rfid_uid` **siswa** (rekap tak punya guru_id).
 
 Anti-abuse endpoint publik: rate-limit transient per nomor_induk (selfie) + debounce anti double-tap (RFID).
 
@@ -68,22 +70,24 @@ Namespace `absensi/v1` (`/wp-json/absensi/v1/`). Konstanta `NAMESPACE` diulang d
 | Method | Endpoint | Permission | File |
 |---|---|---|---|
 | POST | `/absen/selfie` | **publik** (`__return_true`) | [AbsensiEndpoint.php](includes/api/AbsensiEndpoint.php) |
-| POST | `/absen/rfid` | **publik** | AbsensiEndpoint |
+| POST | `/absen/rfid` | **login + cap `absensi_rfid`** (guru/admin) — `can_absen_rfid()` | AbsensiEndpoint |
 | GET | `/absen/status` | **publik** (by `nomor_induk`) | AbsensiEndpoint |
 | GET/POST | `/users` | `manage_options` | [UsersEndpoint.php](includes/api/UsersEndpoint.php) |
 | GET/PUT/DELETE | `/users/{id}` | `manage_options` | UsersEndpoint |
 | POST | `/users/{id}/rfid` | `manage_options` | UsersEndpoint (bind kartu; ganti enroll lama) |
 | POST | `/users/import` | `manage_options` | UsersEndpoint (xlsx, PhpSpreadsheet) |
+| POST | `/guru/import` | `manage_options` | UsersEndpoint (`import_guru`: bulk WP user role `guru` dari xlsx) |
 | GET/POST | `/group` | `manage_options` | [GroupEndpoint.php](includes/api/GroupEndpoint.php) |
 | GET/PUT/DELETE | `/group/{id}` | `manage_options` | GroupEndpoint |
 | GET/POST/PUT/DELETE | `/jadwal`, `/jadwal/{id}` | `manage_options` | [JadwalEndpoint.php](includes/api/JadwalEndpoint.php) |
 | GET | `/laporan`, `/laporan/summary`, `/laporan/export` | `manage_options` | [LaporanEndpoint.php](includes/api/LaporanEndpoint.php) |
 | GET/PUT | `/settings` | `manage_options` | [SettingsEndpoint.php](includes/api/SettingsEndpoint.php) |
 
-**Auth model (dua kelas, admin-only untuk semua data):**
-- **Kiosk publik** (selfie/rfid/status): `permission_callback => __return_true`. Identitas dari **`nomor_induk`** / **`rfid_uid`**, bukan sesi WP. Anti-abuse: rate-limit transient per nomor_induk (selfie) + debounce (RFID) — **wajib pertahankan** (endpoint tanpa auth).
-- **Admin** (users/group/jadwal/laporan/settings): cek `current_user_can('manage_options')`. Cookie WP + nonce `wp_rest` (header `X-WP-Nonce`), di-inject via `wp_localize_script` → `AbsensiConfig` (public) / `AbsensiAdmin` (admin) `{ restUrl, nonce, ... }`.
-- **TAK ADA lagi** role custom (`guru`/`orang_tua`/`absensi_admin`) maupun cek `array_intersect($user->roles, ...)` di endpoint aktif — semua `manage_options`. (Role lama mungkin masih nyangkut di DB dari instalasi pra-pivot, tapi tak ada gate yang membacanya.)
+**Auth model (tiga kelas):**
+- **Kiosk publik siswa** (selfie/status): `permission_callback => __return_true`. Identitas dari **`nomor_induk`**, bukan sesi WP. Anti-abuse: rate-limit transient per nomor_induk — **wajib pertahankan** (endpoint tanpa auth).
+- **Kiosk RFID (login-gated)** (`/absen/rfid`): `can_absen_rfid()` = `is_user_logged_in() && current_user_can('absensi_rfid')` (role `guru`/admin). Nonce `wp_rest` (cookie auth REST). Debounce anti double-tap **wajib pertahankan**. Identitas absen dari **`rfid_uid` siswa** (login guru = gerbang akses, tak masuk rekap).
+- **Admin** (users/group/guru-import/jadwal/laporan/settings): `current_user_can('manage_options')`. Cookie WP + nonce `wp_rest` (header `X-WP-Nonce`), di-inject via `wp_localize_script` → `AbsensiConfig` (public) / `AbsensiAdmin` (admin) `{ restUrl, nonce, ... }`.
+- **Role `guru` AKTIF kembali** (fitur Akun Guru): di-seed `Installer::seed_roles()` (caps `read` + `absensi_rfid`, tanpa cap admin lain). Cap `absensi_rfid` juga di administrator. Gate/blok terkait di §Akun Guru. (Role pra-pivot lain — `orang_tua`/`absensi_admin`/`absensi_siswa` — mungkin masih nyangkut di DB tapi tak ada gate yang membacanya; dihapus saat uninstall.)
 
 **Format response:** sukses `WP_REST_Response([...], 2xx)`. Error via helper `error($code,$msg,$status)` → `['code','message','data'=>['status']]`. Status umum: 403 (luar radius / HTTPS), 404 (nomor/UID/entitas tak ada), 409 (sudah absen / UID/nomor bentrok / group masih ada user), 422 (input invalid), 429 (rate-limit / double-tap), 503 (vendor export absen / sekolah belum diatur).
 
@@ -105,11 +109,26 @@ Namespace `absensi/v1` (`/wp-json/absensi/v1/`). Konstanta `NAMESPACE` diulang d
 
 - Public: [public/js/public.js](public/js/public.js) + `public/css/public.css`, enqueue global di `wp_enqueue_scripts`, config var `AbsensiConfig` (`restUrl, nonce, rfidDebounce, akurasiMax`). Alpine + Tailwind dari CDN (`enqueue_frontend_cdn`, filterable, `defer` via `script_loader_tag`).
 - Admin: `admin/js/admin.js` + `admin/css/admin.css`, enqueue hanya di halaman plugin (`str_contains($hook,'absensi')`), config var `AbsensiAdmin` (`restUrl, nonce, rfidDebounce, settings{...}`). **`absensi_wa_token` TIDAK di-inject** (sensitif). Tailwind admin: preflight dimatikan agar tak merusak wp-admin.
-- **Shortcode** ([includes/class/Shortcodes.php](includes/class/Shortcodes.php)): `[absensi_siswa]` + `[absensi_guru]` = surface kiosk publik, **tanpa gate login/cap** (keamanan di endpoint). `[absensi_selfie]`/`[absensi_status]` = shortcode lama (masih gate login — sisa model lama, tak dipakai kiosk). Render `ob_start()` + `include public/views/{view}.php`; view belum ada → placeholder (bukan error). **`[absensi_ortu]` sudah dihapus.**
-- **Auto-page:** `Installer::seed_pages()` (dipanggil di `activate()`, BUKAN maybe_upgrade) buat **2 page publik** saat aktivasi — `/absensi-siswa`, `/absensi-guru` (isi shortcode masing-masing). ID di option `absensi_pages` `{siswa,guru}`; yang benar-benar dibuat plugin dicatat di `absensi_pages_created`. Idempotent; page user ber-slug sama diadopsi (tak dicatat created). **Deactivate: `remove_pages()`** hapus page buatan plugin (syarat: ada di created-list DAN konten masih memuat shortcode-nya); page adopsi/repurpose user dibiarkan.
-- **Admin menu** ([includes/Admin/Menu.php](includes/Admin/Menu.php)): menu "Absensi" + 5 submenu (Dashboard, **Users** `absensi-users`, **Group** `absensi-group`, Laporan, Pengaturan). **Semua cap `manage_options`** (admin-only). Render `admin/views/{slug}.php`, fallback "View belum tersedia" jika file tak ada. (Submenu "Absen RFID" dibuang — bind kartu di Users via `/users/{id}/rfid`, tap absen di kiosk publik `/absensi-guru`.)
+- **Shortcode** ([includes/class/Shortcodes.php](includes/class/Shortcodes.php)): `[absensi_siswa]` + `[absensi_guru]` = surface kiosk. `[absensi_siswa]` publik; `[absensi_guru]` markup-nya tanpa cek cap, **tapi page-nya login-gated di level `template_redirect`** (`Plugin::gate_kiosk_guru`, cap `absensi_rfid`) + endpoint `/absen/rfid` juga auth. `[absensi_selfie]`/`[absensi_status]` = shortcode lama (masih gate login — sisa model lama, tak dipakai kiosk). Render `ob_start()` + `include public/views/{view}.php`; view belum ada → placeholder (bukan error). **`[absensi_ortu]` sudah dihapus.**
+- **Auto-page:** `Installer::seed_pages()` (dipanggil di `activate()`, BUKAN maybe_upgrade) buat **2 page** saat aktivasi: **`/absensi`** (siswa, publik) + **`/absensi/guru`** (guru, **child** dari page siswa via `post_parent`, **login-gated**). Isi shortcode masing-masing. ID di option `absensi_pages` `{siswa,guru}`; dibuat plugin dicatat di `absensi_pages_created`. Idempotent; page user ber-slug sama diadopsi. **Deactivate: `remove_pages()`** hapus page buatan plugin (syarat: ada di created-list DAN konten masih memuat shortcode-nya); page adopsi/repurpose user dibiarkan. Guru disembunyikan dari nav publik via filter `get_pages` (`Plugin::hide_guru_page_public`).
+- **Admin menu** ([includes/Admin/Menu.php](includes/Admin/Menu.php)): menu "Absensi" + 5 submenu (Dashboard, **Users** `absensi-users`, **Group** `absensi-group`, Laporan, Pengaturan). **Semua cap `manage_options`** (admin-only). Render `admin/views/{slug}.php`, fallback "View belum tersedia" jika file tak ada. (Submenu "Absen RFID" dibuang — bind kartu di Users via `/users/{id}/rfid`, tap absen di kiosk login-gated `/absensi/guru`.)
 
 > **Boundary FE/BE:** file `*/views/*.php` (markup) + `*/js/**` + `*/css/**` = tanggung jawab FE. Kontrak REST untuk FE ada di [HANDOFF-FE.md](HANDOFF-FE.md).
+
+---
+
+## Akun Guru (kiosk RFID login-gated)
+
+Fitur 2026-07-10, **sebagian membalik pivot** (role masuk lagi). RFID = absen **siswa** oleh **guru**; tiap guru pakai device sendiri + USB RFID reader, login dulu, tap kartu **siswa**. Login = gerbang akses device (bukan identitas absen). Rincian & tes: `TODO-BE-AKUN-GURU.md`, `tests/_pivot_akun_guru_*_test.php`, `tests/manual/UC-akun-guru-*.md`.
+
+- **Role `guru` + cap** ([Installer.php](includes/Installer.php)): `seed_roles()` (di `activate()`) daftarkan role `guru` (caps `read` + `absensi_rfid`, **tanpa** cap admin lain); cap `absensi_rfid` juga di `administrator`. Const `Installer::CAP_RFID = 'absensi_rfid'`. `uninstall.php` mencabut cap + hapus role. **Deactivate TIDAK hapus role** (jaga akun guru). Guru = **per-individu** (didaftarkan admin).
+- **Gate page** ([Plugin.php](includes/Plugin.php) `gate_kiosk_guru`, hook `template_redirect`): page `absensi_pages['guru']` butuh cap `absensi_rfid` → belum login `auth_redirect()` (redirect wp-login, balik otomatis); login tapi tak berhak → `wp_die(403)`. Page siswa TIDAK di-gate.
+- **Blok wp-admin utk guru** ([Plugin.php](includes/Plugin.php) `block_admin_for_guru`): guru buka wp-admin → `wp_safe_redirect` ke kiosk. DUA hook: `admin_init` + `admin_page_access_denied` (yang kedua wajib — `menu.php` `wp_die` cap tinggi jalan sebelum `admin_init`). AJAX/cron dikecualikan. Admin bebas.
+- **Admin bar disembunyikan utk guru** ([Plugin.php](includes/Plugin.php) `hide_admin_bar_for_guru`, filter `show_admin_bar`): garis hitam WP tak muncul di kiosk guru (kiosk bersih). Administrator tetap punya admin bar.
+- **Endpoint `/absen/rfid`** ([AbsensiEndpoint.php](includes/api/AbsensiEndpoint.php) `can_absen_rfid`): wajib login + cap `absensi_rfid` + nonce. `/absen/selfie` & `/absen/status` **tetap publik**.
+- **`POST /guru/import`** ([UsersEndpoint.php](includes/api/UsersEndpoint.php) `import_guru`): bulk buat WP user role `guru` dari xlsx (kolom `username` wajib + `nama`/`password`/`email` opsional; validasi username unik/valid, password ≥6, email valid+unik; password kosong → auto-generate). Cap `manage_options`. Respons `{ imported, gagal, errors:[{baris,pesan}] }`. Reuse pola `/users/import`.
+- **Page guru = child** `/absensi/guru` (slug `guru`, `post_parent` = page siswa) + disembunyikan dari nav publik (`hide_guru_page_public` filter `get_pages`). Fresh install lewat `seed_pages()`; install existing via script one-time. Nav site (block theme twentytwentyfive pakai `core/page-list`) menghormati filter → guru tak muncul di nav anon. Kalau FE ganti ke `core/navigation` hardcoded → perlu sembunyikan manual (FE).
+- **FE menyusul** (koordinasi, lihat `TODO-FE-AKUN-GURU.md`): kiosk guru JS kirim header `X-WP-Nonce`; tombol Import Guru (upload xlsx → `/guru/import`); login = wp-login bawaan (nol form).
 
 ---
 
@@ -147,7 +166,7 @@ Namespace `absensi/v1` (`/wp-json/absensi/v1/`). Konstanta `NAMESPACE` diulang d
 - **View = tugas FE.** `admin/views/` berisi view lama pra-pivot (dashboard/laporan/settings + orphan siswa/kelas/jadwal) yang perlu di-rework ke skema v2 oleh FE; menu butuh `users.php`/`group.php`. `public/views/siswa.php`/`guru.php` (kiosk) belum ada. (Submenu + view `rfid.php` sudah dibuang.)
 - **Izin/sakit = LUAR MVP.** Endpoint pengajuan + approve guru sudah **dihapus** (git history menyimpan). Kolom `izin_tipe`/`bukti_status`/`bukti_path` di rekap + `FileHelper::save_bukti()` **dibiarkan** (dormant). Saat masuk roadmap: pengajuan kiosk by nomor_induk + bukti, approve wp-admin `manage_options`.
 - **Notifikasi WA = LUAR MVP, dicabut.** `includes/Notifikasi.php` dihapus, `Notifikasi::init()` dilepas dari boot. Action `absensi_absen_masuk`/`absensi_absen_keluar` **tetap di-fire** endpoint (titik colok). Resep hidupkan lagi tanpa role: kolom `no_wa` di `absensi_users` + `recipients()` = `SELECT no_wa`.
-- **Residu role DB:** role `guru`/`absensi_admin`/`absensi_siswa`/`orang_tua` mungkin masih ada di DB dari instalasi pra-pivot (+ user assigned). **Tak berbahaya** (tak ada gate yang membacanya). Kehapus saat DELETE plugin (`uninstall.php`).
+- **Role `guru` AKTIF** (fitur Akun Guru): di-seed `seed_roles()`, dibaca gate `absensi_rfid` (§Akun Guru). Role pra-pivot LAIN (`absensi_admin`/`absensi_siswa`/`orang_tua`) mungkin masih nyangkut di DB tapi **tak ada gate yang membacanya** — tak berbahaya, kehapus saat DELETE plugin (`uninstall.php`).
 - **uninstall.php ADA** (drop tabel absensi_* + hapus option saat plugin dihapus). `deactivate()` = `remove_pages()` + unschedule retensi + flush.
 - Param `foto` di `/absen/selfie`: arg `required => false` (agar sesi **pulang** tak wajib foto), TAPI sesi **masuk** di-enforce handler → foto **WAJIB**, kosong = `422 foto_wajib` (kebijakan kiosk: selfie = bukti hadir). Nama file: `selfie_{NIS}_{DD-MM-YYYY}-{Masuk|Keluar}_{8hex}.{ext}` (`FileHelper::save_selfie( $b64, $id, $nomor_induk, $sesi )`).
 - Belum ada: CI, cek relasi ortu (dibuang), granular caps (semua `manage_options`).
@@ -160,7 +179,7 @@ Namespace `absensi/v1` (`/wp-json/absensi/v1/`). Konstanta `NAMESPACE` diulang d
 
 | Aspek | Plan | Kode nyata (v2) |
 |---|---|---|
-| Model auth | login siswa + role guru/ortu | **kiosk publik tanpa login**; admin-only `manage_options` |
+| Model auth | login siswa + role guru/ortu | selfie siswa **publik tanpa login**; RFID **login-gated** (role `guru`/admin, cap `absensi_rfid`); data admin `manage_options` |
 | Tabel master | `absensi_siswa` + `absensi_kelas` + `absensi_wali` | `absensi_users` + `absensi_group` (wali dibuang) |
 | Identitas absen | user WP login | **`nomor_induk`** / `rfid_uid` (data, bukan akun) |
 | Tabel absensi | `absensi_log`, 2 baris/sesi | `absensi_rekap`, **1 baris/hari** (`waktu_masuk`+`waktu_keluar`) |
