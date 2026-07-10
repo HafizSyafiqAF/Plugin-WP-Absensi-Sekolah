@@ -66,6 +66,13 @@ class UsersEndpoint {
             'callback'            => [ $this, 'import_users' ],
             'permission_callback' => [ $this, 'can_manage' ],
         ] );
+
+        // POST /guru/import – impor massal AKUN GURU (WP user role `guru`) dari Excel (.xlsx)
+        register_rest_route( self::NAMESPACE, '/guru/import', [
+            'methods'             => \WP_REST_Server::CREATABLE,
+            'callback'            => [ $this, 'import_guru' ],
+            'permission_callback' => [ $this, 'can_manage' ],
+        ] );
     }
 
     public function list_users( \WP_REST_Request $req ): \WP_REST_Response {
@@ -241,6 +248,129 @@ class UsersEndpoint {
                 continue;
             }
             $seen_nomor[ $nomor_key ] = $baris;
+            $imported++;
+        }
+
+        return new \WP_REST_Response( [
+            'imported' => $imported,
+            'gagal'    => count( $errors ),
+            'errors'   => $errors,
+        ], 200 );
+    }
+
+    /**
+     * POST /guru/import — impor massal AKUN GURU (WP user role `guru`) dari Excel (.xlsx).
+     *
+     * Scope baris 73-74 (TODO-BE-AKUN-GURU item 5): buat endpoint + terima file + guard vendor (503)
+     * + parse header/baris (reuse pola /users/import). Kolom: `username` (wajib), `nama`/`password`
+     * (opsional). Pembuatan WP user per baris (`wp_insert_user` role guru) + laporan error per baris =
+     * baris 75 (BELUM digarap) — lihat penanda TODO(item-5) di loop.
+     */
+    public function import_guru( \WP_REST_Request $req ): \WP_REST_Response {
+        if ( ! class_exists( '\\PhpOffice\\PhpSpreadsheet\\IOFactory' ) ) {
+            return $this->error( 'spreadsheet_absen', 'Import Excel butuh PhpSpreadsheet (jalankan composer install).', 503 );
+        }
+
+        $path = $this->resolve_upload_path( $req );
+        if ( is_wp_error( $path ) ) {
+            return $this->error( $path->get_error_code(), $path->get_error_message(), 422 );
+        }
+
+        try {
+            $sheet = \PhpOffice\PhpSpreadsheet\IOFactory::load( $path )->getActiveSheet();
+            $rows  = $sheet->toArray( null, true, true, false ); // kolom 0-indexed
+        } catch ( \Throwable $e ) {
+            $this->cleanup_temp( $path );
+            return $this->error( 'file_tidak_terbaca', 'File Excel tidak bisa dibaca.', 422 );
+        }
+        $this->cleanup_temp( $path );
+
+        if ( empty( $rows ) ) {
+            return $this->error( 'file_kosong', 'File kosong.', 422 );
+        }
+
+        // Header → indeks kolom (case-insensitive, beberapa alias).
+        $header       = array_map( static fn( $c ) => strtolower( trim( (string) $c ) ), (array) array_shift( $rows ) );
+        $col_username = $this->find_col( $header, [ 'username', 'user', 'user_login' ] );
+        $col_nama     = $this->find_col( $header, [ 'nama', 'name', 'display_name' ] );
+        $col_password = $this->find_col( $header, [ 'password', 'pass', 'kata_sandi' ] );
+        $col_email    = $this->find_col( $header, [ 'email', 'e-mail', 'surel' ] );
+        if ( null === $col_username ) {
+            return $this->error( 'header_invalid', 'Header wajib memuat kolom: username (opsional: nama, password, email).', 422 );
+        }
+
+        if ( count( $rows ) > 2000 ) {
+            return $this->error( 'terlalu_banyak_baris', 'Maksimal 2000 baris data per impor.', 422 );
+        }
+
+        // Per baris: validasi (username valid+unik, password ≥ min bila diisi, email valid+unik bila diisi)
+        // → wp_insert_user role `guru`. Password kosong → auto-generate. Error per baris dikumpulkan.
+        $min_pass   = 6;
+        $seen_user  = [];
+        $imported   = 0;
+        $errors     = [];
+
+        foreach ( $rows as $i => $row ) {
+            $baris    = $i + 2; // +1 header, +1 ke 1-indexed
+            $username = trim( (string) ( $row[ $col_username ] ?? '' ) );
+            $nama     = null !== $col_nama     ? trim( (string) ( $row[ $col_nama ] ?? '' ) )     : '';
+            $password = null !== $col_password ? trim( (string) ( $row[ $col_password ] ?? '' ) ) : '';
+            $email    = null !== $col_email    ? trim( (string) ( $row[ $col_email ] ?? '' ) )    : '';
+
+            // Baris benar-benar kosong → lewati diam.
+            if ( '' === $username && '' === $nama && '' === $password && '' === $email ) {
+                continue;
+            }
+            if ( '' === $username ) {
+                $errors[] = [ 'baris' => $baris, 'pesan' => 'username wajib diisi.' ];
+                continue;
+            }
+            $login = sanitize_user( $username, true );
+            if ( '' === $login || ! validate_username( $login ) ) {
+                $errors[] = [ 'baris' => $baris, 'pesan' => "username '{$username}' tidak valid." ];
+                continue;
+            }
+            $ukey = strtolower( $login );
+            if ( isset( $seen_user[ $ukey ] ) ) {
+                $errors[] = [ 'baris' => $baris, 'pesan' => "username '{$login}' duplikat dalam file (lihat baris {$seen_user[ $ukey ]})." ];
+                continue;
+            }
+            if ( username_exists( $login ) ) {
+                $errors[] = [ 'baris' => $baris, 'pesan' => "username '{$login}' sudah terdaftar." ];
+                continue;
+            }
+            if ( '' !== $email ) {
+                if ( ! is_email( $email ) ) {
+                    $errors[] = [ 'baris' => $baris, 'pesan' => "email '{$email}' tidak valid." ];
+                    continue;
+                }
+                if ( email_exists( $email ) ) {
+                    $errors[] = [ 'baris' => $baris, 'pesan' => "email '{$email}' sudah terdaftar." ];
+                    continue;
+                }
+            }
+            if ( '' === $password ) {
+                $password = wp_generate_password( 12, true ); // kosong → auto-generate
+            } elseif ( strlen( $password ) < $min_pass ) {
+                $errors[] = [ 'baris' => $baris, 'pesan' => "password minimal {$min_pass} karakter." ];
+                continue;
+            }
+
+            $userdata = [
+                'user_login'   => $login,
+                'user_pass'    => $password,
+                'display_name' => '' !== $nama ? $nama : $login,
+                'role'         => 'guru',
+            ];
+            if ( '' !== $email ) {
+                $userdata['user_email'] = $email;
+            }
+            $uid = wp_insert_user( $userdata );
+            if ( is_wp_error( $uid ) ) {
+                $errors[] = [ 'baris' => $baris, 'pesan' => $uid->get_error_message() ];
+                continue;
+            }
+            $seen_user[ $ukey ] = $baris;
             $imported++;
         }
 
