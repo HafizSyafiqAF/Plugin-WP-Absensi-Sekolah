@@ -28,12 +28,13 @@ class AbsensiEndpoint {
             'args'                => $this->selfie_args(),
         ] );
 
-        // Kiosk RFID publik (perangkat guru, tanpa login): permission terbuka,
-        // anti double-tap via debounce transient di handler.
+        // Kiosk RFID (perangkat guru): WAJIB login + cap absensi_rfid (role guru / admin).
+        // Page /absensi/guru sudah login-gated; endpoint ikut auth agar tak bisa di-hit anon.
+        // Anti double-tap via debounce transient di handler tetap.
         register_rest_route( self::NAMESPACE, '/absen/rfid', [
             'methods'             => \WP_REST_Server::CREATABLE,
             'callback'            => [ $this, 'handle_rfid' ],
-            'permission_callback' => '__return_true',
+            'permission_callback' => [ $this, 'can_absen_rfid' ],
             'args'                => $this->rfid_args(),
         ] );
 
@@ -52,6 +53,14 @@ class AbsensiEndpoint {
         // - enroll/resolve: duplikat POST /users/{id}/rfid (UsersEndpoint).
         // - izin + konfirmasi: luar MVP; model lama butuh login/role yang sudah dihapus.
         //   Saat masuk roadmap: pengajuan kiosk by nomor_induk, approve wp-admin.
+    }
+
+    /**
+     * Permission kiosk RFID: wajib login + cap `absensi_rfid` (role guru / administrator).
+     * Cookie-auth REST memverifikasi nonce `wp_rest` (header X-WP-Nonce) secara otomatis.
+     */
+    public function can_absen_rfid(): bool {
+        return is_user_logged_in() && current_user_can( \Absensi\Installer::CAP_RFID );
     }
 
     // ─── Handler Selfie + GPS ─────────────────────────────────────────────────
