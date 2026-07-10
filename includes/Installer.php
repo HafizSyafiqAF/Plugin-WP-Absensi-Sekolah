@@ -12,9 +12,16 @@ class Installer {
     /** Versi skema DB – naikkan setiap ada perubahan tabel. */
     const DB_VERSION = '2.1.0';
 
+    /**
+     * Capability gerbang akses kiosk RFID (page /absensi/guru + endpoint /absen/rfid).
+     * Dimiliki role `guru` DAN administrator. Login = akses saja; identitas absen tetap dari rfid_uid.
+     */
+    const CAP_RFID = 'absensi_rfid';
+
     public static function activate(): void {
         self::create_tables();
         self::seed_default_options();
+        self::seed_roles();
         self::seed_pages();
         Retensi::schedule();
         flush_rewrite_rules();
@@ -261,6 +268,34 @@ class Installer {
         return (bool) $wpdb->get_results( $wpdb->prepare( "SHOW INDEX FROM `{$table}` WHERE Key_name = %s", $index ) );
     }
 
+    // ─── Role & Capability ─────────────────────────────────────────────────────
+
+    /**
+     * Daftarkan role `guru` + cap gerbang kiosk RFID. Idempotent (aman diulang).
+     *
+     * Guru = operator kiosk RFID (tap kartu SISWA di device sendiri), login-only.
+     * Caps minimal: `read` (login/profil) + CAP_RFID. TANPA cap admin lain (dashboard
+     * penuh diblok terpisah di Plugin::admin_init). CAP_RFID juga diberikan ke
+     * administrator agar admin ikut lolos gate page/endpoint.
+     *
+     * Penghapusan role hanya di uninstall (hardcoded di uninstall.php) — deactivate
+     * TIDAK menghapus role agar akun guru & assignment-nya tak rusak saat re-activate.
+     */
+    private static function seed_roles(): void {
+        $guru = get_role( 'guru' );
+        if ( ! $guru ) {
+            add_role( 'guru', __( 'Guru', 'absensi-sekolah' ), [ 'read' => true, self::CAP_RFID => true ] );
+        } else {
+            // Role sudah ada (mis. residu pra-pivot) → sinkron cap.
+            $guru->add_cap( 'read' );
+            $guru->add_cap( self::CAP_RFID );
+        }
+        $admin = get_role( 'administrator' );
+        if ( $admin ) {
+            $admin->add_cap( self::CAP_RFID );
+        }
+    }
+
     // ─── Default Options ──────────────────────────────────────────────────────
 
     private static function seed_default_options(): void {
@@ -300,9 +335,10 @@ class Installer {
      *   dihapus user tak otomatis muncul lagi.
      */
     private static function seed_pages(): void {
+        // Urutan penting: siswa dulu (jadi parent), lalu guru (child → URL /absensi/guru).
         $defs = [
-            'siswa' => [ 'title' => 'Absensi',       'slug' => 'absensi-siswa', 'shortcode' => '[absensi_siswa]' ],
-            'guru'  => [ 'title' => 'Absensi Guru',  'slug' => 'absensi-guru',  'shortcode' => '[absensi_guru]' ],
+            'siswa' => [ 'title' => 'Absensi',       'slug' => 'absensi', 'shortcode' => '[absensi_siswa]' ],
+            'guru'  => [ 'title' => 'Absensi Guru',  'slug' => 'guru',    'shortcode' => '[absensi_guru]' ],
         ];
 
         $pages   = (array) get_option( 'absensi_pages', [] );
@@ -324,12 +360,16 @@ class Installer {
                 continue;
             }
 
+            // Guru = child dari page siswa (sudah diproses lebih dulu) → URL /absensi/guru.
+            $parent = ( 'guru' === $key ) ? (int) ( $pages['siswa'] ?? 0 ) : 0;
+
             $id = wp_insert_post( [
                 'post_title'   => $def['title'],
                 'post_name'    => $def['slug'],
                 'post_content' => $def['shortcode'],
                 'post_status'  => 'publish',
                 'post_type'    => 'page',
+                'post_parent'  => $parent,
             ] );
             if ( $id && ! is_wp_error( $id ) ) {
                 $pages[ $key ]   = (int) $id;

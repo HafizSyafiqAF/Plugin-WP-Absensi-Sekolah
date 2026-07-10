@@ -48,15 +48,16 @@ function absensi_uninstall_rmdir( string $dir ): void {
 function absensi_uninstall_cleanup(): void {
     global $wpdb;
 
-    // ── Sinkron dengan Installer::CAPS & Installer::role_definitions() ──
+    // ── Sinkron dengan Installer::CAP_RFID & role `guru` (+ residu cap/role pra-pivot) ──
     $caps = [
-        'absensi_submit_self',
+        'absensi_rfid',          // v2: gate kiosk RFID (Installer::CAP_RFID) — dicabut dari administrator
+        'absensi_submit_self',   // residu pra-pivot (harmless bila tak ada)
         'absensi_submit_rfid',
         'absensi_enroll_rfid',
         'absensi_view_reports',
         'absensi_view_child',
     ];
-    $roles = [ 'absensi_admin', 'guru', 'absensi_siswa', 'orang_tua' ];
+    $roles = [ 'guru', 'absensi_admin', 'absensi_siswa', 'orang_tua' ];
 
     // ── 0. Bersihkan WP-Cron retensi (selalu) ──
     wp_clear_scheduled_hook( 'absensi_purge_selfie' );
