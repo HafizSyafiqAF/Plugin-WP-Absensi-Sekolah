@@ -48,6 +48,11 @@ defined( 'ABSPATH' ) || exit;
       <p class="kiosk-feedback-name" x-show="fb && fb.nama" x-text="fb ? fb.nama : ''"></p>
       <span class="badge badge--lg" :class="fbBadgeClass" x-text="fb ? fb.statusLabel : ''"></span>
       <p class="kioskg-msg" x-text="fb ? fb.message : ''"></p>
+      <!-- Sesi WP habis (401/403): tombol login ulang (redirect balik ke kiosk ini). -->
+      <a x-show="needLogin" x-cloak class="btn btn--primary btn--lg kioskg-login" :href="loginUrl">
+        <span x-html="$icon( 'log-in', 20 )" aria-hidden="true"></span>
+        <?php esc_html_e( 'Login Ulang', 'absensi-sekolah' ); ?>
+      </a>
     </div>
 
   </div>

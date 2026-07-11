@@ -353,6 +353,8 @@ html:has(.absensi-kiosk) .entry-content { margin-block: 0 !important; padding-bl
 .kiosk-guru .kioskg-feedback--warning .kioskg-avatar { background: var(--c-warning-soft); color: var(--c-warning-text); }
 .kiosk-guru .kioskg-feedback--info    .kioskg-avatar { background: var(--c-info-soft);    color: var(--c-info-text); }
 .kiosk-guru .kioskg-feedback--danger  .kioskg-avatar { background: var(--c-danger-soft);  color: var(--c-danger-text); }
+/* Tombol "Login Ulang" saat sesi habis — anchor bergaya tombol, di panggung feedback */
+.kiosk-guru .kioskg-login { text-decoration: none; margin-top: 4px; }
 
 /* Petunjuk bawah */
 .kiosk-guru .kioskg-hint { color: var(--c-text-muted); font-size: 14px; }

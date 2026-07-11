@@ -997,13 +997,21 @@ tr:nth-child(even) td{background:#f9f9f9}
     binding:     false,
     bindError:   '',
 
-    // ── Modal Import Excel ──
+    // ── Modal Import Excel (user absensi) ──
     importOpen:     false,
     importing:      false,
     importFile:     null,   // File terpilih
     importFileName: '',
     importResult:   null,   // { imported, gagal, errors:[{baris,pesan}] }
     importError:    '',     // 503 spreadsheet_absen / 422 header/baris/dll
+
+    // ── Modal Import Akun Guru (WP user role guru) → POST /guru/import ──
+    importGuruOpen:     false,
+    importGuruBusy:     false,
+    importGuruFile:     null,
+    importGuruFileName: '',
+    importGuruResult:   null,   // { imported, gagal, errors:[{baris,pesan}] }
+    importGuruError:    '',     // 503 vendor absen / 422 header/baris
 
     // ── Konfirmasi Hapus ──
     delOpen:  false,
@@ -1230,6 +1238,38 @@ tr:nth-child(even) td{background:#f9f9f9}
         r.onerror = function () { reject(r.error); };
         r.readAsDataURL(file);
       });
+    },
+
+    // ── Modal Import Akun Guru: buka/tutup/pilih/jalankan (POST /guru/import) ──
+    // Beda dari Import Excel (user absensi): ini buat WP user role `guru`.
+    // Kolom xlsx: `username` WAJIB + `nama`/`password`/`email` opsional.
+    openImportGuru() {
+      this.importGuruFile = null; this.importGuruFileName = '';
+      this.importGuruResult = null; this.importGuruError = '';
+      this.importGuruOpen = true;
+    },
+    closeImportGuru() { this.importGuruOpen = false; },
+    onImportGuruFile(e) {
+      var f = e.target.files && e.target.files[0];
+      this.importGuruFile = f || null;
+      this.importGuruFileName = f ? f.name : '';
+      this.importGuruResult = null; this.importGuruError = '';
+    },
+    async runImportGuru() {
+      if (!this.importGuruFile || this.importGuruBusy) return;
+      this.importGuruBusy = true; this.importGuruError = ''; this.importGuruResult = null;
+      try {
+        var dataUrl = await this._fileToBase64(this.importGuruFile);
+        var data = await window.api.post('guru/import', { file: dataUrl });
+        this.importGuruResult = data;                    // { imported, gagal, errors }
+        if (data && data.imported > 0) {
+          window.absensiToast(data.imported + ' akun guru dibuat.', 'success');
+        }
+      } catch (err) {
+        this.importGuruError = window.absensiApiError(err).message;   // 503 vendor / 422 header/baris
+      } finally {
+        this.importGuruBusy = false;
+      }
     },
 
     // ── Konfirmasi Hapus: buka/tutup/jalankan ──
@@ -1674,9 +1714,16 @@ tr:nth-child(even) td{background:#f9f9f9}
       finally { this.loading = false; }
     },
 
-    // Peta tipe → badge/label (design.md §6: Kelas primary, Guru purple, Staff info)
-    tipeBadge(t) { return ({ kelas: 'badge--kelas', guru: 'badge--guru', staff: 'badge--staff' })[t] || 'badge--kelas'; },
+    // Peta tipe → badge/label (design.md §6: Kelas primary, Guru purple, Staff info).
+    // Tipe kustom (v2.1.0, di luar 3 bawaan) → badge netral, bukan warna "kelas".
+    tipeBadge(t) { return ({ kelas: 'badge--kelas', guru: 'badge--guru', staff: 'badge--staff' })[t] || 'badge--neutral'; },
     tipeLabel(t) { return ({ kelas: 'Kelas', guru: 'Guru', staff: 'Staff' })[t] || (t || ''); },
+
+    /* Saran <datalist> tipe (design.md TODO-FE#1): 3 bawaan + tipe kustom yang sudah dipakai di data. */
+    get tipeSuggestions() {
+      var custom = this.groups.map(function (g) { return g.tipe; }).filter(Boolean);
+      return Array.from(new Set(['kelas', 'guru', 'staff'].concat(custom)));
+    },
 
     /* Toggle expand baris group → tampil daftar user di bawahnya. Klik ulang = tutup.
        Fetch user (GET /users?group_id) sekali lalu di-cache. */
@@ -1802,6 +1849,7 @@ tr:nth-child(even) td{background:#f9f9f9}
     'trash-2':          '<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/>',
     'credit-card':      '<rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/>',
     'upload':           '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/>',
+    'user-plus':        '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" x2="19" y1="8" y2="14"/><line x1="22" x2="16" y1="11" y2="11"/>',
     'file-spreadsheet': '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M8 13h2"/><path d="M14 13h2"/><path d="M8 17h2"/><path d="M14 17h2"/>',
     'download':         '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>',
     'chevron-down':     '<path d="m6 9 6 6 6-6"/>',

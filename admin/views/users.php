@@ -23,6 +23,10 @@ defined( 'ABSPATH' ) || exit;
             <span x-html="$icon( 'upload', 18 )" aria-hidden="true"></span>
             <?php esc_html_e( 'Import Excel', 'absensi-sekolah' ); ?>
           </button>
+          <button type="button" class="btn btn--outline" @click="openImportGuru()">
+            <span x-html="$icon( 'user-plus', 18 )" aria-hidden="true"></span>
+            <?php esc_html_e( 'Import Guru', 'absensi-sekolah' ); ?>
+          </button>
           <button type="button" class="btn btn--primary" @click="openCreate()">
             <span x-html="$icon( 'plus', 18 )" aria-hidden="true"></span>
             <?php esc_html_e( 'Tambah User', 'absensi-sekolah' ); ?>
@@ -418,6 +422,96 @@ defined( 'ABSPATH' ) || exit;
                     :class="importing ? 'is-loading' : ''" :disabled="! importFile || importing">
               <span class="btn__spin" x-show="importing" x-cloak aria-hidden="true"></span>
               <span class="btn__label"><?php esc_html_e( 'Import', 'absensi-sekolah' ); ?></span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal Import Akun Guru → POST /guru/import (base64). Buat WP user role `guru`. -->
+      <div x-show="importGuruOpen" x-cloak class="modal-overlay"
+           @keydown.escape.window="closeImportGuru()" @click.self="closeImportGuru()">
+        <div class="modal modal--lg" role="dialog" aria-modal="true" aria-labelledby="import-guru-title" @keydown.tab="trapFocus($event)">
+          <div class="modal__head">
+            <div class="modal__head-ic">
+              <span class="card-chip card-chip--primary" x-html="$icon( 'user-plus', 18 )" aria-hidden="true"></span>
+              <h2 class="modal__title" id="import-guru-title"><?php esc_html_e( 'Import Akun Guru', 'absensi-sekolah' ); ?></h2>
+            </div>
+            <button type="button" class="modal__close" @click="closeImportGuru()"
+                    aria-label="<?php esc_attr_e( 'Tutup', 'absensi-sekolah' ); ?>">
+              <span x-html="$icon( 'x', 18 )"></span>
+            </button>
+          </div>
+
+          <div class="modal__body">
+            <!-- Info kolom (kontrak BE /guru/import) -->
+            <div class="alert alert--info">
+              <span class="alert__icon" x-html="$icon( 'info', 18 )" aria-hidden="true"></span>
+              <span>
+                <?php esc_html_e( 'Kolom wajib:', 'absensi-sekolah' ); ?> <strong>username</strong>.
+                <?php esc_html_e( 'Opsional:', 'absensi-sekolah' ); ?>
+                <strong>nama</strong>, <strong>password</strong>, <strong>email</strong>.
+                <?php esc_html_e( 'Password kosong dibuat otomatis; bila diisi minimal 6 karakter. Email harus valid & unik bila diisi. Akun dibuat dengan role Guru (akses kiosk RFID).', 'absensi-sekolah' ); ?>
+              </span>
+            </div>
+
+            <!-- Area upload -->
+            <label class="import-drop">
+              <span class="import-drop__icon" x-html="$icon( 'file-spreadsheet', 32 )" aria-hidden="true"></span>
+              <span x-show="! importGuruFileName"><?php esc_html_e( 'Pilih file .xlsx', 'absensi-sekolah' ); ?></span>
+              <span x-show="importGuruFileName" x-cloak class="import-drop__file" x-text="importGuruFileName"></span>
+              <input type="file" class="import-drop__input"
+                     accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                     @change="onImportGuruFile($event)">
+            </label>
+
+            <!-- Error tingkat (503 vendor absen / 422 header/baris) -->
+            <div x-show="importGuruError" x-cloak class="alert alert--danger">
+              <span class="alert__icon" x-html="$icon( 'alert-circle', 18 )" aria-hidden="true"></span>
+              <span x-text="importGuruError"></span>
+            </div>
+
+            <!-- Hasil impor -->
+            <template x-if="importGuruResult">
+              <div class="import-result">
+                <div class="import-summary">
+                  <span class="import-stat import-stat--ok">
+                    <span x-html="$icon( 'check-circle-2', 16 )" aria-hidden="true"></span>
+                    <span x-text="importGuruResult.imported"></span> <?php esc_html_e( 'berhasil', 'absensi-sekolah' ); ?>
+                  </span>
+                  <span class="import-stat import-stat--err" x-show="importGuruResult.gagal > 0">
+                    <span x-html="$icon( 'x-circle', 16 )" aria-hidden="true"></span>
+                    <span x-text="importGuruResult.gagal"></span> <?php esc_html_e( 'gagal', 'absensi-sekolah' ); ?>
+                  </span>
+                </div>
+                <!-- Tabel error per baris -->
+                <div class="import-errors" x-show="importGuruResult.errors && importGuruResult.errors.length > 0">
+                  <table class="table">
+                    <thead>
+                      <tr>
+                        <th style="width:80px;"><?php esc_html_e( 'Baris', 'absensi-sekolah' ); ?></th>
+                        <th><?php esc_html_e( 'Pesan', 'absensi-sekolah' ); ?></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <template x-for="(er, i) in importGuruResult.errors" :key="i">
+                        <tr>
+                          <td class="u-num" x-text="er.baris"></td>
+                          <td x-text="er.pesan"></td>
+                        </tr>
+                      </template>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </template>
+          </div>
+
+          <div class="modal__footer">
+            <button type="button" class="btn btn--outline" @click="closeImportGuru()"><?php esc_html_e( 'Tutup', 'absensi-sekolah' ); ?></button>
+            <button type="button" class="btn btn--primary" @click="runImportGuru()"
+                    :class="importGuruBusy ? 'is-loading' : ''" :disabled="! importGuruFile || importGuruBusy">
+              <span class="btn__spin" x-show="importGuruBusy" x-cloak aria-hidden="true"></span>
+              <span class="btn__label"><?php esc_html_e( 'Import Guru', 'absensi-sekolah' ); ?></span>
             </button>
           </div>
         </div>

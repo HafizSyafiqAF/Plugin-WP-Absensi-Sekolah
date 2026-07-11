@@ -488,6 +488,7 @@ document.addEventListener('alpine:init', function () {
     'chevron-left':     '<path d="m15 18-6-6 6-6"/>',
     'chevron-right':    '<path d="m9 18 6-6-6-6"/>',
     'x':                '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+    'log-in':           '<path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" x2="3" y1="12" y2="12"/>',
     'help':             '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>'
   };
   function icon(name, size) {
@@ -809,6 +810,7 @@ document.addEventListener('alpine:init', function () {
     sesi: 'masuk',             // sesi terpilih (toggle Masuk/Pulang) — dikirim ke server
     uid: '',                   // nilai field UID (x-model) — scanner HID isi / ketik manual
     fb:  null,                 // feedback tap: { ok, tone, nama, statusLabel, message } | null (idle)
+    needLogin: false,          // true bila sesi WP habis (401/403) → tampil tombol login ulang
     _clockTimer: null,
     _fbTimer: null,            // timer auto-reset feedback → idle
     _busy: false,              // cegah request tumpang tindih saat tap beruntun
@@ -861,6 +863,7 @@ document.addEventListener('alpine:init', function () {
      * Hasil disimpan di this.fb (dirender panggung feedback). Auto-reset ke idle = item berikutnya. */
     submit: async function (uid) {
       if (this._busy) return;               // abaikan tap yang tumpang tindih
+      if (this.needLogin) return;           // sesi habis → tap diabaikan, arahkan ke tombol login
       this._busy = true;
       try {
         var data = await window.api.post('absen/rfid', { rfid_uid: uid, sesi: this.sesi });   // 201 masuk / 200 keluar
@@ -875,6 +878,21 @@ document.addEventListener('alpine:init', function () {
       } catch (err) {
         // absensiApiError → {code, status, message} (pesan server sudah Indonesia).
         var e = window.absensiApiError(err);
+        // Sesi WP habis / nonce kedaluwarsa (endpoint RFID kini login-gated). request() sudah
+        // coba refresh nonce sekali; kalau tetap gagal auth → guru harus login ulang. Deteksi
+        // via KODE auth WP (bukan status 403 mentah — 403 juga dipakai gate SSL `butuh_https`
+        // & gate jam `belum_waktu_*`, yang BUKAN masalah sesi). Tampilkan panggung khusus +
+        // tombol login. Tap diabaikan sampai login.
+        var authFail = ( e.status === 401
+                      || e.code === 'rest_forbidden'
+                      || e.code === 'rest_cookie_invalid_nonce' );
+        if (authFail) {
+          this.needLogin = true;
+          this.fb = { ok: false, tone: 'danger', nama: '',
+                      statusLabel: 'Sesi Habis',
+                      message: 'Sesi login berakhir. Silakan login ulang untuk melanjutkan.' };
+          return;   // finally tetap jalan; JANGAN auto-reset (biar tombol login menetap)
+        }
         // Gagal jaringan (status 0 / offline) → pesan "coba tap lagi" (design.md §11 Error State).
         var netFail = ( e.status === 0 );
         this.fb = { ok: false, tone: this._errTone(e.code, e.status), nama: '',
@@ -883,8 +901,15 @@ document.addEventListener('alpine:init', function () {
       } finally {
         this._busy = false;
         this.beep( !! ( this.fb && this.fb.ok ) );   // beep sukses/gagal (opsional)
-        this._scheduleReset();          // tahan ~2.5 dtk → kembali idle "Siap scan…"
+        // Sesi habis → biarkan panggung + tombol login menetap (jangan auto-reset ke idle).
+        if ( ! this.needLogin ) this._scheduleReset();   // tahan ~2.5 dtk → idle "Siap scan…"
       }
+    },
+
+    /* URL login WP + redirect balik ke kiosk ini setelah sukses (BE auth_redirect
+     * juga arahkan guru ke /absensi/guru; ini fallback eksplisit dari tombol). */
+    get loginUrl() {
+      return '/wp-login.php?redirect_to=' + encodeURIComponent( window.location.href );
     },
 
     /* Bisukan/aktifkan beep (persist localStorage). */

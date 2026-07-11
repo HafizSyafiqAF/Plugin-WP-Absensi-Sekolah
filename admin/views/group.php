@@ -205,14 +205,17 @@ defined( 'ABSPATH' ) || exit;
                        x-model.trim="form.nama" maxlength="100" required @input="fieldErr.nama = false">
               </div>
 
-              <!-- Tipe (kelas default / guru / staff) -->
+              <!-- Tipe (bebas ketik, BE v2.1.0 VARCHAR — bukan lagi ENUM kelas/guru/staff) -->
               <div class="field">
                 <label class="field__label" for="gf-tipe"><?php esc_html_e( 'Tipe', 'absensi-sekolah' ); ?></label>
-                <select id="gf-tipe" class="select" x-model="form.tipe">
-                  <option value="kelas"><?php esc_html_e( 'Kelas', 'absensi-sekolah' ); ?></option>
-                  <option value="guru"><?php esc_html_e( 'Guru', 'absensi-sekolah' ); ?></option>
-                  <option value="staff"><?php esc_html_e( 'Staff', 'absensi-sekolah' ); ?></option>
-                </select>
+                <input id="gf-tipe" type="text" class="input" list="gf-tipe-list"
+                       x-model.trim="form.tipe" maxlength="50"
+                       placeholder="<?php esc_attr_e( 'Kelas, Guru, Staff, atau ketik tipe baru...', 'absensi-sekolah' ); ?>">
+                <datalist id="gf-tipe-list">
+                  <template x-for="t in tipeSuggestions" :key="t">
+                    <option :value="t"></option>
+                  </template>
+                </datalist>
               </div>
             </div>
 

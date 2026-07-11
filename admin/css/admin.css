@@ -127,9 +127,11 @@
 .absensi-app .badge--sakit { color: var(--c-purple-text);  background: var(--c-purple-soft); }
 .absensi-app .badge--alpha { color: var(--c-danger-text);  background: var(--c-danger-soft); }
 /* Tipe group (design.md §6): Kelas=Primary · Guru=Purple · Staff=Info */
-.absensi-app .badge--kelas { color: var(--c-primary-hover); background: var(--c-primary-soft); }
-.absensi-app .badge--guru  { color: var(--c-purple-text);   background: var(--c-purple-soft); }
-.absensi-app .badge--staff { color: var(--c-info-text);     background: var(--c-info-soft); }
+.absensi-app .badge--kelas   { color: var(--c-primary-hover); background: var(--c-primary-soft); }
+.absensi-app .badge--guru    { color: var(--c-purple-text);   background: var(--c-purple-soft); }
+.absensi-app .badge--staff   { color: var(--c-info-text);     background: var(--c-info-soft); }
+/* Tipe kustom (bebas ketik) — netral, tak ikut warna "kelas" */
+.absensi-app .badge--neutral { color: var(--c-text-muted);    background: var(--c-bg); }
 
 /* ─── Ikon (design.md §2.3 — Lucide via helper $icon/absensiIcon) ─────────────
    Ukuran diset atribut SVG (default 20 · 16 inline · 18 adornment); kelas ini
