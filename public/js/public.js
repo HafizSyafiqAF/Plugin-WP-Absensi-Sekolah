@@ -34,6 +34,18 @@ window.addEventListener('load', function () {
     } catch { return null; }
   }
 
+  /* 403 dipakai untuk DUA hal berbeda:
+   *   a) nonce kedaluwarsa  → code WP `rest_cookie_invalid_nonce` → boleh di-retry
+   *   b) penolakan BISNIS   → `diluar_radius`, `butuh_https`, `belum_waktu_masuk`,
+   *                           `belum_waktu_pulang` → JANGAN di-retry.
+   * Retry buta pada (b) fatal: request pertama sudah menyalakan rate-limit selfie
+   * (transient 5 detik per nomor induk), jadi retry-nya balik 429 "Terlalu cepat"
+   * dan pesan asli ("Di luar radius…") tak pernah sampai ke siswa. */
+  function nonceKedaluwarsa(data) {
+    var code = data && data.code ? String(data.code) : '';
+    return code === 'rest_cookie_invalid_nonce' || code === 'rest_nonce_invalid';
+  }
+
   async function request(method, path, body, attempt) {
     attempt = attempt || 0;
     const url     = getBase() + path;
@@ -46,11 +58,14 @@ window.addEventListener('load', function () {
       opts.body = JSON.stringify(body);
     }
     const res  = await fetch(url, opts);
-    if (res.status === 403 && attempt === 0) {
+    const data = await res.json().catch(function () { return null; });
+
+    // Retry SEKALI hanya bila 403-nya benar-benar soal nonce.
+    if (res.status === 403 && attempt === 0 && nonceKedaluwarsa(data)) {
       await refreshNonce();
       return request(method, path, body, 1);
     }
-    const data = await res.json().catch(function () { return null; });
+
     if (!res.ok) {
       var err = new Error(data && data.message ? data.message : 'HTTP ' + res.status);
       err.status = res.status;
@@ -469,6 +484,8 @@ document.addEventListener('alpine:init', function () {
   'use strict';
   var P = {
     'clipboard-check':  '<rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/>',
+    'user-check':       '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><polyline points="16 11 18 13 22 9"/>',
+    'scan-line':        '<path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 12h10"/>',
     'id-card':          '<path d="M16 10h2"/><path d="M16 14h2"/><path d="M6.17 15a3 3 0 0 1 5.66 0"/><circle cx="9" cy="11" r="2"/><rect width="20" height="14" x="2" y="5" rx="2"/>',
     'camera':           '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/>',
     'map-pin':          '<path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/>',
@@ -579,8 +596,17 @@ document.addEventListener('alpine:init', function () {
  * Config: AbsensiConfig (restUrl, nonce, akurasiMax). Endpoint: POST /absen/selfie. */
 document.addEventListener('alpine:init', function () {
   Alpine.data('kioskSiswa', function () { return {
+    // ── Alur kiosk (wizard): nis → verifikasi → konfirmasi → hasil ──
+    step:        'nis',
+    siswaNama:   '',           // nama dari GET /absen/status (endpoint publik)
+    sudahAbsen:  false,        // sudah punya rekap hari ini (info di layar konfirmasi)
+    lookupBusy:  false,
+    lookupError: null,
+    jam:         '',           // jam berjalan di header (HH.MM)
+    tanggal:     '',           // "Minggu, 12 Juli 2026"
+
     nomorInduk: '',
-    sesi:       'masuk',       // WAJIB terpilih: masuk (default) | pulang
+    sesi:       '',            // '' = biar SERVER yang tentukan masuk/pulang (kiosk tanpa toggle)
     gps:        null,          // { lat, lng, accuracy }
     gpsStatus:  'waiting',     // waiting | ok | weak | error
     gpsError:   null,
@@ -593,7 +619,100 @@ document.addEventListener('alpine:init', function () {
     statusError:   null,
     isHttps:    location.protocol === 'https:' || location.hostname === 'localhost',
 
-    init: function () { this.startGps(); },
+    init: function () {
+      this.startGps();
+      this.tickJam();
+      var self = this;
+      this._jamTimer = setInterval(function () { self.tickJam(); }, 30000);
+    },
+
+    /* Jam & tanggal di header kiosk (zona waktu perangkat kiosk). */
+    tickJam: function () {
+      var d = new Date();
+      this.jam = d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }).replace(':', '.');
+      try {
+        this.tanggal = d.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+      } catch (e) { this.tanggal = ''; }
+    },
+
+    // ── Langkah 1: NIS → cek nama siswa (GET /absen/status, publik) ──
+    get bisaLanjutNis() { return !this.lookupBusy && this.nomorInduk.trim().length > 0; },
+
+    /* Cari nama pemilik nomor induk. 404 → nomor tak terdaftar (jangan lanjut). */
+    cekNis: async function () {
+      var n = this.nomorInduk.trim();
+      if (!n) { this.siswaNama = ''; this.lookupError = null; return; }
+      this.lookupBusy = true; this.lookupError = null;
+      try {
+        var data = await window.api.get('absen/status?nomor_induk=' + encodeURIComponent(n));
+        this.siswaNama  = data.nama || '';
+        this.sudahAbsen = !!data.sudah_absen;
+      } catch (err) {
+        this.siswaNama  = '';
+        this.sudahAbsen = false;
+        this.lookupError = window.absensiApiError(err).message;   // 404 "Nomor induk tidak terdaftar."
+      } finally {
+        this.lookupBusy = false;
+      }
+    },
+
+    /* Lanjut ke verifikasi: pastikan NIS valid dulu, lalu nyalakan kamera. */
+    lanjutKeVerifikasi: async function () {
+      if (!this.bisaLanjutNis) return;
+      if (!this.siswaNama) await this.cekNis();
+      if (!this.siswaNama) return;                 // nomor tak terdaftar → tetap di langkah 1
+      this.step = 'verifikasi';
+      this.startCamera();
+    },
+
+    /* Foto sudah diambil → lanjut ke layar konfirmasi. */
+    lanjutKeKonfirmasi: function () {
+      if (!this.photoBlob) return;
+      this.tickJam();
+      this.step = 'konfirmasi';
+    },
+
+    /* Kembali satu langkah (tanpa kehilangan GPS). */
+    kembali: function () {
+      if (this.step === 'konfirmasi') { this.step = 'verifikasi'; return; }
+      if (this.step === 'verifikasi') { this.clearPhoto(); this.step = 'nis'; }
+    },
+
+    /* Submit dari layar konfirmasi → hasil. */
+    kirimAbsensi: async function () {
+      await this.submit();
+      this.step = 'hasil';
+    },
+
+    /* Inisial nama untuk avatar. WAJIB di JS, bukan di atribut view: ekspresi
+     * Alpine dengan `=>` / regex di view publik dirusak wptexturize WordPress
+     * (jadi SyntaxError). Lihat memory `wptexturize-shortcode-gotcha`. */
+    inisial: function (nama) {
+      var p = String(nama || '?').trim().split(/\s+/).slice(0, 2).map(function (s) { return s.charAt(0); });
+      return (p.join('') || '?').toUpperCase();
+    },
+
+    // ── Kartu hasil ──
+    get hasilBerhasil() { return !!(this.result && this.result.ok); },
+    get sesiLabel() {
+      var s = this.result && this.result.sesi;
+      return s === 'pulang' ? 'Pulang' : 'Masuk';
+    },
+    get statusBadgeClass() {
+      var st = this.result && this.result.status;
+      return st === 'telat' ? 'kiosk-badge--telat' : 'kiosk-badge--hadir';
+    },
+    get statusBadgeLabel() {
+      var st = this.result && this.result.status;
+      if (st) return st.charAt(0).toUpperCase() + st.slice(1);
+      return this.sesiLabel;   // sesi pulang tak punya status
+    },
+    /* Label lokasi di layar konfirmasi (jujur soal akurasi). */
+    get lokasiLabel() {
+      if (this.gpsStatus === 'ok')   return 'Terverifikasi ✓';
+      if (this.gpsStatus === 'weak') return 'Akurasi rendah (' + this.gpsAccuracyLabel + ')';
+      return 'Belum didapat';
+    },
 
     get gpsAccuracyLabel() { return this.gps ? '±' + Math.round(this.gps.accuracy) + ' m' : '—'; },
     /* Ambang akurasi maksimal (m) dari admin; > ini = sinyal lemah (warning). */
@@ -719,12 +838,17 @@ document.addEventListener('alpine:init', function () {
       this.cam = 'off';
     },
 
-    /* "Absen Lagi" — bersihkan hasil + foto + input untuk orang/absen berikutnya (GPS tetap). */
+    /* "Absensi Berikutnya" — bersihkan semuanya untuk siswa berikutnya (GPS tetap,
+     * karena kiosk tidak berpindah tempat). */
     reset: function () {
-      this.result = null;
+      this.result      = null;
       this.clearPhoto();
-      this.nomorInduk = '';
-      this.sesi = 'masuk';
+      this.nomorInduk  = '';
+      this.siswaNama   = '';
+      this.sudahAbsen  = false;
+      this.lookupError = null;
+      this.sesi        = '';
+      this.step        = 'nis';
     },
 
     /* ── Widget Cek Status Hari Ini (GET /absen/status by nomor_induk) ── */
@@ -818,6 +942,10 @@ document.addEventListener('alpine:init', function () {
     muted: (function () { try { return localStorage.getItem('absensiGuruMuted') === '1'; } catch (e) { return false; } })(),
     _audioCtx: null,
 
+    tanggal:  '',              // "Minggu, 12 Juli 2026"
+    sisaDetik: 0,              // hitung mundur "Kembali otomatis dalam N detik"
+    _cdTimer: null,
+
     init: function () {
       this.tick();
       this._clockTimer = setInterval(this.tick.bind(this), 1000);
@@ -825,9 +953,20 @@ document.addEventListener('alpine:init', function () {
       this.$nextTick(function () { this.focusInput(); }.bind(this));
     },
 
-    /* Perbarui jam dinding (tabular-nums di CSS). */
+    /* Perbarui jam dinding + tanggal (tabular-nums di CSS). */
     tick: function () {
-      this.jam = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      var d = new Date();
+      this.jam = d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' }).replace(/:/g, '.');
+      try {
+        this.tanggal = d.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+      } catch (e) { this.tanggal = ''; }
+    },
+
+    /* Inisial nama untuk avatar panggung hasil (di JS, bukan atribut view —
+     * wptexturize merusak ekspresi ber-`=>`/regex di view publik). */
+    inisial: function (nama) {
+      var p = String(nama || '?').trim().split(/\s+/).slice(0, 2).map(function (s) { return s.charAt(0); });
+      return (p.join('') || '?').toUpperCase();
     },
 
     /* Fokuskan input UID (dipanggil saat init, klik di mana pun, & setelah tiap tap).
@@ -849,6 +988,7 @@ document.addEventListener('alpine:init', function () {
     /* Scanner tekan Enter setelah "mengetik" UID → ambil nilai, bersihkan, refokus,
      * lalu proses tap (loop tap berikutnya siap). Submit ke server = item Kirim. */
     onEnter: function () {
+      this.unlockAudio();         // MASIH di dalam gesture keydown → izin audio didapat di sini
       var uid = (this.uid || '').trim();
       this.uid = '';              // clear (x-model kosongkan field) → siap tap berikut
       this.focusInput();          // refocus (loop tap)
@@ -866,13 +1006,17 @@ document.addEventListener('alpine:init', function () {
       if (this.needLogin) return;           // sesi habis → tap diabaikan, arahkan ke tombol login
       this._busy = true;
       try {
-        var data = await window.api.post('absen/rfid', { rfid_uid: uid, sesi: this.sesi });   // 201 masuk / 200 keluar
+        // TANPA param `sesi` → server yang menentukan: scan 1 = masuk, scan 2 = pulang
+        // (AbsensiEndpoint: sesi kosong → auto by kondisi rekap hari ini).
+        var data = await window.api.post('absen/rfid', { rfid_uid: uid });   // 201 masuk / 200 keluar
+        var jamTap = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }).replace(':', '.');
         if (data.action === 'keluar') {
-          this.fb = { ok: true, tone: 'info', nama: data.siswa || '',
-                      statusLabel: 'KELUAR', message: data.message || '' };
+          this.fb = { ok: true, tone: 'info', nama: data.siswa || '', jam: jamTap,
+                      aksi: 'PULANG', status: '', statusLabel: 'KELUAR', message: data.message || '' };
         } else {
           var st = data.status || 'hadir';
-          this.fb = { ok: true, tone: ( st === 'telat' ? 'warning' : 'success' ), nama: data.siswa || '',
+          this.fb = { ok: true, tone: ( st === 'telat' ? 'warning' : 'success' ), nama: data.siswa || '', jam: jamTap,
+                      aksi: 'MASUK', status: st.toUpperCase(),
                       statusLabel: 'MASUK — ' + st.toUpperCase(), message: data.message || '' };
         }
       } catch (err) {
@@ -918,36 +1062,73 @@ document.addEventListener('alpine:init', function () {
       try { localStorage.setItem('absensiGuruMuted', this.muted ? '1' : '0'); } catch (e) {}
     },
 
-    /* Beep pendek via WebAudio (tanpa file/aset). sukses=nada tinggi, gagal=nada rendah.
-     * AudioContext dibuat lazy & di-resume (gesture tap sudah membuka izin audio). */
+    /* Buka/siapkan audio. WAJIB dipanggil DARI DALAM gesture pengguna (klik / tap
+     * kartu / keydown) — bukan setelah `await`. Chrome menolak audio yang dibuat
+     * di luar gesture: AudioContext lahir 'suspended' dan beep tak pernah bunyi. */
+    unlockAudio: function () {
+      try {
+        var AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return;
+        if (!this._audioCtx) this._audioCtx = new AC();
+        if (this._audioCtx.state === 'suspended') this._audioCtx.resume();
+      } catch (e) { /* audio opsional */ }
+    },
+
+    /* Beep pendek via WebAudio (tanpa file/aset). sukses = nada tinggi, gagal = nada
+     * rendah. Bila context masih 'suspended', tunggu resume() SELESAI baru mainkan —
+     * kalau tidak, nadanya dijadwalkan saat audio masih beku dan tak terdengar. */
     beep: function (ok) {
       if (this.muted) return;
       try {
         var AC = window.AudioContext || window.webkitAudioContext;
         if (!AC) return;
         if (!this._audioCtx) this._audioCtx = new AC();
+        var ctx  = this._audioCtx;
+        var self = this;
+        if (ctx.state === 'suspended') {
+          ctx.resume().then(function () { self._playBeep(ok); }).catch(function () {});
+          return;
+        }
+        this._playBeep(ok);
+      } catch (e) { /* audio opsional → abaikan gagal */ }
+    },
+
+    _playBeep: function (ok) {
+      try {
         var ctx = this._audioCtx;
-        if (ctx.state === 'suspended') ctx.resume();
-        var osc = ctx.createOscillator();
+        if (!ctx || ctx.state !== 'running') return;
+        var osc  = ctx.createOscillator();
         var gain = ctx.createGain();
         osc.connect(gain); gain.connect(ctx.destination);
         var t = ctx.currentTime, dur = ok ? 0.18 : 0.32;
         osc.type = ok ? 'sine' : 'square';
         osc.frequency.value = ok ? 880 : 220;
         gain.gain.setValueAtTime(0.0001, t);
-        gain.gain.exponentialRampToValueAtTime(0.15, t + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.25, t + 0.01);
         gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
         osc.start(t);
         osc.stop(t + dur + 0.02);
-      } catch (e) { /* audio opsional → abaikan gagal */ }
+      } catch (e) { /* audio opsional */ }
     },
 
     /* Auto-reset feedback ke idle setelah jeda (design.md §11: tahan ~2–3 dtk).
      * Tap baru menjadwal ulang (clear timer lama) supaya feedback baru tak keburu hilang. */
+    /* Tahan panggung hasil lalu kembali ke idle, dengan hitung mundur di layar
+     * ("Kembali otomatis dalam N detik"). Tap baru tetap bisa memotong kapan saja. */
     _scheduleReset: function () {
       clearTimeout(this._fbTimer);
+      clearInterval(this._cdTimer);
       var self = this;
-      this._fbTimer = setTimeout(function () { self.fb = null; }, 2500);
+      this.sisaDetik = 4;
+      this._cdTimer = setInterval(function () {
+        self.sisaDetik = Math.max(0, self.sisaDetik - 1);
+        if (self.sisaDetik === 0) clearInterval(self._cdTimer);
+      }, 1000);
+      this._fbTimer = setTimeout(function () {
+        self.fb = null;
+        self.sisaDetik = 0;
+        clearInterval(self._cdTimer);
+      }, 4000);
     },
 
     /* Warna error (design.md §11): double_tap kuning, sudah_absen* info, belum_absen_masuk kuning, selain itu merah. */

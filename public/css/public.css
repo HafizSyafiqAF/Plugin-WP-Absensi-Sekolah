@@ -414,3 +414,293 @@ html:has(.absensi-kiosk) .entry-content { margin-block: 0 !important; padding-bl
   .absensi-kiosk .kiosk-clock           { font-size: 56px; }
   .kiosk-guru .kioskg-idle__text        { font-size: 28px; }
 }
+
+/* ═════════════════════════════════════════════════════════════════════════════
+   KIOSK SISWA v2 — wizard 4 langkah di atas latar biru gelap (acuan desain).
+   Layar penuh, satu kartu putih di tengah. Semua scoped .kiosk-siswa.
+   ═══════════════════════════════════════════════════════════════════════════ */
+/* Latar disamakan PERSIS dengan kiosk guru (.kiosk-guru2) — satu identitas kiosk. */
+.absensi-kiosk.kiosk-siswa {
+  min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 18px; padding: 32px 16px;
+  background: radial-gradient(120% 90% at 50% 0%, #1B2350 0%, #131A3B 45%, #0B1027 100%);
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  color: #fff;
+}
+
+/* Header: ikon DI ATAS judul (menumpuk), lalu tanggal & jam */
+.kiosk-siswa .kiosk-top { text-align: center; }
+.kiosk-siswa .kiosk-badge-brand { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.kiosk-siswa .kiosk-brand__ico {
+  display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px;
+  border-radius: 50%; background: rgba(255, 255, 255, .1); border: 1px solid rgba(255, 255, 255, .12);
+  color: #fff;
+}
+.kiosk-siswa .kiosk-brand__ico svg { width: 22px; height: 22px; }
+.kiosk-siswa .kiosk-brand__txt  { font-size: 15px; font-weight: 700; }
+.kiosk-siswa .kiosk-top__meta   { margin: 6px 0 0; font-size: 11.5px; color: rgba(255, 255, 255, .55); }
+
+/* Kartu putih (satu per langkah) */
+.kiosk-siswa .kiosk-panel {
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  width: 100%; max-width: 330px; padding: 22px 20px;
+  background: #fff; border-radius: 16px; box-shadow: 0 24px 48px -20px rgba(2, 8, 32, .6);
+  text-align: center; color: #0F172A;
+}
+.kiosk-siswa .kiosk-panel__ico {
+  display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px;
+  border-radius: 50%; background: var(--c-primary-soft); color: var(--c-primary);
+}
+.kiosk-siswa .kiosk-panel__title { margin: 0; font-size: 16px; font-weight: 700; color: #0F172A; }
+.kiosk-siswa .kiosk-panel__title.is-ok  { color: var(--c-success-text); font-size: 19px; }
+.kiosk-siswa .kiosk-panel__title.is-err { color: var(--c-danger-text);  font-size: 19px; }
+.kiosk-siswa .kiosk-panel__sub  { margin: 0; font-size: 12px; color: var(--c-text-muted); }
+
+/* Input NIS */
+.kiosk-siswa .kiosk-nis {
+  width: 100%; height: 48px; margin-top: 6px; padding: 0 14px;
+  border: 2px solid var(--c-primary); border-radius: 10px; background: #fff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 20px; font-weight: 700; letter-spacing: .12em; text-align: center; color: #0F172A;
+}
+.kiosk-siswa .kiosk-nis:focus       { outline: none; box-shadow: var(--shadow-focus); }
+.kiosk-siswa .kiosk-nis--error      { border-color: var(--c-danger); }
+.kiosk-siswa .kiosk-nis::placeholder { color: #CBD5E1; font-weight: 500; letter-spacing: .08em; }
+
+/* Kartu "siswa ditemukan" */
+.kiosk-siswa .kiosk-found {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; text-align: left;
+  background: var(--c-success-soft); border: 1px solid rgba(34, 197, 94, .25); border-radius: 10px;
+}
+.kiosk-siswa .kiosk-found__avatar {
+  flex: none; width: 26px; height: 26px; border-radius: 50%; background: var(--c-success); color: #fff;
+  font-size: 10px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center;
+}
+.kiosk-siswa .kiosk-found__main { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.kiosk-siswa .kiosk-found__name { font-size: 12.5px; font-weight: 700; color: #0F172A; }
+.kiosk-siswa .kiosk-found__meta { font-size: 11px; color: var(--c-text-muted); }
+.kiosk-siswa .kiosk-found__ok   { display: inline-flex; color: var(--c-success); }
+.kiosk-siswa .kiosk-inline-err  { margin: 0; font-size: 12px; color: var(--c-danger-text); }
+
+/* Status GPS */
+.kiosk-siswa .kiosk-gps {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; text-align: left;
+  border-radius: 10px; background: var(--c-bg); border: 1px solid var(--c-border);
+}
+.kiosk-siswa .kiosk-gps--ok    { background: var(--c-success-soft); border-color: rgba(34, 197, 94, .25); }
+.kiosk-siswa .kiosk-gps--weak  { background: var(--c-warning-soft); border-color: rgba(245, 158, 11, .3); }
+.kiosk-siswa .kiosk-gps--error { background: var(--c-danger-soft);  border-color: rgba(239, 68, 68, .3); }
+.kiosk-siswa .kiosk-gps__ico   { display: inline-flex; color: var(--c-success); }
+.kiosk-siswa .kiosk-gps--weak  .kiosk-gps__ico { color: var(--c-warning-text); }
+.kiosk-siswa .kiosk-gps--error .kiosk-gps__ico { color: var(--c-danger-text); }
+.kiosk-siswa .kiosk-gps__body  { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.kiosk-siswa .kiosk-gps__title { font-size: 12.5px; font-weight: 700; color: #0F172A; }
+.kiosk-siswa .kiosk-gps__desc  { font-size: 11px; color: var(--c-text-muted); }
+.kiosk-siswa .kiosk-gps__retry {
+  border: 0; background: transparent; color: var(--c-danger-text);
+  font-family: inherit; font-size: 11.5px; font-weight: 700; cursor: pointer;
+}
+.kiosk-siswa .kiosk-spin {
+  display: inline-block; width: 16px; height: 16px; border-radius: 50%;
+  border: 2px solid rgba(15, 23, 42, .15); border-top-color: var(--c-primary);
+  animation: kiosk-spin .7s linear infinite;
+}
+@keyframes kiosk-spin { to { transform: rotate(360deg); } }
+
+/* Area kamera */
+.kiosk-siswa .kiosk-cam { width: 100%; }
+.kiosk-siswa .kiosk-cam__box {
+  position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+  width: 100%; aspect-ratio: 1 / 1; border-radius: 12px; overflow: hidden;
+  background: #0F172A; color: rgba(255, 255, 255, .55);
+}
+.kiosk-siswa .kiosk-cam__ico { color: rgba(255, 255, 255, .35); }
+.kiosk-siswa .kiosk-cam__txt { font-size: 11.5px; }
+.kiosk-siswa .kiosk-cam__txt--warn { color: #FCA5A5; }
+/* Cermin: gerakan terasa alami saat berfoto */
+.kiosk-siswa .kiosk-cam__video,
+.kiosk-siswa .kiosk-cam__img {
+  position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1);
+}
+.kiosk-siswa .kiosk-cam__done {
+  position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+  background: rgba(15, 23, 42, .82); color: #fff; font-size: 12px; font-weight: 600;
+}
+.kiosk-siswa .kiosk-cam__done svg { color: var(--c-success); }
+
+/* Ringkasan konfirmasi */
+.kiosk-siswa .kiosk-summary {
+  width: 100%; margin: 4px 0 0; padding: 4px 12px; text-align: left;
+  background: var(--c-bg); border: 1px solid var(--c-border); border-radius: 10px;
+}
+.kiosk-siswa .kiosk-summary__row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 9px 0; border-bottom: 1px solid var(--c-border);
+}
+.kiosk-siswa .kiosk-summary__row:last-child { border-bottom: 0; }
+.kiosk-siswa .kiosk-summary dt { font-size: 11.5px; color: var(--c-text-muted); }
+.kiosk-siswa .kiosk-summary dd { margin: 0; font-size: 12.5px; font-weight: 700; color: #0F172A; }
+.kiosk-siswa .kiosk-summary dd.is-ok   { color: var(--c-success-text); }
+.kiosk-siswa .kiosk-summary dd.is-warn { color: var(--c-warning-text); }
+
+/* Tombol */
+.kiosk-siswa .kiosk-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  width: 100%; height: 40px; margin-top: 4px; padding: 0 16px;
+  border: 1px solid transparent; border-radius: 10px;
+  font-family: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer;
+  transition: background .15s, opacity .15s;
+}
+.kiosk-siswa .kiosk-btn:disabled { opacity: .5; cursor: not-allowed; }
+.kiosk-siswa .kiosk-btn--primary { background: var(--c-primary); color: #fff; }
+.kiosk-siswa .kiosk-btn--primary:hover:not(:disabled) { background: var(--c-primary-hover); }
+.kiosk-siswa .kiosk-btn--dark    { background: #0F172A; color: #fff; }
+.kiosk-siswa .kiosk-btn--dark:hover:not(:disabled) { background: #1E293B; }
+.kiosk-siswa .kiosk-btn--ghost   { background: #fff; color: #0F172A; border-color: var(--c-border); }
+.kiosk-siswa .kiosk-btn--ghost:hover { background: var(--c-bg); }
+.kiosk-siswa .kiosk-actions { display: flex; gap: 10px; width: 100%; }
+.kiosk-siswa .kiosk-back {
+  border: 0; background: transparent; color: var(--c-text-muted);
+  font-family: inherit; font-size: 11.5px; cursor: pointer; padding: 2px;
+}
+.kiosk-siswa .kiosk-back:hover { color: #0F172A; }
+
+/* Hasil */
+.kiosk-siswa .kiosk-result__ico {
+  display: inline-flex; align-items: center; justify-content: center; width: 52px; height: 52px; border-radius: 50%;
+}
+.kiosk-siswa .kiosk-result__ico.is-ok  { background: var(--c-success-soft); color: var(--c-success-text); }
+.kiosk-siswa .kiosk-result__ico.is-err { background: var(--c-danger-soft);  color: var(--c-danger-text); }
+.kiosk-siswa .kiosk-result__body { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.kiosk-siswa .kiosk-badge {
+  display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 999px;
+  font-size: 11px; font-weight: 700;
+}
+.kiosk-siswa .kiosk-badge--hadir { background: var(--c-success-soft); color: var(--c-success-text); }
+.kiosk-siswa .kiosk-badge--telat { background: var(--c-warning-soft); color: var(--c-warning-text); }
+
+/* Aksesibilitas */
+.kiosk-siswa .u-sr {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+.kiosk-siswa .u-hidden { display: none !important; }
+
+/* ═════════════════════════════════════════════════════════════════════════════
+   KIOSK GURU v2 (RFID) — layar gelap: idle (jam + tempel kartu) & panggung hasil
+   Terbaca dari jarak beberapa meter: nama & sesi berukuran besar.
+   ═══════════════════════════════════════════════════════════════════════════ */
+.absensi-kiosk.kiosk-guru2 {
+  position: relative; min-height: 100vh;
+  display: flex; align-items: center; justify-content: center; padding: 40px 20px;
+  background: radial-gradient(120% 90% at 50% 0%, #1B2350 0%, #131A3B 45%, #0B1027 100%);
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  color: #fff; text-align: center;
+}
+
+/* Tombol bisukan (pojok kanan atas) */
+.kiosk-guru2 .kioskg2-mute {
+  position: absolute; top: 18px; right: 18px; display: inline-flex; align-items: center; justify-content: center;
+  width: 38px; height: 38px; border: 1px solid rgba(255,255,255,.12); border-radius: 10px;
+  background: rgba(255,255,255,.06); color: rgba(255,255,255,.7); cursor: pointer;
+}
+.kiosk-guru2 .kioskg2-mute:hover { background: rgba(255,255,255,.12); color: #fff; }
+
+/* ── Layar idle ── */
+.kiosk-guru2 .kioskg2-idle { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.kiosk-guru2 .kioskg2-clock {
+  margin: 0; font-size: 68px; line-height: 1; font-weight: 800; letter-spacing: -.02em;
+  font-variant-numeric: tabular-nums; text-shadow: 0 0 40px rgba(96, 165, 250, .35);
+}
+.kiosk-guru2 .kioskg2-date { margin: 6px 0 26px; font-size: 12.5px; color: rgba(255,255,255,.45); }
+
+/* Kotak ikon scan (berdenyut halus = kiosk "hidup") */
+.kiosk-guru2 .kioskg2-scan {
+  display: inline-flex; align-items: center; justify-content: center; width: 74px; height: 74px;
+  border-radius: 18px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1);
+  color: rgba(147, 178, 255, .85); animation: kioskg2-pulse 2.4s ease-in-out infinite;
+}
+@keyframes kioskg2-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(96, 165, 250, .18); }
+  50%      { box-shadow: 0 0 0 14px rgba(96, 165, 250, 0); }
+}
+.kiosk-guru2 .kioskg2-scan__title {
+  margin: 18px 0 0; font-size: 12px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase;
+  color: rgba(255,255,255,.7);
+}
+.kiosk-guru2 .kioskg2-scan__hint { margin: 6px 0 20px; font-size: 11.5px; color: rgba(255,255,255,.35); }
+
+/* Input UID (target scanner HID) */
+.kiosk-guru2 .kioskg2-input {
+  width: 220px; height: 38px; padding: 0 14px; text-align: center;
+  background: rgba(255,255,255,.05); border: 1px solid rgba(120, 150, 255, .35); border-radius: 999px;
+  color: #fff; font-family: inherit; font-size: 12.5px; letter-spacing: .04em;
+}
+.kiosk-guru2 .kioskg2-input::placeholder { color: rgba(255,255,255,.3); }
+.kiosk-guru2 .kioskg2-input:focus { outline: none; border-color: rgba(147, 178, 255, .8); background: rgba(255,255,255,.08); }
+
+/* ── Panggung hasil ── */
+.kiosk-guru2 .kioskg2-stage { width: 100%; }
+.kiosk-guru2 .kioskg2-stage__in {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  animation: kioskg2-in .18s ease-out;
+}
+@keyframes kioskg2-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+.kiosk-guru2 .kioskg2-avatar {
+  display: inline-flex; align-items: center; justify-content: center; width: 62px; height: 62px;
+  margin-bottom: 14px; border-radius: 18px; background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.1); font-size: 15px; font-weight: 800; color: #fff;
+}
+/* Warna avatar ikut tone hasil (peta warna status) */
+.kiosk-guru2 .kioskg2-avatar.is-success span,
+.kiosk-guru2 .kioskg2-avatar.is-success { color: #fff; }
+.kiosk-guru2 .kioskg2-avatar.is-success { background: var(--c-success); border-color: transparent; }
+.kiosk-guru2 .kioskg2-avatar.is-warning { background: var(--c-warning); border-color: transparent; }
+.kiosk-guru2 .kioskg2-avatar.is-info    { background: var(--c-info);    border-color: transparent; }
+.kiosk-guru2 .kioskg2-avatar.is-danger  { background: rgba(239, 68, 68, .16); color: #F87171; border-color: rgba(239,68,68,.3); }
+
+.kiosk-guru2 .kioskg2-name {
+  margin: 0; font-size: 34px; line-height: 1.15; font-weight: 800; letter-spacing: -.01em; color: #fff;
+}
+.kiosk-guru2 .kioskg2-action {
+  margin: 12px 0 0; font-size: 46px; line-height: 1; font-weight: 800; letter-spacing: .02em;
+}
+.kiosk-guru2 .kioskg2-action.is-success { color: #4ADE80; text-shadow: 0 0 34px rgba(74, 222, 128, .45); }
+.kiosk-guru2 .kioskg2-action.is-warning { color: #60A5FA; text-shadow: 0 0 34px rgba(96, 165, 250, .45); }
+.kiosk-guru2 .kioskg2-action.is-info    { color: #22D3EE; text-shadow: 0 0 34px rgba(34, 211, 238, .45); }
+.kiosk-guru2 .kioskg2-action.is-danger  { color: #F87171; font-size: 30px; text-shadow: none; }
+
+.kiosk-guru2 .kioskg2-status {
+  margin: 8px 0 0; font-size: 13px; font-weight: 800; letter-spacing: .14em;
+}
+.kiosk-guru2 .kioskg2-status.is-success { color: #4ADE80; }
+.kiosk-guru2 .kioskg2-status.is-warning { color: #FBBF24; }
+.kiosk-guru2 .kioskg2-status.is-info    { color: #22D3EE; }
+
+.kiosk-guru2 .kioskg2-time {
+  margin: 14px 0 0; font-size: 15px; font-weight: 700; color: rgba(255,255,255,.4);
+  font-variant-numeric: tabular-nums;
+}
+.kiosk-guru2 .kioskg2-msg { margin: 10px 0 0; font-size: 13px; color: rgba(255,255,255,.6); max-width: 420px; }
+.kiosk-guru2 .kioskg2-countdown {
+  display: inline-flex; align-items: center; gap: 5px; margin: 18px 0 0;
+  font-size: 11px; color: rgba(255,255,255,.3);
+}
+.kiosk-guru2 .kioskg2-login {
+  margin-top: 16px; padding: 9px 18px; border-radius: 999px;
+  background: var(--c-primary); color: #fff; font-size: 12.5px; font-weight: 700; text-decoration: none;
+}
+.kiosk-guru2 .kioskg2-login:hover { background: var(--c-primary-hover); }
+
+.kiosk-guru2 .u-sr {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* Layar besar (kiosk TV): perbesar teks panggung */
+@media (min-width: 1024px) {
+  .kiosk-guru2 .kioskg2-clock  { font-size: 92px; }
+  .kiosk-guru2 .kioskg2-name   { font-size: 44px; }
+  .kiosk-guru2 .kioskg2-action { font-size: 60px; }
+}

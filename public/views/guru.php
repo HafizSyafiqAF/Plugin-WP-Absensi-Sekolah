@@ -1,93 +1,92 @@
 <?php
 /**
- * View kiosk publik — Absensi Guru (RFID).  (design.md §11)
+ * View kiosk — Absensi Guru (RFID).  (design.md §11)
  *
- * Fullscreen mandiri (tanpa chrome admin). Tap kartu → scanner "ketik" UID+Enter
- * → POST /absen/rfid → feedback BESAR (nama + status) → auto reset "Siap scan".
- * Identitas dari rfid_uid (kiosk publik, tanpa login). Config: AbsensiConfig.rfidDebounce.
+ * Fullscreen gelap. Guru tap kartu SISWA → scanner HID "mengetik" UID + Enter ke
+ * input tersembunyi → POST /absen/rfid → panggung hasil BESAR (nama + sesi +
+ * status) → kembali otomatis ke layar idle.
  *
- * Item ini = kerangka: jam besar real-time + area feedback besar + status idle.
- * Autofokus input + kirim + tangani error = item berikutnya (lihat TODO-FE).
+ * SESI OTOMATIS: `sesi` tidak dikirim, jadi server yang menentukan —
+ * scan 1 = Masuk, scan 2 = Pulang (AbsensiEndpoint: sesi kosong → auto).
+ * Halaman ini login-gated di backend (cap `absensi_rfid`), jadi guru yang belum
+ * login TIDAK pernah sampai ke sini — WordPress mengalihkannya ke wp-login.
+ *
+ * Config: AbsensiConfig (restUrl, nonce, rfidDebounce).
  */
 defined( 'ABSPATH' ) || exit;
 ?>
-<div class="absensi-kiosk kiosk-guru" x-data="kioskGuru" x-cloak
-     @click="focusInput()"><?php // klik di mana pun (kiosk fullscreen) → refocus input UID ?>
+<div class="absensi-kiosk kiosk-guru kiosk-guru2" x-data="kioskGuru" x-cloak
+     @click="focusInput()"><?php // klik di mana pun → rebut fokus ke input UID (target scanner) ?>
 
-  <!-- Toggle bunyi beep (opsional, operator) -->
-  <button type="button" class="kioskg-mute btn btn--sm btn--outline" @click="toggleMute()"
-          :aria-pressed="muted ? 'true' : 'false'"
-          :aria-label="muted
-            ? '<?php echo esc_js( __( 'Bunyikan beep', 'absensi-sekolah' ) ); ?>'
-            : '<?php echo esc_js( __( 'Bisukan beep', 'absensi-sekolah' ) ); ?>'">
-    <span x-html="$icon( muted ? 'volume-x' : 'volume-2', 18 )"></span>
-  </button>
+	<!-- Bisukan/aktifkan beep -->
+	<button type="button" class="kioskg2-mute" @click.stop="toggleMute()"
+	        :aria-pressed="muted ? 'true' : 'false'"
+	        :aria-label="muted
+	          ? '<?php echo esc_js( __( 'Aktifkan bunyi', 'absensi-sekolah' ) ); ?>'
+	          : '<?php echo esc_js( __( 'Bisukan bunyi', 'absensi-sekolah' ) ); ?>'">
+		<span x-html="$icon( muted ? 'volume-x' : 'volume-2', 18 )" aria-hidden="true"></span>
+	</button>
 
-  <!-- Jam besar real-time (design.md §11: tabular-nums, tengah-atas) -->
-  <div class="kioskg-topbar">
-    <span class="kioskg-clock-icon" x-html="$icon( 'clock', 22 )" aria-hidden="true"></span>
-    <span class="kiosk-clock" x-text="jam" aria-hidden="true">00:00:00</span>
-  </div>
+	<!-- ── Layar IDLE: jam + tanggal + ajakan tempel kartu ── -->
+	<div class="kioskg2-idle" x-show="! fb" x-cloak>
+		<p class="kioskg2-clock u-num" x-text="jam"></p>
+		<p class="kioskg2-date" x-text="tanggal"></p>
 
-  <!-- Panggung feedback (diumumkan untuk audio kiosk) -->
-  <div class="kioskg-stage" aria-live="assertive">
+		<div class="kioskg2-scan">
+			<span class="kioskg2-scan__ico" x-html="$icon( 'scan-line', 30 )" aria-hidden="true"></span>
+		</div>
 
-    <!-- Status idle: menunggu tap kartu -->
-    <div class="kioskg-idle" x-show="! fb">
-      <div class="kioskg-idle__pulse" aria-hidden="true">
-        <span x-html="$icon( 'credit-card', 44 )"></span>
-      </div>
-      <p class="kioskg-idle__text"><?php esc_html_e( 'Siap scan kartu…', 'absensi-sekolah' ); ?></p>
-      <p class="kioskg-idle__sub"><?php esc_html_e( 'Tempelkan kartu ke scanner', 'absensi-sekolah' ); ?></p>
-    </div>
+		<p class="kioskg2-scan__title"><?php esc_html_e( 'Tempelkan Kartu RFID', 'absensi-sekolah' ); ?></p>
+		<p class="kioskg2-scan__hint"><?php ; ?></p>
 
-    <!-- Feedback besar: nama + status + pesan sambutan. Muncul fade/scale, tahan ~2.5 dtk → idle. -->
-    <div class="kioskg-feedback" :class="fbClass" x-show="fb" x-cloak
-         x-transition.opacity.scale.95.duration.250ms>
-      <div class="kioskg-avatar" x-text="fbInitial" aria-hidden="true"></div>
-      <p class="kiosk-feedback-name" x-show="fb && fb.nama" x-text="fb ? fb.nama : ''"></p>
-      <span class="badge badge--lg" :class="fbBadgeClass" x-text="fb ? fb.statusLabel : ''"></span>
-      <p class="kioskg-msg" x-text="fb ? fb.message : ''"></p>
-      <!-- Sesi WP habis (401/403): tombol login ulang (redirect balik ke kiosk ini). -->
-      <a x-show="needLogin" x-cloak class="btn btn--primary btn--lg kioskg-login" :href="loginUrl">
-        <span x-html="$icon( 'log-in', 20 )" aria-hidden="true"></span>
-        <?php esc_html_e( 'Login Ulang', 'absensi-sekolah' ); ?>
-      </a>
-    </div>
+		<!-- Input UID: target scanner HID; bisa juga diketik manual -->
+		<label class="u-sr" for="kg-uid"><?php esc_html_e( 'UID kartu RFID', 'absensi-sekolah' ); ?></label>
+		<input id="kg-uid" x-ref="rfid" type="text" class="kioskg2-input"
+		       x-model="uid" @keydown.enter.prevent="onEnter()" @blur="onBlur($event)"
+		       autocomplete="off" spellcheck="false"
+		       placeholder="<?php esc_attr_e( 'atau ketik kode…', 'absensi-sekolah' ); ?>">
+	</div>
 
-  </div>
+	<!-- ── Panggung HASIL (sukses): avatar + nama + sesi + status + jam ── -->
+	<div class="kioskg2-stage" x-show="fb && fb.ok" x-cloak role="status" aria-live="assertive">
+		<template x-if="fb && fb.ok">
+			<div class="kioskg2-stage__in">
+				<span class="kioskg2-avatar" :class="'is-' + fb.tone" x-text="inisial(fb.nama)" aria-hidden="true"></span>
+				<p class="kioskg2-name" x-text="fb.nama"></p>
 
-  <!-- Toggle sesi: operator pilih Masuk / Pulang SEBELUM tap kartu. Default Masuk.
-       Klik pill set sesi + refocus input (jaga fokus scanner HID). -->
-  <div class="kioskg-sesi" role="group" aria-label="<?php esc_attr_e( 'Pilih sesi absen', 'absensi-sekolah' ); ?>">
-    <div class="pill-tabs">
-      <button type="button" class="pill" :class="sesi === 'masuk' ? 'is-active' : ''"
-              @click="sesi = 'masuk'; focusInput()" :aria-pressed="sesi === 'masuk'">
-        <?php esc_html_e( 'Masuk', 'absensi-sekolah' ); ?>
-      </button>
-      <button type="button" class="pill" :class="sesi === 'pulang' ? 'is-active' : ''"
-              @click="sesi = 'pulang'; focusInput()" :aria-pressed="sesi === 'pulang'">
-        <?php esc_html_e( 'Pulang', 'absensi-sekolah' ); ?>
-      </button>
-    </div>
-  </div>
+				<p class="kioskg2-action" :class="'is-' + fb.tone" x-text="fb.aksi"></p>
+				<p class="kioskg2-status" :class="'is-' + fb.tone" x-show="fb.status" x-text="fb.status"></p>
 
-  <!-- Form UID: scanner RFID (HID) auto-ketik UID lalu Enter → submit; bisa juga
-       ketik manual + Enter / tombol Kirim. Autofokus dijaga (scanner butuh fokus). -->
-  <form class="kioskg-form" @submit.prevent="onEnter()">
-    <label class="kioskg-form__label" for="kioskg-uid"><?php esc_html_e( 'UID Kartu', 'absensi-sekolah' ); ?></label>
-    <div class="kioskg-form__row">
-      <input id="kioskg-uid" type="text" x-ref="rfid" class="input kioskg-input"
-             autocomplete="off" spellcheck="false"
-             x-model.trim="uid"
-             @blur="onBlur($event)"
-             placeholder="<?php esc_attr_e( 'Tap kartu / ketik UID…', 'absensi-sekolah' ); ?>"
-             aria-label="<?php esc_attr_e( 'Input kartu RFID', 'absensi-sekolah' ); ?>">
-      <button type="submit" class="btn btn--primary btn--lg"><?php esc_html_e( 'Kirim', 'absensi-sekolah' ); ?></button>
-    </div>
-  </form>
+				<p class="kioskg2-time u-num" x-text="fb.jam"></p>
+				<p class="kioskg2-countdown">
+					<span x-html="$icon( 'rotate-ccw', 13 )" aria-hidden="true"></span>
+					<?php esc_html_e( 'Kembali otomatis dalam', 'absensi-sekolah' ); ?>
+					<span class="u-num" x-text="sisaDetik"></span> <?php esc_html_e( 'detik', 'absensi-sekolah' ); ?>
+				</p>
+			</div>
+		</template>
+	</div>
 
-  <!-- Petunjuk bawah -->
-  <p class="kioskg-hint"><?php esc_html_e( 'Tap kartu ke scanner, atau ketik UID lalu Enter.', 'absensi-sekolah' ); ?></p>
+	<!-- ── Panggung HASIL (ditolak): pesan asli dari server ── -->
+	<div class="kioskg2-stage" x-show="fb && ! fb.ok" x-cloak role="alert" aria-live="assertive">
+		<template x-if="fb && ! fb.ok">
+			<div class="kioskg2-stage__in">
+				<span class="kioskg2-avatar is-danger" x-html="$icon( 'x-circle', 30 )" aria-hidden="true"></span>
+				<p class="kioskg2-action is-danger" x-text="fb.statusLabel"></p>
+				<p class="kioskg2-msg" x-text="fb.message"></p>
+
+				<!-- Sesi WP habis → tombol login ulang (tap diabaikan sampai login) -->
+				<a class="kioskg2-login" x-show="needLogin" x-cloak :href="loginUrl">
+					<?php esc_html_e( 'Login Ulang', 'absensi-sekolah' ); ?>
+				</a>
+
+				<p class="kioskg2-countdown" x-show="! needLogin">
+					<span x-html="$icon( 'rotate-ccw', 13 )" aria-hidden="true"></span>
+					<?php esc_html_e( 'Kembali otomatis dalam', 'absensi-sekolah' ); ?>
+					<span class="u-num" x-text="sisaDetik"></span> <?php esc_html_e( 'detik', 'absensi-sekolah' ); ?>
+				</p>
+			</div>
+		</template>
+	</div>
 
 </div>

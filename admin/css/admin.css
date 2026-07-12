@@ -47,6 +47,14 @@
   --shadow-focus: 0 0 0 3px rgba(37, 99, 235, .25);
 }
 
+/* ─── Latar halaman ───────────────────────────────────────────────────────────
+   Latar datang dari <body> wp-admin (#f0f0f1, abu) — DI LUAR scope .absensi-app,
+   jadi token --c-bg tak akan terpakai kalau hanya di-set di dalam wrapper.
+   Aman ditulis di level body: admin.css HANYA di-enqueue di halaman plugin
+   (Plugin::enqueue_admin_assets → str_contains($hook,'absensi')), tak bocor ke
+   halaman wp-admin lain. Ini SATU-SATUNYA aturan di luar .absensi-app. */
+body.wp-admin { background-color: var(--c-bg); }
+
 /* ─── Wrapper & Scope ─────────────────────────────────────────────────────────
    FE membungkus SELURUH markup halaman plugin di <div class="absensi-app">.
    Semua reset & style plugin hanya berlaku di dalamnya → wp-admin aman. */
@@ -117,19 +125,17 @@
   font-weight: 500;
   white-space: nowrap;
 }
-/* Titik warna depan (depth+aksen): status/tipe lebih terbaca sekilas. Warna ikut
-   teks badge (currentColor = tone). */
-.absensi-app .badge::before { content: ""; flex: none; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+/* Badge = pill polos (tanpa titik) — status dibedakan lewat WARNA + LABEL. */
 /* Status kehadiran */
 .absensi-app .badge--hadir { color: var(--c-success-text); background: var(--c-success-soft); }
 .absensi-app .badge--telat { color: var(--c-warning-text); background: var(--c-warning-soft); }
 .absensi-app .badge--izin  { color: var(--c-info-text);    background: var(--c-info-soft); }
 .absensi-app .badge--sakit { color: var(--c-purple-text);  background: var(--c-purple-soft); }
 .absensi-app .badge--alpha { color: var(--c-danger-text);  background: var(--c-danger-soft); }
-/* Tipe group (design.md §6): Kelas=Primary · Guru=Purple · Staff=Info */
+/* Tipe group: Kelas=Biru · Guru=Ungu · Staff=Hijau (ikut acuan desain) */
 .absensi-app .badge--kelas   { color: var(--c-primary-hover); background: var(--c-primary-soft); }
 .absensi-app .badge--guru    { color: var(--c-purple-text);   background: var(--c-purple-soft); }
-.absensi-app .badge--staff   { color: var(--c-info-text);     background: var(--c-info-soft); }
+.absensi-app .badge--staff   { color: var(--c-success-text);  background: var(--c-success-soft); }
 /* Tipe kustom (bebas ketik) — netral, tak ikut warna "kelas" */
 .absensi-app .badge--neutral { color: var(--c-text-muted);    background: var(--c-bg); }
 
@@ -280,7 +286,161 @@
 @media (max-width: 1024px) { .absensi-app .summary-grid { grid-template-columns: repeat(3, 1fr); } }
 @media (max-width: 640px)  { .absensi-app .summary-grid { grid-template-columns: repeat(2, 1fr); } }
 
-/* ─── Pengaturan (design.md §9): 5 card + baris field ────────────────────────*/
+/* ═════════════════════════════════════════════════════════════════════════════
+   LAPORAN — filter bar · jam · link Detail · daftar detail
+   ═══════════════════════════════════════════════════════════════════════════ */
+.absensi-app .report-bar {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  padding: 12px 16px; border-bottom: 1px solid var(--c-border);
+}
+.absensi-app .report-bar__left { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.absensi-app .select--sm { height: 36px; width: auto; min-width: 150px; font-size: 13px; padding-top: 0; padding-bottom: 0; }
+
+/* Rentang tanggal: dua input date dalam satu kotak (acuan: "10/01 – 10/07") */
+.absensi-app .date-range {
+  display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 10px;
+  border: 1px solid var(--c-border); border-radius: var(--r-md); background: var(--c-surface);
+}
+.absensi-app .date-range__icon  { display: inline-flex; color: var(--c-text-muted); }
+.absensi-app .date-range__sep   { color: var(--c-text-muted); }
+.absensi-app .date-range__input {
+  border: 0; background: transparent; font-family: inherit; font-size: 13px; color: var(--c-text);
+  padding: 0; height: 34px; font-variant-numeric: tabular-nums;
+}
+.absensi-app .date-range__input:focus { outline: none; }
+.absensi-app .date-range:focus-within { border-color: var(--c-primary); box-shadow: var(--shadow-focus); }
+
+/* Pill status aktif = gelap (acuan desain) */
+.absensi-app .pill--dark.is-active { background: #0F172A; color: #fff; }
+
+/* Jam (mono) + selisih telat */
+.absensi-app .jam {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.5px; color: var(--c-text);
+}
+.absensi-app .jam-telat { margin-left: 6px; font-size: 11.5px; font-weight: 600; color: var(--c-warning-text); }
+
+/* Link teks di sel Aksi ("Detail") */
+.absensi-app .link-btn {
+  border: 0; background: transparent; padding: 4px 6px; border-radius: var(--r-sm);
+  font-family: inherit; font-size: 13px; font-weight: 600; color: var(--c-primary); cursor: pointer;
+}
+.absensi-app .link-btn:hover { background: var(--c-primary-soft); }
+
+/* Modal Detail: daftar pasangan label–nilai */
+.absensi-app .detail-list { display: flex; flex-direction: column; gap: 0; margin: 0; }
+.absensi-app .detail-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 10px 0; border-bottom: 1px solid var(--c-border);
+}
+.absensi-app .detail-row:last-child { border-bottom: 0; }
+.absensi-app .detail-row dt { font-size: 13px; color: var(--c-text-muted); }
+.absensi-app .detail-row dd { margin: 0; font-size: 13.5px; font-weight: 600; color: var(--c-text); text-align: right; }
+
+/* Grafik Laporan: seri hijau (Hadir) */
+.absensi-app .trend-fill--hijau        { fill: url(#absensiLaporanFill); }
+.absensi-app .trend-line--hadir-hijau  { stroke: var(--c-success); }
+.absensi-app .trend-dot--hijau         { stroke: var(--c-success); }
+
+@media (max-width: 782px) {
+  .absensi-app .report-bar__left, .absensi-app .report-bar { align-items: stretch; }
+  .absensi-app .date-range, .absensi-app .select--sm { width: 100%; }
+}
+
+/* ═════════════════════════════════════════════════════════════════════════════
+   PENGATURAN — Lokasi Sekolah + Jadwal Global · Konfigurasi Teknis · Simpan
+   Token warna & tipografi sama dengan halaman lain (kartu putih, radius 14).
+   ═══════════════════════════════════════════════════════════════════════════ */
+.absensi-app .set-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; align-items: start; }
+@media (max-width: 1024px) { .absensi-app .set-grid { grid-template-columns: 1fr; } }
+.absensi-app .set-card { border-radius: 14px; box-shadow: 0 1px 2px rgba(16,24,40,.04); }
+.absensi-app .set-card--wide { margin-top: 16px; }
+.absensi-app .card-chip--dark { --tone-soft: #334155; --tone-text: #fff; }
+
+/* Field di halaman ini: latar abu muda (acuan desain), fokus → putih.
+   WAJIB `background-color` (bukan `background`) — shorthand akan menghapus
+   background-image milik .select, yaitu ikon panah chevron-nya. */
+.absensi-app .set-card .input,
+.absensi-app .set-card .select { background-color: #F8FAFC; height: 44px; }
+.absensi-app .set-card .input:focus,
+.absensi-app .set-card .select:focus { background-color: var(--c-surface); }
+.absensi-app .set-card .field__label { font-size: 12.5px; font-weight: 600; color: var(--c-text); }
+
+/* Tombol pil (Gunakan Lokasi Saat Ini · Simpan Perubahan) */
+.absensi-app .btn--pill { border-radius: var(--r-full); }
+.absensi-app .set-actions .btn--pill { box-shadow: 0 10px 22px -10px rgba(37,99,235,.65); padding: 0 24px; }
+
+/* Judul kartu bergaris pemisah (acuan desain) — pisahkan header dari isi */
+.absensi-app .set-card .card__head {
+  padding-bottom: 16px; margin-bottom: 18px; border-bottom: 1px solid var(--c-border);
+}
+
+/* Lokasi: field (kiri) + peta (kanan) */
+.absensi-app .set-loc { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }
+@media (max-width: 782px) { .absensi-app .set-loc { grid-template-columns: 1fr; } }
+.absensi-app .set-loc__fields { display: flex; flex-direction: column; gap: 14px; }
+
+/* Input dengan satuan di kanan (mis. radius "m") */
+.absensi-app .input-suffix { position: relative; display: flex; align-items: center; }
+.absensi-app .input-suffix .input { padding-right: 38px; }
+.absensi-app .input-suffix__unit {
+  position: absolute; right: 12px; font-size: 13px; color: var(--c-text-muted); pointer-events: none;
+}
+
+/* Pratinjau peta: mengisi penuh kolomnya, keterangan mengambang di dalam peta */
+.absensi-app .set-map {
+  position: relative; border: 1px solid var(--c-border); border-radius: var(--r-lg);
+  overflow: hidden; background: var(--c-bg); min-height: 232px;
+}
+.absensi-app .set-map__frame {
+  display: block; width: 100%; height: 232px; border: 0;
+}
+.absensi-app .set-map__empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+  height: 232px; color: var(--c-text-muted); font-size: 13px; text-align: center; padding: 12px;
+}
+/* bottom 30px: sisakan ruang untuk atribusi OpenStreetMap di dasar iframe (wajib
+   tetap terbaca — syarat lisensi ODbL) */
+.absensi-app .set-map__caption {
+  position: absolute; left: 10px; right: 10px; bottom: 30px;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 8px 12px; background: rgba(255, 255, 255, .95); border-radius: var(--r-md);
+  box-shadow: var(--shadow-sm); font-size: 12.5px; color: var(--c-text-muted);
+}
+.absensi-app .set-map__coord { color: var(--c-text); font-weight: 600; }
+.absensi-app .set-map__caption a { font-weight: 600; white-space: nowrap; }
+
+/* Toleransi telat (slider) */
+.absensi-app .set-tol {
+  margin-top: 18px; padding: 14px; border-radius: var(--r-lg);
+  background: var(--c-warning-soft); border: 1px solid rgba(245, 158, 11, .25);
+}
+.absensi-app .set-tol__head  { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.absensi-app .set-tol__label { font-size: 13px; font-weight: 600; color: var(--c-warning-text); }
+.absensi-app .set-tol__val   { font-size: 13px; font-weight: 700; color: var(--c-warning-text); }
+.absensi-app .set-tol__range { width: 100%; margin: 12px 0 4px; accent-color: var(--c-warning); cursor: pointer; }
+.absensi-app .set-tol__hint  { font-size: 12px; color: var(--c-text-muted); }
+
+/* Konfigurasi teknis: 3 kolom bersekat */
+.absensi-app .set-tech { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; }
+.absensi-app .set-tech__item { padding: 4px 20px; border-left: 1px solid var(--c-border); }
+.absensi-app .set-tech__item:first-child { padding-left: 0; border-left: 0; }
+@media (max-width: 900px) {
+  .absensi-app .set-tech { grid-template-columns: 1fr; gap: 20px; }
+  .absensi-app .set-tech__item { padding: 0; border-left: 0; }
+}
+.absensi-app .set-tech__head  { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.absensi-app .set-tech__icon  { display: inline-flex; color: var(--c-primary); }
+.absensi-app .set-tech__title { font-size: 13.5px; font-weight: 600; color: var(--c-text); }
+.absensi-app .set-tech__desc  { font-size: 12.5px; line-height: 18px; color: var(--c-text-muted); margin-bottom: 12px; }
+.absensi-app .set-tech__field { display: flex; align-items: center; gap: 10px; }
+.absensi-app .set-tech__unit  { font-size: 13px; color: var(--c-text-muted); }
+.absensi-app .input--narrow   { width: 110px; }
+
+/* Aksi simpan (kanan bawah) */
+.absensi-app .set-actions { display: flex; justify-content: flex-end; margin-top: 18px; }
+
+/* ─── Pengaturan lama (design.md §9): 5 card + baris field ───────────────────*/
 /* Grid 2-kolom (design.md §9): kartu kecil (RFID/Retensi) berdampingan, kartu
    lebar (Lokasi/Jam Kerja/WhatsApp) span penuh. Hindari whitespace boros. */
 .absensi-app .settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; max-width: 980px; align-items: start; }
@@ -321,95 +481,154 @@
 }
 
 /* ─── Card ────────────────────────────────────────────────────────────────────*/
+/* `width/max-width` WAJIB: wp-admin core punya `.card { max-width: 520px }` (forms.css)
+   yang ikut kena kartu kita — tanpa ini semua card mentok 520px. */
 .absensi-app .card {
+  width: 100%; max-width: none; min-width: 0; margin: 0;
   background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--r-lg);
   box-shadow: 0 1px 2px rgba(16,24,40,.04), 0 12px 28px -14px rgba(16,24,40,.13); padding: 20px;
 }
 .absensi-app .card__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
 .absensi-app .card__title { font-size: 18px; line-height: 26px; font-weight: 600; }
 
-/* Dashboard main: grafik (2/3) + quick action (1/3), tumpuk di mobile */
-.absensi-app .dash-main { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; align-items: start; }
+/* ═════════════════════════════════════════════════════════════════════════════
+   DASHBOARD (design.md §4) — KPI · Tren · Aksi Cepat · Absensi Terbaru
+   Kartu putih tenang: border tipis, radius 14, shadow halus. Warna hanya dipakai
+   untuk MENANDAI status (chip ikon + delta), bukan menghias.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Breadcrumb halaman (Absensi › Dashboard) */
+.absensi-app .dash-crumb { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--c-text-muted); }
+.absensi-app .dash-crumb__sep { color: #CBD5E1; display: inline-flex; }
+.absensi-app .dash-crumb__now { color: var(--c-text); font-weight: 600; }
+
+/* ─── KPI (6 kartu sejajar) ──────────────────────────────────────────────────*/
+.absensi-app .kpi-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px; }
+@media (max-width: 1280px) { .absensi-app .kpi-grid { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 782px)  { .absensi-app .kpi-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 480px)  { .absensi-app .kpi-grid { grid-template-columns: 1fr; } }
+
+.absensi-app .kpi {
+  display: flex; flex-direction: column; gap: 10px; padding: 16px;
+  background: var(--c-surface); border: 1px solid var(--c-border); border-radius: 14px;
+  box-shadow: 0 1px 2px rgba(16,24,40,.04);
+  --tone-soft: var(--c-primary-soft); --tone-text: var(--c-primary); --tone-solid: var(--c-primary);
+  transition: box-shadow .18s ease, border-color .18s ease;
+}
+.absensi-app .kpi:hover { box-shadow: 0 4px 14px -6px rgba(16,24,40,.18); border-color: #D8DEE7; }
+.absensi-app .kpi--primary { --tone-soft: var(--c-primary-soft); --tone-text: var(--c-primary);      --tone-solid: var(--c-primary); }
+.absensi-app .kpi--success { --tone-soft: var(--c-success-soft); --tone-text: var(--c-success-text); --tone-solid: var(--c-success); }
+.absensi-app .kpi--warning { --tone-soft: var(--c-warning-soft); --tone-text: var(--c-warning-text); --tone-solid: var(--c-warning); }
+.absensi-app .kpi--info    { --tone-soft: var(--c-info-soft);    --tone-text: var(--c-info-text);    --tone-solid: var(--c-info); }
+.absensi-app .kpi--danger  { --tone-soft: var(--c-danger-soft);  --tone-text: var(--c-danger-text);  --tone-solid: var(--c-danger); }
+.absensi-app .kpi--purple  { --tone-soft: var(--c-purple-soft);  --tone-text: var(--c-purple-text);  --tone-solid: var(--c-purple); }
+
+.absensi-app .kpi__top   { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.absensi-app .kpi__label { font-size: 13px; font-weight: 500; color: var(--c-text-muted); }
+/* Chip ikon = lingkaran warna PENUH + ikon putih (acuan desain) */
+.absensi-app .kpi__chip  {
+  width: 30px; height: 30px; flex: none; border-radius: var(--r-full);
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--tone-solid); color: #fff;
+}
+.absensi-app .kpi__chip svg { width: 16px; height: 16px; }
+.absensi-app .kpi__value { font-size: 28px; line-height: 1.1; font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.absensi-app .kpi__delta { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--c-text-muted); }
+.absensi-app .kpi__delta svg { width: 13px; height: 13px; }
+.absensi-app .kpi__pct   { font-weight: 600; display: inline-flex; align-items: center; gap: 2px; font-variant-numeric: tabular-nums; }
+.absensi-app .kpi__delta.is-good .kpi__pct { color: var(--c-success-text); }
+.absensi-app .kpi__delta.is-bad  .kpi__pct { color: var(--c-danger-text); }
+.absensi-app .kpi__delta.is-flat .kpi__pct { color: var(--c-text-muted); }
+
+/* ─── Baris utama: Tren (2/3) + Aksi Cepat (1/3) ─────────────────────────────*/
+.absensi-app .dash-main { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; align-items: stretch; }
 @media (max-width: 900px) { .absensi-app .dash-main { grid-template-columns: 1fr; } }
-.absensi-app .quick-actions { display: flex; flex-direction: column; gap: 8px; }
-.absensi-app .quick-actions .btn { justify-content: flex-start; height: 46px; }
-/* Primary Aksi Cepat: gradient + depth (aksen), hover angkat halus */
-.absensi-app .quick-actions .btn--primary { background: linear-gradient(135deg, #3B82F6, var(--c-primary)); box-shadow: 0 10px 20px -8px rgba(37,99,235,.5); }
-.absensi-app .quick-actions .btn--primary:hover { background: linear-gradient(135deg, #2563EB, var(--c-primary-hover)); }
-.absensi-app .quick-actions .btn:not(.btn--primary):hover { transform: translateX(2px); }
 
-/* Dashboard grafik kehadiran (design.md §4): bar horizontal, peta warna status */
-.absensi-app .chart-bars { display: flex; flex-direction: column; gap: 12px; }
-.absensi-app .chart-row { display: grid; grid-template-columns: 64px 1fr 40px; align-items: center; gap: 12px; }
-.absensi-app .chart-row__label { font-size: 13px; color: var(--c-text-muted); }
-.absensi-app .chart-row__track { height: 12px; background: #F1F5F9; border-radius: var(--r-full); overflow: hidden; }
-.absensi-app .chart-row__bar { height: 100%; border-radius: var(--r-full); min-width: 2px; transition: width .3s ease; }
-/* Gradient lembut (depth+aksen): terang→tone, tetap peta warna status design.md */
-.absensi-app .chart-row__bar--success { background: linear-gradient(90deg, #34D399, var(--c-success)); }
-.absensi-app .chart-row__bar--warning { background: linear-gradient(90deg, #FBBF24, var(--c-warning)); }
-.absensi-app .chart-row__bar--info    { background: linear-gradient(90deg, #22D3EE, var(--c-info)); }
-.absensi-app .chart-row__bar--purple  { background: linear-gradient(90deg, #A78BFA, var(--c-purple)); }
-.absensi-app .chart-row__bar--danger  { background: linear-gradient(90deg, #F87171, var(--c-danger)); }
-.absensi-app .chart-row__val { font-size: 14px; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
+/* Tren kehadiran: grafik garis + area */
+.absensi-app .trend-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.absensi-app .trend-select {
+  height: 32px; padding: 0 30px 0 12px; border-radius: var(--r-full);
+  border: 1px solid var(--c-border); background: var(--c-bg); color: var(--c-text);
+  font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer;
+  appearance: none; -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%236B7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 10px center;
+}
+.absensi-app .trend-select:hover { background-color: #EEF2F7; }
+.absensi-app .trend-chart { width: 100%; height: auto; display: block; overflow: visible; }
+/* Garis bantu putus-putus (acuan desain) — jangan bersaing dgn garis data */
+.absensi-app .trend-grid  { stroke: var(--c-border); stroke-width: 1; stroke-dasharray: 3 4; }
+.absensi-app .trend-axis  { fill: var(--c-text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.absensi-app .trend-axis--x { text-anchor: middle; }
+.absensi-app .trend-axis--y { text-anchor: end; }
+.absensi-app .trend-line  { fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+.absensi-app .trend-line--hadir { stroke: var(--c-primary); }
+.absensi-app .trend-line--telat { stroke: var(--c-warning); }
+.absensi-app .trend-fill  { fill: url(#absensiTrendFill); }
+.absensi-app .trend-dot   { fill: var(--c-surface); stroke-width: 2.5; }
+.absensi-app .trend-dot--hadir { stroke: var(--c-primary); }
+.absensi-app .trend-dot--telat { stroke: var(--c-warning); }
 
-/* ─── Dashboard Quick Stats v2 (design.md §4 — depth + aksen) ─────────────────
-   Dua grup ber-eyebrow: Populasi (2 kolom) + Kehadiran (4 kolom). Kartu ber-aksen
-   tone: bar atas + chip ikon filled + glow radial + depth shadow. */
-.absensi-app .dash-eyebrow {
-  font-size: 11px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase;
-  color: var(--c-text-muted); margin: 0 0 12px 2px; display: flex; align-items: center; gap: 8px;
-}
-.absensi-app .dash-eyebrow::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, var(--c-border), transparent); }
-.absensi-app .dash-stats + .dash-eyebrow { margin-top: 24px; }
-.absensi-app .dash-stats { display: grid; gap: 14px; margin-bottom: 4px; }
-.absensi-app .dash-stats--pop { grid-template-columns: repeat(2, 1fr); }
-.absensi-app .dash-stats--keh { grid-template-columns: repeat(4, 1fr); }
-@media (max-width: 1024px) { .absensi-app .dash-stats--keh { grid-template-columns: repeat(2, 1fr); } }
-@media (max-width: 640px)  { .absensi-app .dash-stats--pop, .absensi-app .dash-stats--keh { grid-template-columns: 1fr; } }
+/* Legenda dua seri */
+.absensi-app .trend-legend { display: flex; align-items: center; gap: 18px; margin-top: 12px; }
+.absensi-app .trend-legend__item { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--c-text-muted); }
+.absensi-app .trend-legend__dot  { width: 9px; height: 9px; border-radius: 3px; }
+.absensi-app .trend-legend__dot--hadir { background: var(--c-primary); }
+.absensi-app .trend-legend__dot--telat { background: var(--c-warning); }
 
-/* Stat card v2: default tone = primary; modifier .stat--{tone} override var. */
-.absensi-app .stat {
-  position: relative; overflow: hidden; display: flex; flex-direction: column; gap: 6px; padding: 18px;
-  --tone: var(--c-primary); --tone-text: var(--c-primary-hover); --tone-soft: var(--c-primary-soft);
-  --tone-glow: rgba(37,99,235,.14); --tone-shadow: rgba(37,99,235,.42);
-  box-shadow: 0 1px 2px rgba(16,24,40,.04), 0 12px 28px -14px rgba(16,24,40,.16);
-  transition: transform .18s ease, box-shadow .18s ease;
+/* Aksi cepat: satu primary + dua outline (outline-primary = aksi kedua) */
+.absensi-app .quick-actions { display: flex; flex-direction: column; gap: 10px; }
+.absensi-app .quick-actions .btn { justify-content: flex-start; height: 44px; border-radius: var(--r-md); }
+.absensi-app .btn--outline-primary { background: var(--c-surface); color: var(--c-primary-hover); border-color: rgba(37,99,235,.45); }
+.absensi-app .btn--outline-primary:hover { background: var(--c-primary-soft); }
+.absensi-app .btn--soft { background: var(--c-primary-soft); color: var(--c-primary-hover); border-color: transparent; }
+.absensi-app .btn--soft:hover { background: rgba(37, 99, 235, .16); color: var(--c-primary-hover); }
+
+/* HARI INI: tingkat kehadiran (bar) — % hadir dari total tercatat hari ini */
+.absensi-app .today-rate { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--c-border); }
+.absensi-app .today-rate__eyebrow {
+  font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--c-text-muted); margin-bottom: 10px;
 }
-.absensi-app .stat:hover { transform: translateY(-2px); box-shadow: 0 1px 2px rgba(16,24,40,.06), 0 20px 40px -16px rgba(16,24,40,.26); }
-.absensi-app .stat::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 3px; background: var(--tone); }
-.absensi-app .stat::after {
-  content: ""; position: absolute; top: -40px; right: -30px; width: 130px; height: 130px; border-radius: 50%;
-  background: radial-gradient(circle, var(--tone-glow) 0%, transparent 70%); pointer-events: none;
-}
-.absensi-app .stat--primary { --tone: var(--c-primary);  --tone-text: var(--c-primary-hover); --tone-soft: var(--c-primary-soft);  --tone-glow: rgba(37,99,235,.14);  --tone-shadow: rgba(37,99,235,.42); }
-.absensi-app .stat--success { --tone: var(--c-success);  --tone-text: var(--c-success-text);  --tone-soft: var(--c-success-soft);  --tone-glow: rgba(34,197,94,.16);  --tone-shadow: rgba(34,197,94,.42); }
-.absensi-app .stat--warning { --tone: var(--c-warning);  --tone-text: var(--c-warning-text);  --tone-soft: var(--c-warning-soft);  --tone-glow: rgba(245,158,11,.16); --tone-shadow: rgba(245,158,11,.42); }
-.absensi-app .stat--info    { --tone: var(--c-info);     --tone-text: var(--c-info-text);     --tone-soft: var(--c-info-soft);     --tone-glow: rgba(6,182,212,.16);  --tone-shadow: rgba(6,182,212,.42); }
-.absensi-app .stat--danger  { --tone: var(--c-danger);   --tone-text: var(--c-danger-text);   --tone-soft: var(--c-danger-soft);   --tone-glow: rgba(239,68,68,.16);  --tone-shadow: rgba(239,68,68,.42); }
-.absensi-app .stat--purple  { --tone: var(--c-purple);   --tone-text: var(--c-purple-text);   --tone-soft: var(--c-purple-soft);   --tone-glow: rgba(139,92,246,.16); --tone-shadow: rgba(139,92,246,.42); }
-.absensi-app .stat__top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-.absensi-app .stat__chip {
-  width: 38px; height: 38px; border-radius: 11px; display: inline-flex; align-items: center; justify-content: center;
-  background: var(--tone); color: #fff; box-shadow: 0 6px 14px -4px var(--tone-shadow);
-}
-.absensi-app .stat__badge { font-size: 12px; font-weight: 600; color: var(--tone-text); background: var(--tone-soft); padding: 3px 9px; border-radius: var(--r-full); }
-.absensi-app .stat__label { font-size: 12.5px; line-height: 18px; color: var(--c-text-muted); font-weight: 500; }
-.absensi-app .stat__value { font-size: 34px; line-height: 1; font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
-.absensi-app .stat__value--tone { color: var(--tone-text); }
+.absensi-app .today-rate__row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.absensi-app .today-rate__label { font-size: 13px; color: var(--c-text); }
+.absensi-app .today-rate__pct   { font-size: 14px; font-weight: 700; color: var(--c-success-text); }
+.absensi-app .today-rate__track { height: 6px; margin: 8px 0 6px; background: #E2E8F0; border-radius: var(--r-full); overflow: hidden; }
+.absensi-app .today-rate__bar   { height: 100%; background: var(--c-success); border-radius: var(--r-full); transition: width .3s ease; }
+.absensi-app .today-rate__row--foot { font-size: 12px; color: var(--c-text-muted); }
+
+/* Judul kartu + subjudul */
+.absensi-app .card-title-wrap { display: flex; flex-direction: column; gap: 2px; }
+.absensi-app .card__sub { font-size: 12.5px; color: var(--c-text-muted); }
+
+/* Judul halaman + subjudul (Dashboard: tanggal hari ini di bawah judul) */
+.absensi-app .page-title-wrap { display: flex; flex-direction: column; gap: 2px; }
+.absensi-app .page-subtitle   { font-size: 13.5px; color: var(--c-text-muted); }
+
+/* ─── Absensi terbaru: sel user (avatar + nama + nomor induk) ────────────────*/
+.absensi-app .dash-recent .card__head { padding: 16px 20px; margin: 0; border-bottom: 1px solid var(--c-border); }
+.absensi-app .recent-user   { display: flex; align-items: center; gap: 10px; }
+.absensi-app .recent-user__name { font-size: 13.5px; font-weight: 600; color: var(--c-text); }
+.absensi-app .recent-user__id   { font-size: 12px; color: var(--c-text-muted); font-variant-numeric: tabular-nums; }
+.absensi-app .link-all { font-size: 13px; font-weight: 600; color: var(--c-primary); }
 
 /* ─── Table ───────────────────────────────────────────────────────────────────*/
 .absensi-app .table-card {
-  background: var(--c-surface); border: 1px solid var(--c-border); border-radius: var(--r-lg);
-  box-shadow: 0 1px 2px rgba(16,24,40,.04), 0 12px 28px -14px rgba(16,24,40,.13); overflow: hidden;
+  background: var(--c-surface); border: 1px solid var(--c-border); border-radius: 14px;
+  box-shadow: 0 1px 2px rgba(16,24,40,.04); overflow: visible;   /* visible: menu "…" boleh keluar kartu */
 }
 .absensi-app .table-scroll { overflow-x: auto; }
 .absensi-app .table { width: 100%; border-collapse: collapse; }
+/* Header pakai #F1F5F9 (BUKAN --c-bg): latar halaman kini --c-bg, header harus
+   setingkat lebih gelap agar tetap terbaca sebagai header. */
 .absensi-app .table thead th {
-  text-align: left; padding: 0 16px; height: 44px; background: var(--c-bg);
-  font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+  text-align: left; padding: 0 16px; height: 42px; background: #F1F5F9;
+  font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
   color: var(--c-text-muted); border-bottom: 1px solid var(--c-border); white-space: nowrap;
 }
-.absensi-app .table tbody td { padding: 12px 16px; height: 56px; font-size: 14px; border-bottom: 1px solid var(--c-border); vertical-align: middle; }
+.absensi-app .table thead tr th:first-child { border-top-left-radius: 13px; }
+.absensi-app .table thead tr th:last-child  { border-top-right-radius: 13px; }
+.absensi-app .table tbody td { padding: 10px 16px; height: 58px; font-size: 13.5px; border-bottom: 1px solid var(--c-border); vertical-align: middle; }
 .absensi-app .table tbody tr:last-child td { border-bottom: 0; }
 .absensi-app .table tbody tr:hover td { background: rgba(37, 99, 235, .03); }
 .absensi-app .table .col-num { text-align: right; font-variant-numeric: tabular-nums; }
@@ -426,11 +645,20 @@
 .absensi-app .report-table thead th, .absensi-app .report-table tbody td { white-space: nowrap; }
 /* Baris state (loading ringkas) di dalam table-card; skeleton penuh menyusul */
 .absensi-app .table-state { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 32px; color: var(--c-text-muted); font-size: 14px; }
+/* Avatar inisial — SATU sistem dipakai Dashboard & Users: bulat, warna penuh,
+   inisial putih. Varian t1–t6 dipilih deterministik dari nama (avatarTone) —
+   dekoratif, BUKAN penanda status. */
 .absensi-app .table__avatar {
-  flex: none; width: 32px; height: 32px; border-radius: var(--r-full); object-fit: cover;
+  flex: none; width: 34px; height: 34px; border-radius: var(--r-full); object-fit: cover;
   display: inline-flex; align-items: center; justify-content: center;
-  background: linear-gradient(135deg, #6366F1, var(--c-primary)); color: #fff; font-size: 12px; font-weight: 700;
+  background: var(--av-bg, var(--c-primary)); color: #fff; font-size: 11.5px; font-weight: 700;
 }
+.absensi-app .table__avatar--t1 { --av-bg: #4F46E5; }   /* indigo */
+.absensi-app .table__avatar--t2 { --av-bg: #7C3AED; }   /* ungu   */
+.absensi-app .table__avatar--t3 { --av-bg: #2563EB; }   /* biru   */
+.absensi-app .table__avatar--t4 { --av-bg: #15803D; }   /* hijau  */
+.absensi-app .table__avatar--t5 { --av-bg: #EA580C; }   /* oranye */
+.absensi-app .table__avatar--t6 { --av-bg: #DB2777; }   /* pink   */
 
 /* ─── Modal ───────────────────────────────────────────────────────────────────*/
 .absensi-app .modal-overlay {
@@ -450,9 +678,99 @@
 .absensi-app .modal__close:hover { background: var(--c-bg); }
 .absensi-app .modal__body { padding: 20px; display: flex; flex-direction: column; gap: 16px; }
 .absensi-app .modal__footer { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 16px 20px; border-top: 1px solid var(--c-border); background: var(--c-bg); border-radius: 0 0 var(--r-lg) var(--r-lg); }
+/* ─── Modal "polos" (form Tambah/Edit User) ──────────────────────────────────
+   Head & footer TANPA latar abu / garis pemisah, sudut lebih bulat, tombol footer
+   sama lebar — ikut acuan desain. */
+.absensi-app .modal--plain { border-radius: 16px; }
+.absensi-app .modal--plain .modal__head {
+  background: transparent; border-bottom: 0; border-radius: 16px 16px 0 0; padding: 20px 20px 4px;
+}
+.absensi-app .modal--plain .modal__title { font-size: 17px; font-weight: 700; }
+.absensi-app .modal--plain .modal__body { gap: 14px; padding: 12px 20px 4px; }
+.absensi-app .modal--plain .modal__footer {
+  background: transparent; border-top: 0; border-radius: 0 0 16px 16px; padding: 16px 20px 20px; gap: 12px;
+}
+.absensi-app .modal--plain .modal__footer .btn { flex: 1; height: 44px; border-radius: var(--r-md); }
+.absensi-app .modal--plain .input, .absensi-app .modal--plain .select { height: 44px; background: #F8FAFC; }
+.absensi-app .modal--plain .input:focus, .absensi-app .modal--plain .select:focus { background: var(--c-surface); }
+.absensi-app .modal--plain .field__label { font-size: 13px; font-weight: 600; color: var(--c-text); }
+.absensi-app .field__hint { font-size: 12px; color: var(--c-warning-text); }
+
+/* Radio row (Tipe) */
+.absensi-app .radio-row { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+.absensi-app .radio { display: inline-flex; align-items: center; gap: 7px; font-size: 13.5px; color: var(--c-text); cursor: pointer; }
+.absensi-app .radio input { width: 16px; height: 16px; accent-color: var(--c-primary); cursor: pointer; margin: 0; }
+
 /* Checkbox "Ganti kartu" (modal Bind RFID) */
 .absensi-app .bind-replace { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--c-text); cursor: pointer; }
 .absensi-app .bind-replace input { width: 16px; height: 16px; accent-color: var(--c-primary); cursor: pointer; }
+
+/* ═════════════════════════════════════════════════════════════════════════════
+   GROUP — layout 2 kolom: ringkasan (kiri) + daftar group (kanan)
+   ═══════════════════════════════════════════════════════════════════════════ */
+.absensi-app .group-layout { display: grid; grid-template-columns: 280px 1fr; gap: 16px; align-items: start; }
+@media (max-width: 960px) { .absensi-app .group-layout { grid-template-columns: 1fr; } }
+.absensi-app .group-side { display: flex; flex-direction: column; gap: 16px; }
+
+/* Kartu ringkasan kiri */
+.absensi-app .side-card { display: flex; flex-direction: column; gap: 8px; }
+.absensi-app .side-card__eyebrow {
+  font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--c-text-muted);
+}
+.absensi-app .side-card__value { font-size: 34px; line-height: 1.1; font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.absensi-app .side-card__foot  { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--c-text-muted); }
+
+/* Distribusi group per tipe (bar) */
+.absensi-app .dist { display: flex; flex-direction: column; gap: 14px; margin-top: 4px; }
+.absensi-app .dist__head  { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.absensi-app .dist__label { font-size: 13px; color: var(--c-text); }
+.absensi-app .dist__val   { font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.absensi-app .dist__track { height: 5px; background: #E2E8F0; border-radius: var(--r-full); overflow: hidden; }
+.absensi-app .dist__bar   { height: 100%; border-radius: var(--r-full); background: var(--c-text-muted); transition: width .3s ease; }
+.absensi-app .dist__bar--kelas { background: var(--c-primary); }
+.absensi-app .dist__bar--guru  { background: var(--c-purple); }
+.absensi-app .dist__bar--staff { background: var(--c-info); }
+
+/* Toolbar kartu: tab tipe (kiri) + cari grup (kanan) */
+.absensi-app .group-bar {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  padding: 12px 16px; border-bottom: 1px solid var(--c-border);
+}
+.absensi-app .group-bar__search { flex: 0 1 260px; min-width: 180px; }
+.absensi-app .input--sm { height: 36px; font-size: 13px; }
+.absensi-app .group-bar .input-group .input { padding-left: 34px; }
+.absensi-app .group-bar .input-group__icon { left: 10px; }
+
+/* Lebar kolom Group: ACTIONS rata KIRI & sempit — ikonnya duduk tepat setelah
+   kolom Members, bukan mepet tepi kanan tabel (pola sama dengan halaman Users). */
+.absensi-app .group-table th:nth-child(1), .absensi-app .group-table td:nth-child(1) { width: 40%; }
+.absensi-app .group-table th:nth-child(2), .absensi-app .group-table td:nth-child(2) { width: 18%; }
+.absensi-app .group-table th:nth-child(3), .absensi-app .group-table td:nth-child(3) { width: 18%; }
+.absensi-app .group-table th.col-actions,  .absensi-app .group-table td.col-actions  { width: 24%; text-align: left; }
+
+/* Nama grup + jumlah anggota (tombol → modal Anggota) */
+.absensi-app .group-row__name { font-size: 13.5px; font-weight: 600; color: var(--c-text); }
+.absensi-app .member-count {
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px;
+  border: 0; background: transparent; border-radius: var(--r-md); cursor: pointer;
+  font-family: inherit; font-size: 13.5px; color: var(--c-text-muted);
+}
+.absensi-app .member-count:hover { background: var(--c-primary-soft); color: var(--c-primary-hover); }
+.absensi-app .member-count .u-num { color: var(--c-text); font-weight: 600; }
+.absensi-app .member-count:hover .u-num { color: var(--c-primary-hover); }
+.absensi-app .member-count__icon { display: inline-flex; }
+
+/* Modal Anggota Grup: daftar + footer paging (tinggi dibatasi → modal tak memanjang) */
+.absensi-app .anggota-list {
+  display: flex; flex-direction: column; gap: 2px; max-height: 340px; overflow-y: auto;
+  border: 1px solid var(--c-border); border-radius: var(--r-md); padding: 6px;
+}
+.absensi-app .anggota-item { display: flex; align-items: center; gap: 12px; padding: 8px 10px; border-radius: var(--r-md); }
+.absensi-app .anggota-item:hover { background: var(--c-bg); }
+.absensi-app .anggota-item__main { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.absensi-app .anggota-item__name { font-size: 13.5px; font-weight: 600; color: var(--c-text); }
+.absensi-app .anggota-item__nis  { font-size: 12px; color: var(--c-text-muted); }
+.absensi-app .anggota-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 
 /* Jumlah user per group (tabel Group) */
 /* Jumlah user Group → pill lembut (depth+aksen): ikon users + angka mono */
@@ -489,7 +807,89 @@
 .absensi-app .group-users__nis { font-size: 12.5px; color: var(--c-text-muted); font-variant-numeric: tabular-nums; }
 .absensi-app .group-users__rfid { display: inline-flex; color: var(--c-primary); margin-left: auto; }
 
-/* RFID cell (Users): terpasang = chip mono; belum = muted (design.md §5 mask) */
+/* ═════════════════════════════════════════════════════════════════════════════
+   USERS — toolbar · sel user · sel RFID · menu aksi baris · footer tabel
+   Warna/ukuran/tipografi ikut sistem yang sama dengan Dashboard.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Toolbar: search (melebar) + select grup + Import Excel. Tanpa kartu — duduk
+   langsung di latar halaman (acuan desain). */
+.absensi-app .toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.absensi-app .toolbar__search { flex: 1 1 320px; max-width: 420px; min-width: 220px; }
+/* Select mewarisi width:100% dari style input dasar → kunci lebarnya di flex row. */
+.absensi-app .toolbar .select { width: auto; flex: 0 0 auto; min-width: 160px; }
+.absensi-app .toolbar .btn    { flex: 0 0 auto; }
+@media (max-width: 782px) {
+  .absensi-app .toolbar > *, .absensi-app .toolbar .select { flex: 1 1 100%; width: 100%; max-width: none; }
+  .absensi-app .toolbar .dropdown, .absensi-app .toolbar .dropdown .btn { width: 100%; }
+}
+
+/* Lebar kolom Users (ikut proporsi acuan): USER paling lebar, ACTIONS rata KIRI &
+   sempit — supaya tombol "…" duduk tepat setelah kolom RFID, bukan mepet tepi kanan. */
+.absensi-app .users-table th:nth-child(1), .absensi-app .users-table td:nth-child(1) { width: 30%; }
+.absensi-app .users-table th:nth-child(2), .absensi-app .users-table td:nth-child(2) { width: 18%; }
+.absensi-app .users-table th:nth-child(3), .absensi-app .users-table td:nth-child(3) { width: 12%; }
+.absensi-app .users-table th:nth-child(4), .absensi-app .users-table td:nth-child(4) { width: 22%; }
+.absensi-app .users-table th.col-actions,  .absensi-app .users-table td.col-actions  { width: 18%; text-align: left; }
+
+/* Sel user: nama + nomor induk berlabel (NIS/NIP) di bawahnya */
+.absensi-app .table__user-name { font-size: 13.5px; font-weight: 600; color: var(--c-text); }
+.absensi-app .table__user-id   { font-size: 12px; color: var(--c-text-muted); }
+
+/* Sel RFID (Users): UID tampil PENUH sebagai chip biru muda; belum ada kartu = "–". */
+.absensi-app .rfid-chip-uid {
+  display: inline-flex; align-items: center; padding: 2px 8px; border-radius: var(--r-sm);
+  background: #F1F5F9; color: #0F172A; border: 0;   /* chip abu, teks hitam */
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10.5px; font-weight: 500; letter-spacing: .04em;
+}
+.absensi-app .rfid-empty { color: #CBD5E1; font-size: 13px; }
+
+/* Sel RFID lama (dipakai di modal Anggota Grup): ✓ + UID ter-mask */
+.absensi-app .rfid-ok {
+  display: inline-flex; align-items: center; gap: 8px;
+  color: var(--c-text-muted); font-size: 13px; font-weight: 500; letter-spacing: .08em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.absensi-app .rfid-ok__icon { display: inline-flex; color: var(--c-success); }
+.absensi-app .rfid-bind {
+  display: inline-flex; align-items: center; gap: 6px; padding: 3px 4px;
+  border: 0; background: transparent; cursor: pointer; border-radius: var(--r-sm);
+  font-family: inherit; font-size: 13px; font-weight: 600; color: var(--c-warning-text);
+}
+.absensi-app .rfid-bind:hover { text-decoration: underline; }
+.absensi-app .rfid-bind__icon { display: inline-flex; }
+
+/* Aksi baris (Users): 3 ikon langsung — bind kartu · edit · hapus */
+.absensi-app .row-actions-ic { display: inline-flex; align-items: center; gap: 2px; }
+.absensi-app .act-ic {
+  display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px;
+  border: 0; border-radius: var(--r-md); background: transparent; color: var(--c-text-muted); cursor: pointer;
+}
+.absensi-app .act-ic:hover { background: var(--c-bg); color: var(--c-text); }
+.absensi-app .act-ic--danger:hover { background: var(--c-danger-soft); color: var(--c-danger-text); }
+
+/* Menu aksi baris "…" (masih dipakai di tempat lain) */
+.absensi-app .row-menu { display: inline-block; }
+.absensi-app .row-menu__btn {
+  display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px;
+  border: 0; border-radius: var(--r-md); background: transparent; color: var(--c-text-muted); cursor: pointer;
+}
+.absensi-app .row-menu__btn:hover, .absensi-app .row-menu__btn[aria-expanded="true"] { background: var(--c-bg); color: var(--c-text); }
+/* Menu dibuka ke KANAN tombol (kolom Actions rata kiri, bukan di tepi layar) */
+.absensi-app .row-menu .dropdown__menu { left: 0; right: auto; }
+.absensi-app .dropdown__item--danger { color: var(--c-danger-text); }
+.absensi-app .dropdown__item--danger:hover { background: var(--c-danger-soft); }
+
+/* Footer tabel: info jumlah (kiri) + pagination (kanan) */
+.absensi-app .table-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  padding: 12px 16px; border-top: 1px solid var(--c-border); background: var(--c-surface);
+}
+.absensi-app .table-foot__info { font-size: 12.5px; color: var(--c-text-muted); }
+.absensi-app .table-foot__info strong { color: var(--c-text); font-weight: 600; }
+
+/* RFID chip (dipakai di tempat lain, mis. daftar user di dalam Group) */
 .absensi-app .rfid-chip {
   display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: var(--r-full);
   background: var(--c-info-soft); color: var(--c-info-text); font-size: 12px; font-weight: 600;

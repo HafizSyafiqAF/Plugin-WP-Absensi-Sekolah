@@ -70,16 +70,20 @@
       fetchOpts.body = JSON.stringify(json);
     }
 
-    let res = await fetch(url, { ...fetchOpts, headers });
+    let res  = await fetch(url, { ...fetchOpts, headers });
+    let data = await res.json().catch(() => null);
 
-    // Auto-retry sekali jika nonce expired (403)
-    if (res.status === 403) {
+    /* Auto-retry sekali HANYA bila 403-nya benar-benar nonce kedaluwarsa.
+     * 403 juga dipakai untuk penolakan bisnis (mis. di luar radius) — retry buta
+     * di situ menembak endpoint dua kali dan bisa memicu rate-limit, sehingga
+     * pesan aslinya tertimpa "Terlalu cepat" (bug yang terjadi di kiosk siswa). */
+    const nonceKedaluwarsa = data && (data.code === 'rest_cookie_invalid_nonce' || data.code === 'rest_nonce_invalid');
+    if (res.status === 403 && nonceKedaluwarsa) {
       await refreshNonce();
       headers.set('X-WP-Nonce', getNonce());
-      res = await fetch(url, { ...fetchOpts, headers });
+      res  = await fetch(url, { ...fetchOpts, headers });
+      data = await res.json().catch(() => null);
     }
-
-    const data = await res.json().catch(() => null);
 
     if (!res.ok) {
       const msg = data?.message ?? `HTTP ${res.status}`;
@@ -101,6 +105,10 @@
 /* ─── Alpine Components ──────────────────────────────────────────────────── */
 
 const FILTER_KEY = 'absensi_admin_filter';
+
+/* Sentinel filter Tipe (usersManager) untuk "user tanpa group" — dipisah dari '' yang
+ * berarti "semua tipe". Nilainya sengaja tak mungkin bentrok dengan tipe group asli. */
+const TIPE_NONE = '__tanpa_group__';
 
 function fmtTime(dt) {
   if (!dt) return null;
@@ -969,9 +977,14 @@ tr:nth-child(even) td{background:#f9f9f9}
     // TAK ADA param `search` & TAK ADA pagination server → search + paging = client-side.
     search:  '',          // filter client (nama/nomor_induk)
     groupId: '',          // param `group_id` (server-side)
+    tipeFilter: '',       // filter client by tipe group; '' = semua, TIPE_NONE = tanpa group
     groups:  [],          // opsi group (GET /group) → { id, nama, tipe, jumlah_user }
     page:    1,           // halaman aktif (client)
-    perPage: 10,
+    perPage: 8,           // 8 baris per halaman (ikut acuan desain)
+
+    // ── Menu aksi per baris (kebab "…") + dropdown Import ──
+    rowMenu:        null,  // id user yang menunya terbuka; null = tertutup
+    importMenuOpen: false,
 
     // ── Data tabel ──
     users:   [],          // baris GET /users (u.* + nama_group + tipe_group)
@@ -983,6 +996,10 @@ tr:nth-child(even) td{background:#f9f9f9}
     editing:   null,      // id user saat edit; null = tambah
     saving:    false,
     form:      { nomor_induk: '', nama: '', group_id: '', rfid_uid: '' },
+    /* Tipe = milik GROUP (tak ada kolom tipe di absensi_users) → radio ini BUKAN
+     * field yang disimpan, tapi penyaring daftar grup di dropdown. Tipe user
+     * tetap ikut grup yang dipilih. */
+    formTipe:  'kelas',
     formError: '',        // pesan error tingkat form (409/lainnya)
     fieldErr:  {},        // { nomor_induk:true, nama:true, rfid_uid:true } → tandai field
 
@@ -1041,15 +1058,36 @@ tr:nth-child(even) td{background:#f9f9f9}
 
     /* Reset filter ke kondisi awal lalu refetch (group berubah → server refetch). */
     resetFilter() {
-      this.search = ''; this.groupId = ''; this.page = 1;
+      this.search = ''; this.groupId = ''; this.tipeFilter = ''; this.page = 1;
       this.loadUsers();
     },
 
-    // ── Turunan client-side: search + pagination ──
+    /* Opsi dropdown Tipe — dibangun dari data yang TERMUAT, bukan daftar statis: `tipe` group
+     * = string bebas (BE v2.1.0 VARCHAR), jadi tipe kustom ("Ekskul Basket") wajib ikut muncul.
+     * User tanpa group (group_id=0) punya tipe_group null → diberi opsi sentinel TIPE_NONE,
+     * kalau tidak mereka lenyap dari tiap filter dan terlihat seperti data hilang. */
+    get tipeOptions() {
+      var set = {}, adaTanpaGroup = false;
+      this.users.forEach(function (u) {
+        var t = String(u.tipe_group || '').trim();
+        if (t) { set[t] = true; } else { adaTanpaGroup = true; }
+      });
+      var opts = Object.keys(set).sort(function (a, b) { return a.localeCompare(b, 'id'); })
+        .map(function (t) { return { value: t, label: t.charAt(0).toUpperCase() + t.slice(1) }; });
+      if (adaTanpaGroup) { opts.push({ value: TIPE_NONE, label: 'Tanpa Group' }); }
+      return opts;
+    },
+
+    // ── Turunan client-side: search + tipe + pagination (bersusun) ──
     get filteredUsers() {
       var q = this.search.trim().toLowerCase();
-      if (!q) return this.users;
+      var t = this.tipeFilter;
       return this.users.filter(function (u) {
+        if (t) {
+          var tu = String(u.tipe_group || '').trim();
+          if (t === TIPE_NONE ? tu !== '' : tu !== t) return false;
+        }
+        if (!q) return true;
         return String(u.nama || '').toLowerCase().indexOf(q) !== -1
             || String(u.nomor_induk || '').toLowerCase().indexOf(q) !== -1;
       });
@@ -1093,19 +1131,50 @@ tr:nth-child(even) td{background:#f9f9f9}
     tipeLabel(tipe) {
       return ({ kelas: 'Kelas', guru: 'Guru', staff: 'Staff' })[tipe] || (tipe || '');
     },
+    /* Warna avatar: DETERMINISTIK dari nama (hash) — user yang sama selalu dapat
+     * warna sama di tiap render/halaman. Dekoratif, bukan penanda status. */
+    avatarTone(nama) {
+      var s = String(nama || ''), h = 0;
+      for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 997;
+      return 'table__avatar--t' + ((h % 6) + 1);
+    },
+    /* Label nomor induk: siswa = NIS, guru/staff = NIP (ikut tipe group). */
+    nomorLabel(tipe) { return tipe === 'kelas' ? 'NIS' : 'NIP'; },
+
+    // ── Menu aksi per baris ("…") ──
+    toggleRowMenu(id) { this.rowMenu = this.rowMenu === id ? null : id; },
+    closeRowMenu()    { this.rowMenu = null; },
+    /* Tutup menu dulu, baru jalankan aksinya (menu tak menggantung di atas modal). */
+    menuAksi(fn, u)   { this.rowMenu = null; this[fn](u); },
 
     // ── Modal Form: buka/tutup/simpan ──
-    _resetForm() { this.form = { nomor_induk: '', nama: '', group_id: '', rfid_uid: '' }; this.formError = ''; this.fieldErr = {}; },
+    _resetForm() {
+      this.form = { nomor_induk: '', nama: '', group_id: '', rfid_uid: '' };
+      this.formTipe = 'kelas';
+      this.formError = ''; this.fieldErr = {};
+    },
+
+    /* Opsi grup pada modal, disaring sesuai radio Tipe. */
+    get groupsByTipe() {
+      var t = this.formTipe;
+      return this.groups.filter(function (g) { return g.tipe === t; });
+    },
+    /* Ganti Tipe → kosongkan pilihan grup yang tak lagi cocok. */
+    gantiTipe(t) {
+      this.formTipe = t;
+      var masih = this.groupsByTipe.some((g) => String(g.id) === String(this.form.group_id));
+      if (! masih) this.form.group_id = '';
+    },
 
     /* Buka modal Tambah User (form kosong). */
     openCreate() {
       this._resetForm();
       this.editing = null;
       this.modalOpen = true;
-      this._focusById('uf-nomor');
+      this._focusById('uf-nama');
     },
 
-    /* Buka modal Edit User (form terisi dari baris). */
+    /* Buka modal Edit User (form terisi dari baris; radio Tipe ikut tipe grup user). */
     openEdit(u) {
       this._resetForm();
       this.editing = u.id;
@@ -1113,10 +1182,11 @@ tr:nth-child(even) td{background:#f9f9f9}
         nomor_induk: u.nomor_induk || '',
         nama:        u.nama || '',
         group_id:    u.group_id ? String(u.group_id) : '',
-        rfid_uid:    u.rfid_uid || '',
+        rfid_uid:    u.rfid_uid || '',   // tak ada di form (bind lewat menu baris) — nilai lama dipertahankan
       };
+      this.formTipe = u.tipe_group || 'kelas';
       this.modalOpen = true;
-      this._focusById('uf-nomor');
+      this._focusById('uf-nama');
     },
 
     closeModal() { this.modalOpen = false; },
@@ -1418,74 +1488,89 @@ tr:nth-child(even) td{background:#f9f9f9}
   }));
 
   /* ─── Dashboard manager (design.md §4) — pivot v2 ────────────────────────────
-   * Dibangun bertahap per item TODO-FE. Kini: Quick Stats (6) + Refresh.
-   * Berikutnya: grafik kehadiran, quick action, absensi terbaru, state.
-   * Sumber: /laporan/summary (hadir/telat/izin/alpha), /users (total = panjang array),
-   * /group (total). CATATAN: /users array polos → total = .length (BE tak sedia field total). */
+   * Isi: 6 KPI (populasi + kehadiran hari ini, dengan delta vs pekan lalu),
+   * grafik tren kehadiran mingguan, aksi cepat, absensi terbaru.
+   * Sumber (semua endpoint yang SUDAH ada):
+   *   - /laporan/summary                → hadir/telat/izin/sakit/alpha hari ini
+   *   - /laporan/summary?dari=&sampai=  → hari yang sama pekan lalu (delta) & tiap hari (tren)
+   *   - /users, /group                  → array polos, total = .length (BE tak sedia field total)
+   *   - /laporan?per_page=6             → absensi terbaru */
   Alpine.data('dashboardManager', () => ({
     stats:      { totalUser: 0, totalGroup: 0, hadir: 0, telat: 0, izin: 0, sakit: 0, alpha: 0 },
+    prev:       { hadir: 0, telat: 0, izin: 0, sakit: 0, alpha: 0 },  // hari yg sama pekan lalu → delta
     recent:     [],       // absensi terbaru (GET /laporan, limit kecil)
     loading:    false,
     error:      false,
 
-    // Grafik distribusi kehadiran (design.md §4) — 5 status dari summary hari ini.
-    chartStatuses: [
-      { key: 'hadir', label: 'Hadir', tone: 'success' },
-      { key: 'telat', label: 'Telat', tone: 'warning' },
-      { key: 'izin',  label: 'Izin',  tone: 'info' },
-      { key: 'sakit', label: 'Sakit', tone: 'purple' },
-      { key: 'alpha', label: 'Alpha', tone: 'danger' },
-    ],
-    /* Nilai maksimum status (skala bar); minimal 1 agar tak bagi nol. */
-    get chartMax() {
-      var self = this, m = 0;
-      this.chartStatuses.forEach(function (s) { var v = self.stats[s.key] || 0; if (v > m) m = v; });
-      return m || 1;
-    },
-    /* Persen lebar bar utk nilai v. */
-    barPct(v) { return Math.round(((v || 0) / this.chartMax) * 100); },
-    /* Total record status (untuk empty state grafik). */
-    get chartTotal() {
-      var self = this, t = 0;
-      this.chartStatuses.forEach(function (s) { t += self.stats[s.key] || 0; });
-      return t;
-    },
+    // ── Tren kehadiran mingguan (Sen–Jum) ──
+    week:         'ini',  // 'ini' | 'lalu'
+    trend:        [],     // [{ label, tanggal, value }]
+    trendLoading: false,
+    trendError:   false,
 
-    // 6 kartu Quick Stats (design.md §4): ikon + tone warna. Dua grup:
-    // 'pop' (populasi, badge label statis) + 'keh' (kehadiran, badge = share %).
+    // 6 KPI: dua populasi (tanpa histori → sub-label statis) + empat status hari ini.
+    // `naikBaik`: arah yang dianggap membaik (hadir naik = hijau; telat/izin/alpha naik = merah).
     statCards: [
-      { key: 'totalUser',  label: 'Total User',  icon: 'users',           tone: 'primary', group: 'pop', chip: 'Terdaftar' },
-      { key: 'totalGroup', label: 'Total Group', icon: 'layers',          tone: 'primary', group: 'pop', chip: 'Aktif' },
-      { key: 'hadir',      label: 'Hadir',       icon: 'check-circle-2',  tone: 'success', group: 'keh' },
-      { key: 'telat',      label: 'Telat',       icon: 'clock',           tone: 'warning', group: 'keh' },
-      { key: 'izin',       label: 'Izin',        icon: 'info',            tone: 'info',    group: 'keh' },
-      { key: 'alpha',      label: 'Alpha',       icon: 'x-circle',        tone: 'danger',  group: 'keh' },
+      { key: 'totalUser',  label: 'Total User',  icon: 'users',          tone: 'primary', sub: 'Terdaftar' },
+      { key: 'totalGroup', label: 'Total Group', icon: 'layers',         tone: 'primary', sub: 'Group aktif' },
+      { key: 'hadir',      label: 'Hadir',       icon: 'check-circle-2', tone: 'success', naikBaik: true },
+      { key: 'telat',      label: 'Telat',       icon: 'clock',          tone: 'warning', naikBaik: false },
+      { key: 'izin',       label: 'Izin',        icon: 'file-text',      tone: 'info',    naikBaik: false },
+      { key: 'alpha',      label: 'Alpha',       icon: 'x-circle',       tone: 'danger',  naikBaik: false },
     ],
-    /* Share % status kehadiran atas total tercatat hari ini (badge kartu keh).
-     * Jujur dari data (chartTotal = hadir+telat+izin+sakit+alpha); 0 bila kosong. */
-    sharePct(key) {
-      var t = this.chartTotal;
-      return t ? Math.round(((this.stats[key] || 0) / t) * 100) : 0;
+
+    init() { this.loadStats(); this.loadTrend(); },
+    /* Refresh semua data (KPI + tren + tabel). */
+    refresh() { this.loadStats(); this.loadTrend(); },
+
+    /* ── Delta vs pekan lalu (hari yang sama) ──
+     * Basis 0 → tak ada persentase yang bermakna: pakai null (UI tampilkan “—”). */
+    deltaPct(key) {
+      var cur = this.stats[key] || 0, prev = this.prev[key] || 0;
+      if (! prev) return cur ? null : 0;
+      return Math.round(((cur - prev) / prev) * 1000) / 10;   // 1 desimal
+    },
+    deltaText(key) {
+      var d = this.deltaPct(key);
+      if (d === null) return '—';
+      return (d > 0 ? '+' : '') + d + '%';
+    },
+    /* Panah ikut ARAH (naik/turun); warnanya ikut MAKNA (deltaTone). */
+    deltaIcon(key) {
+      var d = this.deltaPct(key);
+      return d === null || d === 0 ? 'minus' : (d > 0 ? 'trending-up' : 'trending-down');
+    },
+    /* Warna delta ikut MAKNA, bukan tanda: telat/izin/alpha naik = buruk (merah). */
+    deltaTone(key) {
+      var d = this.deltaPct(key);
+      if (d === null || d === 0) return 'is-flat';
+      var card = this.statCards.find(function (c) { return c.key === key; }) || {};
+      var membaik = card.naikBaik ? d > 0 : d < 0;
+      return membaik ? 'is-good' : 'is-bad';
     },
 
-    init() { this.loadStats(); },
-
-    /* Muat Quick Stats (paralel: summary hari ini + jumlah user + jumlah group). */
+    /* Muat KPI + tabel terbaru (paralel). */
     async loadStats() {
       this.loading = true; this.error = false;
+      var lalu = this.ymd(this.geser(new Date(), -7));   // hari yg sama pekan lalu
       try {
         var r = await Promise.all([
-          window.api.get('laporan/summary'),          // { hadir, telat, izin, sakit, alpha, total }
-          window.api.get('users'),                    // array → total = length
-          window.api.get('group'),                    // array → total = length
-          window.api.get('laporan?per_page=8&page=1'), // { data } → absensi terbaru
+          window.api.get('laporan/summary'),
+          window.api.get('users'),
+          window.api.get('group'),
+          window.api.get('laporan?per_page=6&page=1'),
+          window.api.get('laporan/summary?dari=' + lalu + '&sampai=' + lalu),
         ]);
-        var sum = r[0] || {}, users = r[1] || [], groups = r[2] || [], recent = r[3] || {};
+        var sum = r[0] || {}, users = r[1] || [], groups = r[2] || [], recent = r[3] || {}, old = r[4] || {};
         this.stats = {
           totalUser:  Array.isArray(users)  ? users.length  : 0,
           totalGroup: Array.isArray(groups) ? groups.length : 0,
           hadir: sum.hadir || 0, telat: sum.telat || 0, izin: sum.izin || 0,
           sakit: sum.sakit || 0, alpha: sum.alpha || 0,
+        };
+        this.prev = {
+          hadir: old.hadir || 0, telat: old.telat || 0, izin: old.izin || 0,
+          sakit: old.sakit || 0, alpha: old.alpha || 0,
         };
         this.recent = (recent && recent.data) || [];
       } catch (e) {
@@ -1494,8 +1579,120 @@ tr:nth-child(even) td{background:#f9f9f9}
         this.loading = false;
       }
     },
-    /* Refresh semua data (design.md §4 tombol Refresh). */
-    refresh() { this.loadStats(); },
+
+    /* Muat tren Sen–Jum minggu terpilih: satu /laporan/summary per hari (paralel).
+     * DUA seri: hadir & telat (dipisah, sesuai acuan desain). */
+    async loadTrend() {
+      this.trendLoading = true; this.trendError = false;
+      var senin = this.senin(new Date());
+      if (this.week === 'lalu') senin = this.geser(senin, -7);
+      var hari = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum'];
+      var tgl  = hari.map((_, i) => this.ymd(this.geser(senin, i)));
+      try {
+        var res = await Promise.all(
+          tgl.map((t) => window.api.get('laporan/summary?dari=' + t + '&sampai=' + t))
+        );
+        this.trend = res.map(function (s, i) {
+          s = s || {};
+          return { label: hari[i], tanggal: tgl[i], hadir: s.hadir || 0, telat: s.telat || 0 };
+        });
+      } catch (e) {
+        this.trendError = true; this.trend = [];
+      } finally {
+        this.trendLoading = false;
+      }
+    },
+    gantiMinggu(v) { this.week = v; this.loadTrend(); },
+
+    // ── Geometri grafik garis (viewBox 0 0 600 200; area plot x 46→588, y 14→164) ──
+    /* Skala Y: maksimum = 4 × step "enak" (1/2/5/10/25/50/100/…), supaya kelima label
+     * sumbu (0 · 25% · 50% · 75% · 100%) selalu jatuh di angka BULAT — bukan 9/7/5/2. */
+    get trendMax() {
+      var m = 0;
+      this.trend.forEach(function (d) { m = Math.max(m, d.hadir, d.telat); });
+      if (m <= 0) return 4;
+      var steps = [1, 2, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000];
+      for (var i = 0; i < steps.length; i++) {
+        if (steps[i] * 4 >= m) return steps[i] * 4;
+      }
+      return Math.ceil(m / 4) * 4;
+    },
+    get trendTotal() {
+      var t = 0;
+      this.trend.forEach(function (d) { t += d.hadir + d.telat; });
+      return t;
+    },
+    /* Ada catatan minggu terpilih? (garis/area/titik hanya digambar bila ada.) */
+    get hasTrend() { return this.trendTotal > 0; },
+    get trendAria() {
+      var t = this.trend.map(function (d) { return d.label + ': hadir ' + d.hadir + ', telat ' + d.telat; }).join('; ');
+      return 'Tren kehadiran mingguan — ' + (t || 'belum ada data');
+    },
+    /* Titik seri `key` (hadir|telat) untuk tiap hari. */
+    points(key) {
+      var self = this, n = this.trend.length;
+      if (! n) return [];
+      var x0 = 46, x1 = 588, y0 = 14, y1 = 164;
+      return this.trend.map(function (d, i) {
+        var x = n === 1 ? (x0 + x1) / 2 : x0 + (i * (x1 - x0)) / (n - 1);
+        var y = y1 - (d[key] / self.trendMax) * (y1 - y0);
+        return { x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10, label: d.label, value: d[key], tanggal: d.tanggal };
+      });
+    },
+    line(key) {
+      return this.points(key).map(function (p, i) { return (i ? 'L' : 'M') + p.x + ' ' + p.y; }).join(' ');
+    },
+    /* Area hanya utk seri hadir (seri utama) — telat cukup garis. */
+    get areaHadir() {
+      var p = this.points('hadir');
+      if (! p.length) return '';
+      return this.line('hadir') + ' L' + p[p.length - 1].x + ' 164 L' + p[0].x + ' 164 Z';
+    },
+    /* Titik ke-i seri `key`, AMAN dibinding ke atribut SVG (placeholder angka bila kosong). */
+    pt(key, i) {
+      return this.points(key)[i] || { x: 46, y: 164, label: '', value: 0, tanggal: '' };
+    },
+    /* 5 label sumbu Y: 0 · 25% · 50% · 75% · 100% dari maksimum. */
+    get trendTicks() {
+      var m = this.trendMax, out = [];
+      for (var i = 4; i >= 0; i--) out.push({ v: (m / 4) * i, y: 14 + ((4 - i) / 4) * 150 });
+      return out;
+    },
+    fmtY(v) { return String(Math.round(v)); },
+
+    // ── Tingkat kehadiran hari ini (kartu Aksi Cepat) ──
+    /* Total tercatat hari ini = semua status (hadir+telat+izin+sakit+alpha). */
+    get totalHariIni() {
+      var s = this.stats;
+      return (s.hadir || 0) + (s.telat || 0) + (s.izin || 0) + (s.sakit || 0) + (s.alpha || 0);
+    },
+    /* % hadir dari total tercatat. 0 bila belum ada catatan (bukan 100%). */
+    get rateHadir() {
+      var t = this.totalHariIni;
+      return t ? Math.round(((this.stats.hadir || 0) / t) * 1000) / 10 : 0;
+    },
+
+    // ── Format ──
+    fmtNum(n) { return Number(n || 0).toLocaleString('id-ID'); },
+    /* Tanggal hari ini, ejaan Indonesia — subjudul header. */
+    get tanggalHariIni() {
+      try {
+        return new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+      } catch (e) { return ''; }
+    },
+
+    // ── Util tanggal (lokal, tanpa dependensi) ──
+    ymd(d) {
+      var m = String(d.getMonth() + 1).padStart(2, '0'), t = String(d.getDate()).padStart(2, '0');
+      return d.getFullYear() + '-' + m + '-' + t;
+    },
+    geser(d, hari) { var n = new Date(d.getTime()); n.setDate(n.getDate() + hari); return n; },
+    senin(d) {
+      var n = new Date(d.getTime());
+      var w = n.getDay();                      // 0=Minggu
+      n.setDate(n.getDate() - (w === 0 ? 6 : w - 1));
+      return n;
+    },
 
     // ── Util tampilan (Absensi Terbaru) ──
     jamHM(w) { return w ? String(w).slice(11, 16) : '—'; },
@@ -1544,15 +1741,140 @@ tr:nth-child(even) td{background:#f9f9f9}
       return this.rows.filter(function (r) { return r.status === s; });
     },
 
-    // Kartu ringkasan (design.md §8): peta warna status.
+    // 6 KPI (design.md §8): Total + 5 status. `share`: tampilkan "% dari total".
     sumCards: [
-      { key: 'hadir', label: 'Hadir', tone: 'success' },
-      { key: 'telat', label: 'Telat', tone: 'warning' },
-      { key: 'izin',  label: 'Izin',  tone: 'info' },
-      { key: 'sakit', label: 'Sakit', tone: 'purple' },
-      { key: 'alpha', label: 'Alpha', tone: 'danger' },
-      { key: 'total', label: 'Total', tone: 'primary' },
+      { key: 'total', label: 'Total', icon: 'users',          tone: 'primary' },
+      { key: 'hadir', label: 'Hadir', icon: 'check-circle-2', tone: 'success', share: true },
+      { key: 'telat', label: 'Telat', icon: 'clock',          tone: 'warning', share: true },
+      { key: 'izin',  label: 'Izin',  icon: 'file-text',      tone: 'info',    share: true },
+      { key: 'sakit', label: 'Sakit', icon: 'alert-circle',   tone: 'purple',  share: true },
+      { key: 'alpha', label: 'Alpha', icon: 'x-circle',       tone: 'danger',  share: true },
     ],
+    /* Porsi status atas total tercatat pada rentang filter (0 bila belum ada data). */
+    sharePct(key) {
+      var t = this.summary.total || 0;
+      return t ? Math.round(((this.summary[key] || 0) / t) * 100) : 0;
+    },
+    fmtNum(n) { return Number(n || 0).toLocaleString('id-ID'); },
+
+    // ── Grafik Kehadiran Mingguan (Sen–Jum) ──
+    // Satu /laporan/summary per hari (paralel), ikut filter group. Mengikuti minggu
+    // dari tanggal `sampai` (atau hari ini bila filter tanggal kosong).
+    trend:        [],     // [{ label, tanggal, hadir }]
+    trendLoading: false,
+    trendError:   false,
+
+    async loadTrend() {
+      this.trendLoading = true; this.trendError = false;
+      var acuan = this.filter.sampai ? new Date(this.filter.sampai + 'T00:00:00') : new Date();
+      if (isNaN(acuan.getTime())) acuan = new Date();
+      var senin = this.senin(acuan);
+      var hari  = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum'];
+      var tgl   = hari.map((_, i) => this.ymd(this.geser(senin, i)));
+      var grup  = this.filter.group_id ? '&group_id=' + encodeURIComponent(this.filter.group_id) : '';
+      try {
+        var res = await Promise.all(
+          tgl.map((t) => window.api.get('laporan/summary?dari=' + t + '&sampai=' + t + grup))
+        );
+        this.trend = res.map(function (s, i) {
+          s = s || {};
+          return { label: hari[i], tanggal: tgl[i], hadir: s.hadir || 0 };
+        });
+      } catch (e) {
+        this.trendError = true; this.trend = [];
+      } finally {
+        this.trendLoading = false;
+      }
+    },
+
+    // Geometri grafik (viewBox 0 0 600 200; plot x 46→588, y 14→164) — sama pola Dashboard.
+    get trendMax() {
+      var m = 0;
+      this.trend.forEach(function (d) { m = Math.max(m, d.hadir); });
+      if (m <= 0) return 4;
+      var steps = [1, 2, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000];
+      for (var i = 0; i < steps.length; i++) { if (steps[i] * 4 >= m) return steps[i] * 4; }
+      return Math.ceil(m / 4) * 4;
+    },
+    get trendTotal() { return this.trend.reduce(function (t, d) { return t + d.hadir; }, 0); },
+    get hasTrend()   { return this.trendTotal > 0; },
+    get trendAria()  {
+      var t = this.trend.map(function (d) { return d.label + ' ' + d.hadir; }).join(', ');
+      return 'Grafik kehadiran mingguan: ' + (t || 'belum ada data');
+    },
+    // Geometri: kartu Laporan melebar penuh → viewBox lebar-pendek (1200×200) supaya
+    // grafik tidak jadi tinggi sekali. Plot: x 50→1180, y 14→160.
+    get trendPoints() {
+      var self = this, n = this.trend.length;
+      if (! n) return [];
+      var x0 = 50, x1 = 1180, y0 = 14, y1 = 160;
+      return this.trend.map(function (d, i) {
+        var x = x0 + (i * (x1 - x0)) / (n - 1);
+        var y = y1 - (d.hadir / self.trendMax) * (y1 - y0);
+        return { x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10, label: d.label, value: d.hadir, tanggal: d.tanggal };
+      });
+    },
+    get trendLine() {
+      return this.trendPoints.map(function (p, i) { return (i ? 'L' : 'M') + p.x + ' ' + p.y; }).join(' ');
+    },
+    get trendArea() {
+      var p = this.trendPoints;
+      if (! p.length) return '';
+      return this.trendLine + ' L' + p[p.length - 1].x + ' 160 L' + p[0].x + ' 160 Z';
+    },
+    pt(i) { return this.trendPoints[i] || { x: 50, y: 160, label: '', value: 0, tanggal: '' }; },
+    get trendTicks() {
+      var m = this.trendMax, out = [];
+      for (var i = 4; i >= 0; i--) out.push({ v: (m / 4) * i, y: 14 + ((4 - i) / 4) * 146 });
+      return out;
+    },
+    fmtY(v) { return String(Math.round(v)); },
+    ymd(d) {
+      var m = String(d.getMonth() + 1).padStart(2, '0'), t = String(d.getDate()).padStart(2, '0');
+      return d.getFullYear() + '-' + m + '-' + t;
+    },
+    geser(d, hari) { var n = new Date(d.getTime()); n.setDate(n.getDate() + hari); return n; },
+    senin(d) {
+      var n = new Date(d.getTime()), w = n.getDay();
+      n.setDate(n.getDate() - (w === 0 ? 6 : w - 1));
+      return n;
+    },
+
+    // ── Util baris tabel ──
+    /* Tanggal "07 Okt 2026" dari 'YYYY-MM-DD'. */
+    tglPendek(t) {
+      if (! t) return '—';
+      var d = new Date(String(t) + 'T00:00:00');
+      if (isNaN(d.getTime())) return t;
+      try { return d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }); }
+      catch (e) { return t; }
+    },
+    /* Menit telat = jam masuk − jam masuk sekolah (dari Pengaturan). null bila tak relevan. */
+    menitTelat(r) {
+      if (! r || r.status !== 'telat' || ! r.waktu_masuk) return null;
+      var cfg = (window.AbsensiAdmin && window.AbsensiAdmin.settings) || {};
+      var jm  = String(cfg.jamMasuk || '07:00').split(':');
+      var jam = Number(String(r.waktu_masuk).slice(11, 13)), menit = Number(String(r.waktu_masuk).slice(14, 16));
+      var selisih = (jam * 60 + menit) - (Number(jm[0]) * 60 + Number(jm[1]));
+      return selisih > 0 ? selisih : null;
+    },
+    jarakTeks(r) { return (r && r.jarak_meter !== null && r.jarak_meter !== undefined) ? (r.jarak_meter + 'm') : '—'; },
+    inisial(nama) {
+      var p = String(nama || '?').trim().split(/\s+/).slice(0, 2).map(function (s) { return s.charAt(0); });
+      return (p.join('') || '?').toUpperCase();
+    },
+    avatarTone(nama) {
+      var s = String(nama || ''), h = 0;
+      for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 997;
+      return 'table__avatar--t' + ((h % 6) + 1);
+    },
+
+    // ── Modal Detail baris (dari data yang SUDAH ada di baris; tak ada endpoint detail) ──
+    detailOpen: false,
+    detailRow:  null,
+    openDetail(r)  { this.detailRow = r; this.detailOpen = true; },
+    closeDetail()  { this.detailOpen = false; },
+    metodeLabel(m) { return ({ selfie: 'Selfie', rfid: 'RFID', manual: 'Manual' })[m] || '—'; },
 
     // Format export tersedia (design.md §8): CSV/XLSX/PDF.
     exportFormats: [
@@ -1561,7 +1883,7 @@ tr:nth-child(even) td{background:#f9f9f9}
       { key: 'pdf',  label: 'PDF' },
     ],
 
-    init() { this.loadGroups(); this.loadSummary(); this.loadLaporan(); },
+    init() { this.loadGroups(); this.loadSummary(); this.loadLaporan(); this.loadTrend(); },
 
     /* Opsi group untuk Select (GET /group). Gagal → kosong (filter lain tetap jalan). */
     async loadGroups() {
@@ -1574,8 +1896,8 @@ tr:nth-child(even) td{background:#f9f9f9}
     /* Tanggal manual diketik → kosongkan preset. */
     onDateChange() { if (this.filter.dari || this.filter.sampai) this.filter.preset = ''; },
 
-    /* Terapkan filter: kembali ke halaman 1 lalu refetch summary + tabel. */
-    applyFilter() { this.page = 1; this.loadSummary(); this.loadLaporan(); },
+    /* Terapkan filter: kembali ke halaman 1 lalu refetch summary + tabel + grafik. */
+    applyFilter() { this.page = 1; this.loadSummary(); this.loadLaporan(); this.loadTrend(); },
     /* Reset semua filter ke default (rentang server = hari ini). */
     resetFilter() {
       this.filter = { dari: '', sampai: '', preset: '', group_id: '' };
@@ -1683,6 +2005,12 @@ tr:nth-child(even) td{background:#f9f9f9}
     loading: false,
     error:   false,
 
+    // ── Filter & paging (semua client-side; BE /group tak punya search/paging) ──
+    search:     '',
+    tipeFilter: '',       // '' = semua tipe
+    page:       1,
+    perPage:    8,
+
     // ── Modal Form (tambah/edit) ──
     modalOpen: false,
     editing:   null,      // id group saat edit; null = tambah
@@ -1697,8 +2025,13 @@ tr:nth-child(even) td{background:#f9f9f9}
     deleting: false,
     delError: '',
 
-    // ── Expand: daftar user di group (klik baris → buka ke bawah) ──
-    expandedId:   null,   // id group yang sedang terbuka (satu per satu)
+    // ── Modal Anggota Grup (klik baris / angka Members) ──
+    // Dulu expand inline; diganti modal karena satu kelas bisa puluhan murid.
+    anggotaOpen:    false,
+    anggotaGroup:   null,  // { id, nama, tipe, jumlah_user }
+    anggotaSearch:  '',
+    anggotaPage:    1,
+    anggotaPerPage: 10,
     groupUsers:   {},     // { [groupId]: [ {id,nama,nomor_induk,rfid_uid} ] } — cache
     usersLoading: {},     // { [groupId]: bool }
     usersError:   {},     // { [groupId]: bool }
@@ -1714,10 +2047,64 @@ tr:nth-child(even) td{background:#f9f9f9}
       finally { this.loading = false; }
     },
 
-    // Peta tipe → badge/label (design.md §6: Kelas primary, Guru purple, Staff info).
+    // Peta tipe → badge/label (design.md §6: Kelas primary, Guru purple, Staff hijau).
     // Tipe kustom (v2.1.0, di luar 3 bawaan) → badge netral, bukan warna "kelas".
     tipeBadge(t) { return ({ kelas: 'badge--kelas', guru: 'badge--guru', staff: 'badge--staff' })[t] || 'badge--neutral'; },
-    tipeLabel(t) { return ({ kelas: 'Kelas', guru: 'Guru', staff: 'Staff' })[t] || (t || ''); },
+    tipeLabel(t) { return ({ kelas: 'Kelas', guru: 'Guru', staff: 'Staff' })[t] || (t || 'Lainnya'); },
+
+    // ── Ringkasan (kartu kiri) — semua dihitung dari daftar group, bukan endpoint baru ──
+    get totalGroup()  { return this.groups.length; },
+    get totalMember() { return this.groups.reduce(function (t, g) { return t + (g.jumlah_user || 0); }, 0); },
+    /* Distribusi group per tipe (3 bawaan + tipe kustom yang benar-benar dipakai). */
+    get distribusi() {
+      var self = this, urut = ['kelas', 'guru', 'staff'], hitung = {};
+      this.groups.forEach(function (g) {
+        var t = g.tipe || 'lainnya';
+        hitung[t] = (hitung[t] || 0) + 1;
+      });
+      var tipe = urut.filter(function (t) { return hitung[t]; })
+        .concat(Object.keys(hitung).filter(function (t) { return urut.indexOf(t) === -1; }));
+      var maks = Math.max.apply(null, [1].concat(tipe.map(function (t) { return hitung[t]; })));
+      return tipe.map(function (t) {
+        return { tipe: t, label: self.tipeLabel(t), jumlah: hitung[t], pct: Math.round((hitung[t] / maks) * 100) };
+      });
+    },
+    /* Tab tipe: "Semua" + tipe yang benar-benar ada datanya. */
+    get tipeTabs() {
+      return [{ tipe: '', label: 'Semua Tipe' }].concat(
+        this.distribusi.map(function (d) { return { tipe: d.tipe, label: d.label }; })
+      );
+    },
+
+    // ── Filter + paging (client) ──
+    get filteredGroups() {
+      var q = this.search.trim().toLowerCase(), t = this.tipeFilter;
+      return this.groups.filter(function (g) {
+        if (t && (g.tipe || 'lainnya') !== t) return false;
+        return ! q || String(g.nama || '').toLowerCase().indexOf(q) !== -1;
+      });
+    },
+    get totalFiltered() { return this.filteredGroups.length; },
+    get totalPages()    { return Math.max(1, Math.ceil(this.totalFiltered / this.perPage)); },
+    get pagedGroups()   {
+      var p = Math.min(this.page, this.totalPages);
+      return this.filteredGroups.slice((p - 1) * this.perPage, (p - 1) * this.perPage + this.perPage);
+    },
+    get pageStart() { return this.totalFiltered ? ((Math.min(this.page, this.totalPages) - 1) * this.perPage) + 1 : 0; },
+    get pageEnd()   { return Math.min(Math.min(this.page, this.totalPages) * this.perPage, this.totalFiltered); },
+    get pageWindow() {
+      var tp = this.totalPages, cur = Math.min(this.page, tp), out = [];
+      if (tp <= 7) { for (var i = 1; i <= tp; i++) out.push(i); return out; }
+      out.push(1);
+      var lo = Math.max(2, cur - 1), hi = Math.min(tp - 1, cur + 1);
+      if (lo > 2) out.push('…');
+      for (var j = lo; j <= hi; j++) out.push(j);
+      if (hi < tp - 1) out.push('…');
+      out.push(tp);
+      return out;
+    },
+    goPage(p) { if (typeof p === 'number' && p >= 1 && p <= this.totalPages) this.page = p; },
+    pilihTipe(t) { this.tipeFilter = t; this.page = 1; },
 
     /* Saran <datalist> tipe (design.md TODO-FE#1): 3 bawaan + tipe kustom yang sudah dipakai di data. */
     get tipeSuggestions() {
@@ -1727,10 +2114,54 @@ tr:nth-child(even) td{background:#f9f9f9}
 
     /* Toggle expand baris group → tampil daftar user di bawahnya. Klik ulang = tutup.
        Fetch user (GET /users?group_id) sekali lalu di-cache. */
-    toggleExpand(g) {
-      if (this.expandedId === g.id) { this.expandedId = null; return; }
-      this.expandedId = g.id;
+    /* Buka modal Anggota Grup. Menggantikan expand inline: kelas bisa berisi puluhan
+     * murid → daftar panjang akan mendorong tabel ke bawah. Di modal ada cari +
+     * pagination sendiri, tabel grup tetap ringkas. Data tetap GET /users?group_id. */
+    openAnggota(g) {
+      this.anggotaGroup  = g;
+      this.anggotaSearch = '';
+      this.anggotaPage   = 1;
+      this.anggotaOpen   = true;
       if (this.groupUsers[g.id] === undefined) this.loadGroupUsers(g.id);
+    },
+    closeAnggota() { this.anggotaOpen = false; },
+
+    // ── Turunan daftar anggota di modal (cari + paging, client) ──
+    get anggotaId()      { return this.anggotaGroup ? this.anggotaGroup.id : 0; },
+    get anggotaLoading() { return !! this.usersLoading[this.anggotaId]; },
+    get anggotaError()   { return !! this.usersError[this.anggotaId]; },
+    get anggotaSemua()   { return this.groupUsers[this.anggotaId] || []; },
+    get anggotaFiltered() {
+      var q = this.anggotaSearch.trim().toLowerCase();
+      if (! q) return this.anggotaSemua;
+      return this.anggotaSemua.filter(function (u) {
+        return String(u.nama || '').toLowerCase().indexOf(q) !== -1
+            || String(u.nomor_induk || '').toLowerCase().indexOf(q) !== -1;
+      });
+    },
+    get anggotaTotal()     { return this.anggotaFiltered.length; },
+    get anggotaTotalPages(){ return Math.max(1, Math.ceil(this.anggotaTotal / this.anggotaPerPage)); },
+    get anggotaPaged() {
+      var p = Math.min(this.anggotaPage, this.anggotaTotalPages);
+      return this.anggotaFiltered.slice((p - 1) * this.anggotaPerPage, (p - 1) * this.anggotaPerPage + this.anggotaPerPage);
+    },
+    get anggotaStart() { return this.anggotaTotal ? ((Math.min(this.anggotaPage, this.anggotaTotalPages) - 1) * this.anggotaPerPage) + 1 : 0; },
+    get anggotaEnd()   { return Math.min(Math.min(this.anggotaPage, this.anggotaTotalPages) * this.anggotaPerPage, this.anggotaTotal); },
+    goAnggotaPage(p) { if (p >= 1 && p <= this.anggotaTotalPages) this.anggotaPage = p; },
+    /* Inisial, warna avatar, mask UID — samakan tampilannya dengan halaman Users. */
+    inisial(nama) {
+      var p = String(nama || '?').trim().split(/\s+/).slice(0, 2).map(function (s) { return s.charAt(0); });
+      return (p.join('') || '?').toUpperCase();
+    },
+    avatarTone(nama) {
+      var s = String(nama || ''), h = 0;
+      for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 997;
+      return 'table__avatar--t' + ((h % 6) + 1);
+    },
+    maskRfid(uid) {
+      if (! uid) return '';
+      var s = String(uid);
+      return s.length <= 4 ? s : '••••' + s.slice(-4);
     },
     async loadGroupUsers(id) {
       this.usersLoading = Object.assign({}, this.usersLoading, { [id]: true });
@@ -1747,7 +2178,18 @@ tr:nth-child(even) td{background:#f9f9f9}
     },
 
     // ── Modal Form: buka/tutup/simpan ──
-    _resetForm() { this.form = { nama: '', tipe: 'kelas' }; this.formError = ''; this.fieldErr = {}; },
+    /* Dropdown Tipe = 3 bawaan + "Lainnya". BE simpan tipe sbg VARCHAR bebas (v2.1.0),
+     * jadi "Lainnya" membuka input teks agar tipe kustom tetap bisa dibuat. */
+    tipePilihan: 'kelas',   // kelas | guru | staff | lainnya
+    gantiTipePilihan(v) {
+      this.tipePilihan = v;
+      this.form.tipe = (v === 'lainnya') ? '' : v;
+    },
+    _resetForm() {
+      this.form = { nama: '', tipe: 'kelas' };
+      this.tipePilihan = 'kelas';
+      this.formError = ''; this.fieldErr = {};
+    },
     openCreate() {
       this._resetForm(); this.editing = null; this.modalOpen = true;
       this._focusById('gf-nama');
@@ -1755,7 +2197,9 @@ tr:nth-child(even) td{background:#f9f9f9}
     openEdit(g) {
       this._resetForm();
       this.editing = g.id;
-      this.form = { nama: g.nama || '', tipe: g.tipe || 'kelas' };
+      var t = g.tipe || 'kelas';
+      this.form = { nama: g.nama || '', tipe: t };
+      this.tipePilihan = ['kelas', 'guru', 'staff'].indexOf(t) !== -1 ? t : 'lainnya';
       this.modalOpen = true;
       this._focusById('gf-nama');
     },
@@ -1872,7 +2316,18 @@ tr:nth-child(even) td{background:#f9f9f9}
     'chevron-right':    '<path d="m9 18 6-6-6-6"/>',
     'more-horizontal':  '<circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>',
     'x':                '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
-    'help':             '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>'
+    'help':             '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>',
+    // Tren & delta (Dashboard)
+    'arrow-up':         '<path d="m5 12 7-7 7 7"/><path d="M12 19V5"/>',
+    'arrow-down':       '<path d="M12 5v14"/><path d="m19 12-7 7-7-7"/>',
+    'save':             '<path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/>',
+    'log-in':           '<path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" x2="3" y1="12" y2="12"/>',
+    'log-out':          '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/>',
+    'trending-up':      '<path d="M16 7h6v6"/><path d="m22 7-8.5 8.5-5-5L2 17"/>',
+    'trending-down':    '<path d="M16 17h6v-6"/><path d="m22 17-8.5-8.5-5 5L2 7"/>',
+    'minus':            '<path d="M5 12h14"/>',
+    'scan-line':        '<path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 12h10"/>',
+    'file-text':        '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>'
   };
   function icon(name, size) {
     var inner = P[name];

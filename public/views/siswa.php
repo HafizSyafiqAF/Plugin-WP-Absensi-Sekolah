@@ -1,226 +1,206 @@
 <?php
 /**
- * View kiosk publik — Absensi Siswa (shell fullscreen).
+ * View kiosk publik — Absensi Siswa (fullscreen, latar biru gelap).
  *
  * Di-include Shortcodes::render_siswa() via [absensi_siswa]. TANPA login
- * (keamanan absen di endpoint: nomor_induk + rate-limit). Layout fullscreen
- * mandiri (bukan dashboard); semua style di bawah `.absensi-kiosk` (design
- * system BE, scoped). Alpine + helper ($icon, api, absensiToast) dari public.js.
+ * (keamanan absen di endpoint: nomor_induk + rate-limit). Semua style di bawah
+ * `.absensi-kiosk` (scoped). Alpine + helper ($icon, api, absensiToast) dari public.js.
  *
- * ITEM INI = kerangka: header judul + kartu alur di tengah (max-width 480px via
- * .kiosk-card). Alur absen (input Nomor Induk, status GPS, indikator akurasi,
- * kamera selfie, toggle sesi, tombol Absen Sekarang, area hasil, cek status)
- * diisi item TODO-FE berikutnya di dalam `.kiosk-flow`.
- * Endpoint: POST /absen/selfie, GET /absen/status. Config: AbsensiConfig.
+ * ALUR (wizard 4 langkah — komponen `kioskSiswa`):
+ *   1. nis        → ketik nomor induk, nama siswa dicek ke GET /absen/status
+ *   2. verifikasi → status GPS + kamera selfie (ambil / ulang)
+ *   3. konfirmasi → ringkasan data sebelum kirim
+ *   4. hasil      → kartu berhasil/ditolak + "Absensi Berikutnya"
+ * Endpoint: GET /absen/status, POST /absen/selfie. Config: AbsensiConfig.
  *
- * Catatan: markup pra-pivot (form pengajuan ketidakhadiran ke endpoint yang kini
- * 404, font eksternal, CSS lokal non-design-system, submit tanpa nomor_induk)
- * sudah dibuang — ganti shell design system.
+ * CATATAN DATA: endpoint publik hanya memberi `nama` (tak ada kelas/grup) —
+ * karena itu ringkasan menampilkan Sesi & Lokasi, bukan "Kelas".
  */
 defined( 'ABSPATH' ) || exit;
 ?>
-<div class="absensi-kiosk" x-data="kioskSiswa">
-	<div class="kiosk-card">
-		<header class="kiosk-head">
-			<span class="kiosk-brand" x-html="$icon('clipboard-check', 28)" aria-hidden="true"></span>
-			<h1 class="kiosk-title"><?php esc_html_e( 'Absensi', 'absensi-sekolah' ); ?></h1>
-			<p class="kiosk-sub"><?php esc_html_e( 'Selamat datang, silakan absen.', 'absensi-sekolah' ); ?></p>
-		</header>
+<div class="absensi-kiosk kiosk-siswa" x-data="kioskSiswa">
 
-		<div class="kiosk-flow" :aria-busy="submitting ? 'true' : 'false'">
-			<?php // Alur absen: input nomor induk, status GPS + akurasi, kamera selfie, toggle sesi, tombol Absen Sekarang, area hasil, widget cek status. ?>
+	<!-- Header: lencana kiosk + tanggal & jam berjalan -->
+	<header class="kiosk-top">
+		<div class="kiosk-badge-brand">
+			<span class="kiosk-brand__ico" x-html="$icon( 'clipboard-check', 16 )" aria-hidden="true"></span>
+			<span class="kiosk-brand__txt"><?php esc_html_e( 'Kiosk Absensi Siswa', 'absensi-sekolah' ); ?></span>
+		</div>
+		<p class="kiosk-top__meta">
+			<span x-text="tanggal"></span> · <span x-text="jam"></span>
+		</p>
+	</header>
 
-			<div class="field">
-				<label class="field__label" for="absensi-nomor-induk">
-					<?php esc_html_e( 'Nomor Induk (NIS/NIP)', 'absensi-sekolah' ); ?>
-				</label>
-				<div class="input-group">
-					<span class="input-group__icon" x-html="$icon('id-card')" aria-hidden="true"></span>
-					<input id="absensi-nomor-induk"
-					       type="text"
-					       inputmode="numeric"
-					       class="input"
-					       maxlength="30"
-					       x-model.trim="nomorInduk"
-					       required
-					       aria-required="true"
-					       autocomplete="off"
-					       placeholder="<?php esc_attr_e( 'Ketik nomor induk…', 'absensi-sekolah' ); ?>">
-				</div>
-			</div>
+	<!-- ── Langkah 1: Masukkan NIS ── -->
+	<section class="kiosk-panel" x-show="step === 'nis'" x-cloak>
+		<span class="kiosk-panel__ico" x-html="$icon( 'user-check', 22 )" aria-hidden="true"></span>
+		<h2 class="kiosk-panel__title"><?php esc_html_e( 'Masukkan NIS', 'absensi-sekolah' ); ?></h2>
+		<p class="kiosk-panel__sub"><?php esc_html_e( 'Nomor Induk Siswa', 'absensi-sekolah' ); ?></p>
 
-			<?php // Status GPS: mencari lokasi… / didapat (+akurasi) / ditolak (+coba lagi). ?>
-			<div class="kiosk-gps"
-			     role="status" aria-live="assertive"
-			     :class="{
-			       'kiosk-gps--waiting': gpsStatus === 'waiting',
-			       'kiosk-gps--ok':      gpsStatus === 'ok',
-			       'kiosk-gps--weak':    gpsStatus === 'weak',
-			       'kiosk-gps--error':   gpsStatus === 'error'
-			     }">
-				<span x-show="gpsStatus === 'waiting'" class="spinner spinner--sm" aria-hidden="true"></span>
-				<span x-show="gpsStatus !== 'waiting'" class="kiosk-gps__icon" x-html="$icon('map-pin', 18)" aria-hidden="true"></span>
+		<label class="u-sr" for="ks-nis"><?php esc_html_e( 'Nomor induk siswa', 'absensi-sekolah' ); ?></label>
+		<input id="ks-nis" type="text" inputmode="numeric" autocomplete="off"
+		       class="kiosk-nis" :class="lookupError ? 'kiosk-nis--error' : ''"
+		       x-model.trim="nomorInduk"
+		       @input.debounce.400ms="cekNis()"
+		       @keydown.enter.prevent="lanjutKeVerifikasi()"
+		       placeholder="2024001">
 
-				<span x-show="gpsStatus === 'waiting'"><?php esc_html_e( 'Mencari lokasi…', 'absensi-sekolah' ); ?></span>
-				<span x-show="gpsStatus === 'ok'" x-text="'<?php echo esc_js( __( 'Lokasi didapat · Akurasi', 'absensi-sekolah' ) ); ?> ' + gpsAccuracyLabel"></span>
-				<span x-show="gpsStatus === 'weak'" x-text="'<?php echo esc_js( __( 'Akurasi rendah', 'absensi-sekolah' ) ); ?> · ' + gpsAccuracyLabel + ' — <?php echo esc_js( __( 'cari sinyal lebih baik', 'absensi-sekolah' ) ); ?>'"></span>
-				<span x-show="gpsStatus === 'error'" class="kiosk-gps__err">
-					<span x-text="gpsError || '<?php echo esc_js( __( 'Izin lokasi ditolak', 'absensi-sekolah' ) ); ?>'"></span>
-					<button type="button" class="btn btn--sm btn--outline" @click="startGps()">
-						<span x-html="$icon('map-pin', 16)" aria-hidden="true"></span>
-						<span class="btn__label"><?php esc_html_e( 'Aktifkan Lokasi', 'absensi-sekolah' ); ?></span>
-					</button>
+		<!-- Nama siswa (dari GET /absen/status) -->
+		<div class="kiosk-found" x-show="siswaNama" x-cloak>
+			<span class="kiosk-found__avatar" x-text="inisial(siswaNama)" aria-hidden="true"></span>
+			<span class="kiosk-found__main">
+				<span class="kiosk-found__name" x-text="siswaNama"></span>
+				<span class="kiosk-found__meta" x-text="sudahAbsen
+					? '<?php echo esc_js( __( 'Sudah tercatat hari ini', 'absensi-sekolah' ) ); ?>'
+					: '<?php echo esc_js( __( 'Belum absen hari ini', 'absensi-sekolah' ) ); ?>'"></span>
+			</span>
+			<span class="kiosk-found__ok" x-html="$icon( 'check-circle-2', 18 )" aria-hidden="true"></span>
+		</div>
+
+		<!-- Nomor tak terdaftar / error -->
+		<p class="kiosk-inline-err" x-show="lookupError" x-cloak role="alert" x-text="lookupError"></p>
+
+		<button type="button" class="kiosk-btn kiosk-btn--primary" @click="lanjutKeVerifikasi()"
+		        :disabled="! bisaLanjutNis || ! siswaNama">
+			<span x-show="! lookupBusy"><?php esc_html_e( 'Lanjutkan', 'absensi-sekolah' ); ?> &rarr;</span>
+			<span x-show="lookupBusy" x-cloak><?php esc_html_e( 'Memeriksa…', 'absensi-sekolah' ); ?></span>
+		</button>
+	</section>
+
+	<!-- ── Langkah 2: Verifikasi (GPS + selfie) ── -->
+	<section class="kiosk-panel" x-show="step === 'verifikasi'" x-cloak>
+		<h2 class="kiosk-panel__title"><?php esc_html_e( 'Verifikasi', 'absensi-sekolah' ); ?></h2>
+		<p class="kiosk-panel__sub"><?php esc_html_e( 'GPS & Foto Selfie', 'absensi-sekolah' ); ?></p>
+
+		<!-- Status GPS -->
+		<div class="kiosk-gps" :class="'kiosk-gps--' + gpsStatus" role="status" aria-live="polite">
+			<span class="kiosk-gps__ico">
+				<span x-show="gpsStatus === 'waiting'" class="kiosk-spin" aria-hidden="true"></span>
+				<span x-show="gpsStatus === 'ok'" x-html="$icon( 'check-circle-2', 18 )" aria-hidden="true"></span>
+				<span x-show="gpsStatus === 'weak'" x-html="$icon( 'alert-triangle', 18 )" aria-hidden="true"></span>
+				<span x-show="gpsStatus === 'error'" x-html="$icon( 'x-circle', 18 )" aria-hidden="true"></span>
+			</span>
+			<span class="kiosk-gps__body">
+				<span class="kiosk-gps__title"><?php esc_html_e( 'GPS', 'absensi-sekolah' ); ?></span>
+				<span class="kiosk-gps__desc" x-show="gpsStatus === 'waiting'"><?php esc_html_e( 'Mencari lokasi…', 'absensi-sekolah' ); ?></span>
+				<span class="kiosk-gps__desc" x-show="gpsStatus === 'ok'"><?php esc_html_e( 'Lokasi terverifikasi ✓', 'absensi-sekolah' ); ?></span>
+				<span class="kiosk-gps__desc" x-show="gpsStatus === 'weak'"
+				      x-text="'<?php echo esc_js( __( 'Akurasi rendah', 'absensi-sekolah' ) ); ?> · ' + gpsAccuracyLabel"></span>
+				<span class="kiosk-gps__desc" x-show="gpsStatus === 'error'" x-text="gpsError"></span>
+			</span>
+			<button type="button" class="kiosk-gps__retry" x-show="gpsStatus === 'error'" x-cloak @click="startGps()">
+				<?php esc_html_e( 'Coba lagi', 'absensi-sekolah' ); ?>
+			</button>
+		</div>
+
+		<!-- Area kamera -->
+		<div class="kiosk-cam">
+			<!-- Kamera belum aktif / izin ditolak -->
+			<div class="kiosk-cam__box" x-show="cam === 'off'">
+				<span class="kiosk-cam__ico" x-html="$icon( 'camera', 28 )" aria-hidden="true"></span>
+				<span class="kiosk-cam__txt" x-show="! camDenied"><?php esc_html_e( 'Kamera aktif', 'absensi-sekolah' ); ?></span>
+				<span class="kiosk-cam__txt kiosk-cam__txt--warn" x-show="camDenied" x-cloak role="alert">
+					<?php esc_html_e( 'Izin kamera ditolak', 'absensi-sekolah' ); ?>
 				</span>
 			</div>
 
-			<?php // Kamera selfie (opsional): Buka Kamera → live → Ambil Foto (base64) → preview → Ulang Foto. ?>
-			<div class="kiosk-cam">
-				<div x-show="cam === 'off'" class="kiosk-cam__frame kiosk-cam__frame--idle">
-					<span class="kiosk-cam__ico" x-html="$icon('camera', 40)" aria-hidden="true"></span>
-					<p class="kiosk-cam__hint" x-show="!camDenied"><?php esc_html_e( 'Foto selfie (wajib)', 'absensi-sekolah' ); ?></p>
-					<p class="kiosk-cam__hint kiosk-cam__hint--warn" x-show="camDenied" role="alert">
-						<?php esc_html_e( 'Izin kamera ditolak — aktifkan kamera, selfie wajib untuk absen.', 'absensi-sekolah' ); ?>
-					</p>
-				</div>
-
-				<div x-show="cam === 'live'" class="kiosk-cam__frame">
-					<video x-ref="video"
-					       x-effect="if (stream) { $el.srcObject = stream; $el.play().catch(function () {}); }"
-					       autoplay playsinline muted
-					       class="kiosk-cam__video"
-					       aria-label="<?php esc_attr_e( 'Pratinjau kamera selfie', 'absensi-sekolah' ); ?>"></video>
-				</div>
-
-				<div x-show="cam === 'preview'" class="kiosk-cam__frame">
-					<img :src="photoUrl" class="kiosk-cam__img" alt="<?php esc_attr_e( 'Foto selfie', 'absensi-sekolah' ); ?>">
-				</div>
-
-				<canvas x-ref="canvas" hidden aria-hidden="true"></canvas>
-
-				<button x-show="cam === 'off'" type="button" class="btn btn--outline btn--block"
-				        :disabled="!isHttps" @click="startCamera()">
-					<span x-html="$icon('camera', 18)" aria-hidden="true"></span>
-					<span class="btn__label"><?php esc_html_e( 'Buka Kamera', 'absensi-sekolah' ); ?></span>
-				</button>
-				<button x-show="cam === 'live'" type="button" class="btn btn--primary btn--block" @click="capturePhoto()">
-					<span x-html="$icon('camera', 18)" aria-hidden="true"></span>
-					<span class="btn__label"><?php esc_html_e( 'Ambil Foto', 'absensi-sekolah' ); ?></span>
-				</button>
-				<button x-show="cam === 'preview'" type="button" class="btn btn--outline btn--block" @click="retakePhoto()">
-					<span x-html="$icon('rotate-ccw', 18)" aria-hidden="true"></span>
-					<span class="btn__label"><?php esc_html_e( 'Ulang Foto', 'absensi-sekolah' ); ?></span>
-				</button>
+			<!-- Kamera hidup -->
+			<div class="kiosk-cam__box kiosk-cam__box--live" x-show="cam === 'live'" x-cloak>
+				<video x-ref="video" class="kiosk-cam__video" autoplay playsinline muted
+				       x-effect="if (cam === 'live' && stream) $refs.video.srcObject = stream"></video>
 			</div>
 
-			<?php // Toggle sesi: Masuk / Pulang. Wajib terpilih (default Masuk), klik = set (tak bisa lepas ke kosong). ?>
-			<div class="field">
-				<span class="field__label"><?php esc_html_e( 'Sesi', 'absensi-sekolah' ); ?></span>
-				<div class="pill-tabs" role="group" aria-label="<?php esc_attr_e( 'Pilih sesi absen', 'absensi-sekolah' ); ?>">
-					<button type="button" class="pill" :class="sesi === 'masuk' ? 'is-active' : ''"
-					        @click="sesi = 'masuk'" :aria-pressed="sesi === 'masuk'">
-						<?php esc_html_e( 'Masuk', 'absensi-sekolah' ); ?>
-					</button>
-					<button type="button" class="pill" :class="sesi === 'pulang' ? 'is-active' : ''"
-					        @click="sesi = 'pulang'" :aria-pressed="sesi === 'pulang'">
-						<?php esc_html_e( 'Pulang', 'absensi-sekolah' ); ?>
-					</button>
-				</div>
+			<!-- Foto sudah diambil -->
+			<div class="kiosk-cam__box kiosk-cam__box--shot" x-show="cam === 'preview'" x-cloak>
+				<img :src="photoUrl" class="kiosk-cam__img" alt="<?php esc_attr_e( 'Foto selfie', 'absensi-sekolah' ); ?>">
+				<span class="kiosk-cam__done">
+					<span x-html="$icon( 'check-circle-2', 26 )" aria-hidden="true"></span>
+					<span><?php esc_html_e( 'Foto diambil', 'absensi-sekolah' ); ?></span>
+				</span>
 			</div>
-
-			<?php // Tombol Absen Sekarang: Primary lg, disabled sampai GPS siap; loading "Mengirim…". ?>
-			<button type="button"
-			        class="btn btn--primary btn--lg btn--block"
-			        :class="submitting ? 'is-loading' : ''"
-			        :disabled="!canSubmit"
-			        @click="submit()">
-				<span x-show="submitting" class="btn__spin" aria-hidden="true"></span>
-				<span x-show="!submitting" x-html="$icon('send', 18)" aria-hidden="true"></span>
-				<span class="btn__label"
-				      x-text="submitting
-				        ? '<?php echo esc_js( __( 'Mengirim…', 'absensi-sekolah' ) ); ?>'
-				        : '<?php echo esc_js( __( 'Absen Sekarang', 'absensi-sekolah' ) ); ?>'"></span>
-			</button>
-
-			<?php // Petunjuk kenapa tombol nonaktif: selfie wajib (foto belum diambil). ?>
-			<p class="kiosk-submit-hint" x-show="!photoBlob && !submitting" x-cloak>
-				<?php esc_html_e( 'Ambil foto selfie dulu untuk bisa absen.', 'absensi-sekolah' ); ?>
-			</p>
-
-			<?php // Area hasil: kartu feedback warna peta status (hijau hadir / kuning telat / info pulang / merah error). ?>
-			<div x-show="result" x-cloak
-			     class="kiosk-result" :class="resultClass"
-			     role="status" aria-live="assertive">
-				<span class="kiosk-result__icon" x-html="$icon(resultIcon, 44)" aria-hidden="true"></span>
-				<h2 class="kiosk-result__title" x-text="resultTitle"></h2>
-				<p class="kiosk-result__msg" x-text="result && result.message"></p>
-
-				<div x-show="result && result.ok" class="kiosk-result__meta">
-					<span x-show="result && result.jam">
-						<?php esc_html_e( 'Jam', 'absensi-sekolah' ); ?>:
-						<strong x-text="result && result.jam"></strong>
-					</span>
-					<span x-show="result && result.jarak !== null">
-						<?php esc_html_e( 'Jarak', 'absensi-sekolah' ); ?>:
-						<strong x-text="(result && result.jarak) + ' m'"></strong>
-					</span>
-				</div>
-
-				<button type="button" class="btn btn--outline btn--block" @click="reset()">
-					<span x-html="$icon('rotate-ccw', 18)" aria-hidden="true"></span>
-					<span class="btn__label"><?php esc_html_e( 'Absen Lagi', 'absensi-sekolah' ); ?></span>
-				</button>
-			</div>
-
-			<?php // Widget Cek Status Hari Ini: input nomor induk → GET /absen/status → tampil sudah_absen/nama/rekap. ?>
-			<div class="kiosk-status">
-				<h2 class="kiosk-status__head"><?php esc_html_e( 'Cek Status Hari Ini', 'absensi-sekolah' ); ?></h2>
-
-				<div class="field">
-					<div class="input-group">
-						<span class="input-group__icon" x-html="$icon('id-card')" aria-hidden="true"></span>
-						<input type="text" inputmode="numeric" class="input" maxlength="30"
-						       x-model.trim="statusNomor"
-						       autocomplete="off"
-						       @keydown.enter.prevent="checkStatus()"
-						       aria-label="<?php esc_attr_e( 'Nomor induk untuk cek status', 'absensi-sekolah' ); ?>"
-						       placeholder="<?php esc_attr_e( 'Nomor induk…', 'absensi-sekolah' ); ?>">
-					</div>
-				</div>
-
-				<button type="button" class="btn btn--outline btn--block"
-				        :class="statusLoading ? 'is-loading' : ''"
-				        :disabled="statusLoading || !statusNomor"
-				        @click="checkStatus()">
-					<span x-show="statusLoading" class="btn__spin" aria-hidden="true"></span>
-					<span x-show="!statusLoading" x-html="$icon('search', 18)" aria-hidden="true"></span>
-					<span class="btn__label"><?php esc_html_e( 'Cek Status', 'absensi-sekolah' ); ?></span>
-				</button>
-
-				<div x-show="statusError" x-cloak class="alert alert--danger" role="alert" aria-live="assertive">
-					<span class="alert__icon" x-html="$icon('x-circle', 18)" aria-hidden="true"></span>
-					<span x-text="statusError"></span>
-				</div>
-
-				<template x-if="statusResult">
-					<div class="kiosk-status__result" role="status" aria-live="polite">
-						<div class="kiosk-status__nama" x-text="statusResult.nama"></div>
-
-						<template x-if="!statusResult.sudah_absen">
-							<p class="kiosk-status__empty"><?php esc_html_e( 'Belum absen hari ini.', 'absensi-sekolah' ); ?></p>
-						</template>
-
-						<template x-if="statusResult.sudah_absen && statusResult.rekap">
-							<div class="kiosk-status__rekap">
-								<span class="badge" :class="'badge--' + statusResult.rekap.status" x-text="statusResult.rekap.status"></span>
-								<div class="kiosk-status__times">
-									<span><?php esc_html_e( 'Masuk', 'absensi-sekolah' ); ?>: <strong x-text="jamHM(statusResult.rekap.waktu_masuk)"></strong></span>
-									<span><?php esc_html_e( 'Keluar', 'absensi-sekolah' ); ?>: <strong x-text="jamHM(statusResult.rekap.waktu_keluar)"></strong></span>
-								</div>
-							</div>
-						</template>
-					</div>
-				</template>
-			</div>
+			<canvas x-ref="canvas" class="u-hidden"></canvas>
 		</div>
-	</div>
+
+		<!-- Aksi: sebelum foto = Ambil Foto; sesudah = Ulang + Lanjut -->
+		<button type="button" class="kiosk-btn kiosk-btn--dark" x-show="cam !== 'preview'"
+		        @click="cam === 'live' ? capturePhoto() : startCamera()" :disabled="camDenied">
+			<span x-html="$icon( 'camera', 16 )" aria-hidden="true"></span>
+			<?php esc_html_e( 'Ambil Foto', 'absensi-sekolah' ); ?>
+		</button>
+
+		<div class="kiosk-actions" x-show="cam === 'preview'" x-cloak>
+			<button type="button" class="kiosk-btn kiosk-btn--ghost" @click="retakePhoto()">
+				<span x-html="$icon( 'rotate-ccw', 15 )" aria-hidden="true"></span>
+				<?php esc_html_e( 'Ulang', 'absensi-sekolah' ); ?>
+			</button>
+			<button type="button" class="kiosk-btn kiosk-btn--primary" @click="lanjutKeKonfirmasi()">
+				<?php esc_html_e( 'Lanjut', 'absensi-sekolah' ); ?>
+			</button>
+		</div>
+	</section>
+
+	<!-- ── Langkah 3: Konfirmasi ── -->
+	<section class="kiosk-panel" x-show="step === 'konfirmasi'" x-cloak>
+		<h2 class="kiosk-panel__title"><?php esc_html_e( 'Konfirmasi', 'absensi-sekolah' ); ?></h2>
+		<p class="kiosk-panel__sub"><?php esc_html_e( 'Cek data sebelum submit', 'absensi-sekolah' ); ?></p>
+
+		<dl class="kiosk-summary">
+			<div class="kiosk-summary__row">
+				<dt><?php esc_html_e( 'Nama', 'absensi-sekolah' ); ?></dt>
+				<dd x-text="siswaNama"></dd>
+			</div>
+			<div class="kiosk-summary__row">
+				<dt><?php esc_html_e( 'NIS', 'absensi-sekolah' ); ?></dt>
+				<dd x-text="nomorInduk"></dd>
+			</div>
+			<div class="kiosk-summary__row">
+				<dt><?php esc_html_e( 'Waktu', 'absensi-sekolah' ); ?></dt>
+				<dd x-text="jam"></dd>
+			</div>
+			<div class="kiosk-summary__row">
+				<dt><?php esc_html_e( 'Lokasi', 'absensi-sekolah' ); ?></dt>
+				<dd :class="gpsStatus === 'ok' ? 'is-ok' : 'is-warn'" x-text="lokasiLabel"></dd>
+			</div>
+		</dl>
+
+		<button type="button" class="kiosk-btn kiosk-btn--primary" @click="kirimAbsensi()"
+		        :disabled="! canSubmit">
+			<span x-show="! submitting"><?php esc_html_e( 'Submit Absensi', 'absensi-sekolah' ); ?></span>
+			<span x-show="submitting" x-cloak><?php esc_html_e( 'Mengirim…', 'absensi-sekolah' ); ?></span>
+		</button>
+		<button type="button" class="kiosk-back" @click="kembali()"><?php esc_html_e( 'Kembali', 'absensi-sekolah' ); ?></button>
+	</section>
+
+	<!-- ── Langkah 4: Hasil ── -->
+	<section class="kiosk-panel" x-show="step === 'hasil' && result" x-cloak aria-live="polite">
+		<span class="kiosk-result__ico" :class="hasilBerhasil ? 'is-ok' : 'is-err'"
+		      x-html="$icon( hasilBerhasil ? 'check-circle-2' : 'x-circle', 30 )" aria-hidden="true"></span>
+
+		<h2 class="kiosk-panel__title" :class="hasilBerhasil ? 'is-ok' : 'is-err'"
+		    x-text="hasilBerhasil
+		      ? '<?php echo esc_js( __( 'Berhasil!', 'absensi-sekolah' ) ); ?>'
+		      : '<?php echo esc_js( __( 'Absen Ditolak', 'absensi-sekolah' ) ); ?>'"></h2>
+
+		<!-- Berhasil: nama · jam + badge status.
+		     Guard `result &&` WAJIB: <template x-if> tetap dievaluasi walau section-nya
+		     x-show=false, jadi tanpa guard `result.message` meledak saat result null. -->
+		<template x-if="result && hasilBerhasil">
+			<div class="kiosk-result__body">
+				<p class="kiosk-panel__sub">
+					<span x-text="siswaNama"></span> · <span x-text="result.jam"></span>
+				</p>
+				<span class="kiosk-badge" :class="statusBadgeClass" x-text="statusBadgeLabel"></span>
+			</div>
+		</template>
+
+		<!-- Ditolak: pesan asli dari server (mis. di luar radius) -->
+		<template x-if="result && ! hasilBerhasil">
+			<p class="kiosk-panel__sub" x-text="result.message"></p>
+		</template>
+
+		<button type="button" class="kiosk-btn kiosk-btn--primary" @click="reset()">
+			<?php esc_html_e( 'Absensi Berikutnya', 'absensi-sekolah' ); ?>
+		</button>
+	</section>
+
 </div>

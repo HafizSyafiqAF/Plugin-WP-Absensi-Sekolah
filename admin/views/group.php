@@ -14,19 +14,80 @@ defined( 'ABSPATH' ) || exit;
   <div class="absensi-app" x-data="groupManager">
     <div class="absensi-page">
 
-      <!-- Header halaman (design.md §3.1 / §6): judul kiri + aksi utama kanan -->
+      <!-- Header: judul + subjudul (kiri) · Buat Grup (kanan) -->
       <div class="absensi-page__head">
-        <h1 class="absensi-page__title"><?php esc_html_e( 'Group', 'absensi-sekolah' ); ?></h1>
+        <div class="page-title-wrap">
+          <h1 class="absensi-page__title"><?php esc_html_e( 'Group Management', 'absensi-sekolah' ); ?></h1>
+          <p class="page-subtitle"><?php esc_html_e( 'Atur pengguna ke dalam kelas, departemen, dan peran.', 'absensi-sekolah' ); ?></p>
+        </div>
         <div class="absensi-page__actions">
           <button type="button" class="btn btn--primary" @click="openCreate()">
             <span x-html="$icon( 'plus', 18 )" aria-hidden="true"></span>
-            <?php esc_html_e( 'Tambah Group', 'absensi-sekolah' ); ?>
+            <?php esc_html_e( 'Buat Grup', 'absensi-sekolah' ); ?>
           </button>
         </div>
       </div>
 
-      <!-- Tabel Group (design.md §6): skeleton · error · tabel · empty -->
+      <!-- Layout: ringkasan (kiri) + daftar group (kanan) -->
+      <div class="group-layout">
+
+        <!-- Kolom kiri: Total Grup + Distribusi (dihitung dari daftar group) -->
+        <aside class="group-side">
+          <div class="card side-card">
+            <p class="side-card__eyebrow"><?php esc_html_e( 'Total Grup', 'absensi-sekolah' ); ?></p>
+            <span x-show="loading" class="skeleton skeleton--text" style="width:56px;height:32px;"></span>
+            <p x-show="! loading" class="side-card__value u-num" x-text="error ? '–' : totalGroup"></p>
+            <p class="side-card__foot" x-show="! loading && ! error" x-cloak>
+              <span x-html="$icon( 'users', 14 )" aria-hidden="true"></span>
+              <span class="u-num" x-text="totalMember"></span> <?php esc_html_e( 'user terdaftar', 'absensi-sekolah' ); ?>
+            </p>
+          </div>
+
+          <div class="card side-card">
+            <p class="side-card__eyebrow"><?php esc_html_e( 'Distribusi', 'absensi-sekolah' ); ?></p>
+            <div x-show="loading" x-cloak>
+              <template x-for="n in 3" :key="n">
+                <span class="skeleton skeleton--text" style="width:100%;height:14px;"></span>
+              </template>
+            </div>
+            <div x-show="! loading && ! error && distribusi.length === 0" x-cloak class="side-card__foot">
+              <?php esc_html_e( 'Belum ada group.', 'absensi-sekolah' ); ?>
+            </div>
+            <ul class="dist" x-show="! loading && ! error && distribusi.length > 0" x-cloak>
+              <template x-for="d in distribusi" :key="d.tipe">
+                <li class="dist__row">
+                  <div class="dist__head">
+                    <span class="dist__label" x-text="d.label"></span>
+                    <span class="dist__val u-num" x-text="d.jumlah"></span>
+                  </div>
+                  <div class="dist__track">
+                    <div class="dist__bar" :class="'dist__bar--' + d.tipe" :style="'width:' + d.pct + '%'"></div>
+                  </div>
+                </li>
+              </template>
+            </ul>
+          </div>
+        </aside>
+
+      <!-- Kolom kanan: tab tipe + search + tabel -->
       <div class="table-card">
+
+        <!-- Toolbar kartu: tab tipe (kiri) + cari group (kanan) -->
+        <div class="group-bar">
+          <div class="pill-tabs" role="tablist" aria-label="<?php esc_attr_e( 'Filter tipe', 'absensi-sekolah' ); ?>">
+            <template x-for="t in tipeTabs" :key="t.tipe">
+              <button type="button" class="pill" role="tab" :class="tipeFilter === t.tipe ? 'is-active' : ''"
+                      :aria-selected="tipeFilter === t.tipe" @click="pilihTipe(t.tipe)" x-text="t.label"></button>
+            </template>
+          </div>
+          <div class="input-group group-bar__search">
+            <span class="input-group__icon" x-html="$icon( 'search', 16 )" aria-hidden="true"></span>
+            <input type="search" class="input input--sm" x-model.trim="search" @input.debounce.300ms="page = 1"
+                   placeholder="<?php esc_attr_e( 'Cari grup…', 'absensi-sekolah' ); ?>"
+                   aria-label="<?php esc_attr_e( 'Cari grup', 'absensi-sekolah' ); ?>">
+          </div>
+        </div>
+
 
         <!-- Skeleton loading -->
         <div x-show="loading" x-cloak class="table-scroll" aria-hidden="true">
@@ -64,126 +125,211 @@ defined( 'ABSPATH' ) || exit;
         </div>
 
         <!-- Tabel (ada data) -->
-        <div x-show="! loading && ! error && groups.length > 0" x-cloak class="table-scroll">
+        <div x-show="! loading && ! error && totalFiltered > 0" x-cloak class="table-scroll">
           <table class="table group-table">
             <thead>
               <tr>
-                <th><?php esc_html_e( 'Nama Group', 'absensi-sekolah' ); ?></th>
+                <th><?php esc_html_e( 'Group Name', 'absensi-sekolah' ); ?></th>
                 <th><?php esc_html_e( 'Tipe', 'absensi-sekolah' ); ?></th>
-                <th><?php esc_html_e( 'Jumlah User', 'absensi-sekolah' ); ?></th>
-                <th class="col-actions"><?php esc_html_e( 'Aksi', 'absensi-sekolah' ); ?></th>
+                <th><?php esc_html_e( 'Members', 'absensi-sekolah' ); ?></th>
+                <th class="col-actions"><?php esc_html_e( 'Actions', 'absensi-sekolah' ); ?></th>
               </tr>
             </thead>
-            <!-- Satu <tbody> per group (valid HTML) → memuat baris utama + baris expand user -->
-            <template x-for="g in groups" :key="g.id">
-              <tbody>
-                <!-- Baris group: klik → buka/tutup daftar user di bawahnya -->
-                <tr class="group-row" :class="expandedId === g.id ? 'is-expanded' : ''"
-                    @click="toggleExpand(g)" role="button" tabindex="0"
-                    @keydown.enter.prevent="toggleExpand(g)" @keydown.space.prevent="toggleExpand(g)"
-                    :aria-expanded="expandedId === g.id"
-                    :aria-label="'<?php echo esc_js( __( 'Lihat user di group', 'absensi-sekolah' ) ); ?> ' + g.nama">
-                  <!-- Nama + chevron -->
-                  <td data-label="<?php esc_attr_e( 'Nama Group', 'absensi-sekolah' ); ?>">
-                    <span class="group-row__toggle">
-                      <span class="group-row__chevron" :class="expandedId === g.id ? 'is-open' : ''"
-                            x-html="$icon( 'chevron-right', 16 )" aria-hidden="true"></span>
-                      <span class="t-body-strong" x-text="g.nama"></span>
-                    </span>
+            <tbody>
+              <!-- Baris group: klik (baris / angka Members) → modal Anggota Grup.
+                   Dulu expand inline — diganti karena satu kelas bisa puluhan murid. -->
+              <template x-for="g in pagedGroups" :key="g.id">
+                <tr class="group-row" @click="openAnggota(g)" role="button" tabindex="0"
+                    @keydown.enter.prevent="openAnggota(g)" @keydown.space.prevent="openAnggota(g)"
+                    :aria-label="'<?php echo esc_js( __( 'Lihat anggota grup', 'absensi-sekolah' ) ); ?> ' + g.nama">
+                  <!-- Nama -->
+                  <td data-label="<?php esc_attr_e( 'Group Name', 'absensi-sekolah' ); ?>">
+                    <span class="group-row__name" x-text="g.nama"></span>
                   </td>
                   <!-- Tipe (badge) -->
                   <td data-label="<?php esc_attr_e( 'Tipe', 'absensi-sekolah' ); ?>">
                     <span class="badge" :class="tipeBadge(g.tipe)" x-text="tipeLabel(g.tipe)"></span>
                   </td>
-                  <!-- Jumlah User -->
-                  <td data-label="<?php esc_attr_e( 'Jumlah User', 'absensi-sekolah' ); ?>">
-                    <span class="group-count">
-                      <span class="group-count__icon" x-html="$icon( 'users', 15 )" aria-hidden="true"></span>
+                  <!-- Members: tombol → modal anggota -->
+                  <td data-label="<?php esc_attr_e( 'Members', 'absensi-sekolah' ); ?>">
+                    <button type="button" class="member-count" @click.stop="openAnggota(g)"
+                            :aria-label="'<?php echo esc_js( __( 'Lihat anggota grup', 'absensi-sekolah' ) ); ?> ' + g.nama">
+                      <span class="member-count__icon" x-html="$icon( 'users', 15 )" aria-hidden="true"></span>
                       <span class="u-num" x-text="g.jumlah_user || 0"></span>
-                    </span>
-                  </td>
-                  <!-- Aksi: edit / hapus (@click.stop → tak ikut toggle expand) -->
-                  <td class="col-actions" data-label="<?php esc_attr_e( 'Aksi', 'absensi-sekolah' ); ?>">
-                    <button type="button" class="btn btn--ghost btn--icon btn--sm" @click.stop="openEdit(g)"
-                            :aria-label="'<?php echo esc_js( __( 'Edit group', 'absensi-sekolah' ) ); ?> ' + g.nama">
-                      <span x-html="$icon( 'square-pen', 16 )"></span>
-                    </button>
-                    <button type="button" class="btn btn--ghost btn--icon btn--sm act-del" @click.stop="confirmDelete(g)"
-                            :aria-label="'<?php echo esc_js( __( 'Hapus group', 'absensi-sekolah' ) ); ?> ' + g.nama">
-                      <span x-html="$icon( 'trash-2', 16 )"></span>
                     </button>
                   </td>
-                </tr>
-
-                <!-- Baris expand: daftar user di group ini (GET /users?group_id) -->
-                <tr class="group-users-row" x-show="expandedId === g.id" x-cloak>
-                  <td colspan="4">
-                    <div class="group-users">
-                      <!-- Loading -->
-                      <div x-show="usersLoading[g.id]" class="group-users__state">
-                        <span class="skeleton skeleton--text" style="width:180px"></span>
-                        <span class="skeleton skeleton--text" style="width:140px"></span>
-                      </div>
-                      <!-- Error -->
-                      <div x-show="! usersLoading[g.id] && usersError[g.id]" class="group-users__state group-users__state--error">
-                        <span x-html="$icon( 'alert-circle', 16 )" aria-hidden="true"></span>
-                        <?php esc_html_e( 'Gagal memuat user.', 'absensi-sekolah' ); ?>
-                        <button type="button" class="btn btn--ghost btn--sm" @click.stop="loadGroupUsers(g.id)">
-                          <?php esc_html_e( 'Coba lagi', 'absensi-sekolah' ); ?>
-                        </button>
-                      </div>
-                      <!-- Kosong -->
-                      <div x-show="! usersLoading[g.id] && ! usersError[g.id] && (groupUsers[g.id] || []).length === 0"
-                           class="group-users__state group-users__state--empty">
-                        <span x-html="$icon( 'users', 16 )" aria-hidden="true"></span>
-                        <?php esc_html_e( 'Belum ada user di group ini.', 'absensi-sekolah' ); ?>
-                      </div>
-                      <!-- Daftar user -->
-                      <ul x-show="! usersLoading[g.id] && ! usersError[g.id] && (groupUsers[g.id] || []).length > 0"
-                          class="group-users__list">
-                        <template x-for="u in (groupUsers[g.id] || [])" :key="u.id">
-                          <li class="group-users__item">
-                            <span class="group-users__name" x-text="u.nama"></span>
-                            <span class="group-users__nis" x-text="u.nomor_induk"></span>
-                            <span class="group-users__rfid" x-show="u.rfid_uid"
-                                  :title="'<?php echo esc_js( __( 'Kartu RFID terpasang', 'absensi-sekolah' ) ); ?>'">
-                              <span x-html="$icon( 'credit-card', 13 )" aria-hidden="true"></span>
-                            </span>
-                          </li>
-                        </template>
-                      </ul>
+                  <!-- Actions: edit / hapus — ikon langsung, sama dengan halaman Users.
+                       @click.stop → klik ikon tak ikut membuka modal anggota. -->
+                  <td class="col-actions" data-label="<?php esc_attr_e( 'Actions', 'absensi-sekolah' ); ?>">
+                    <div class="row-actions-ic">
+                      <button type="button" class="act-ic" @click.stop="openEdit(g)"
+                              :aria-label="'<?php echo esc_js( __( 'Edit grup', 'absensi-sekolah' ) ); ?> ' + g.nama"
+                              :title="'<?php echo esc_js( __( 'Edit grup', 'absensi-sekolah' ) ); ?>'">
+                        <span x-html="$icon( 'square-pen', 16 )"></span>
+                      </button>
+                      <button type="button" class="act-ic act-ic--danger" @click.stop="confirmDelete(g)"
+                              :aria-label="'<?php echo esc_js( __( 'Hapus grup', 'absensi-sekolah' ) ); ?> ' + g.nama"
+                              :title="'<?php echo esc_js( __( 'Hapus grup', 'absensi-sekolah' ) ); ?>'">
+                        <span x-html="$icon( 'trash-2', 16 )"></span>
+                      </button>
                     </div>
                   </td>
                 </tr>
-              </tbody>
-            </template>
+              </template>
+            </tbody>
           </table>
         </div>
 
-        <!-- Empty (belum ada group) -->
-        <div x-show="! loading && ! error && groups.length === 0" x-cloak class="empty">
+        <!-- Empty: belum ada group SAMA SEKALI vs hasil filter kosong -->
+        <div x-show="! loading && ! error && totalFiltered === 0" x-cloak class="empty">
           <div class="empty__icon" x-html="$icon( 'layers', 32 )" aria-hidden="true"></div>
-          <p class="empty__title"><?php esc_html_e( 'Belum ada group', 'absensi-sekolah' ); ?></p>
-          <p class="empty__desc"><?php esc_html_e( 'Buat group pertama (kelas/guru/staff) untuk mengelompokkan user.', 'absensi-sekolah' ); ?></p>
-          <button type="button" class="btn btn--primary" @click="openCreate()">
+          <p class="empty__title" x-text="groups.length === 0
+            ? '<?php echo esc_js( __( 'Belum ada grup', 'absensi-sekolah' ) ); ?>'
+            : '<?php echo esc_js( __( 'Tak ada grup cocok', 'absensi-sekolah' ) ); ?>'"></p>
+          <p class="empty__desc" x-text="groups.length === 0
+            ? '<?php echo esc_js( __( 'Buat grup pertama (kelas/guru/staff) untuk mengelompokkan user.', 'absensi-sekolah' ) ); ?>'
+            : '<?php echo esc_js( __( 'Ubah kata kunci atau pilih tipe lain.', 'absensi-sekolah' ) ); ?>'"></p>
+          <button type="button" class="btn btn--primary" x-show="groups.length === 0" @click="openCreate()">
             <span x-html="$icon( 'plus', 16 )" aria-hidden="true"></span>
-            <?php esc_html_e( 'Tambah Group', 'absensi-sekolah' ); ?>
+            <?php esc_html_e( 'Buat Grup', 'absensi-sekolah' ); ?>
           </button>
+        </div>
+
+        <!-- Footer: info jumlah + pagination (bila >1 halaman) -->
+        <div x-show="! loading && ! error && totalFiltered > 0" x-cloak class="table-foot">
+          <span class="table-foot__info">
+            <?php esc_html_e( 'Menampilkan', 'absensi-sekolah' ); ?>
+            <strong class="u-num" x-text="pageStart"></strong>–<strong class="u-num" x-text="pageEnd"></strong>
+            <?php esc_html_e( 'dari', 'absensi-sekolah' ); ?>
+            <strong class="u-num" x-text="totalFiltered"></strong> <?php esc_html_e( 'grup', 'absensi-sekolah' ); ?>
+          </span>
+          <div class="pagination__pages" x-show="totalPages > 1">
+            <button type="button" class="page-btn" :disabled="page <= 1" @click="goPage(page - 1)"
+                    aria-label="<?php esc_attr_e( 'Halaman sebelumnya', 'absensi-sekolah' ); ?>">
+              <span x-html="$icon( 'chevron-left', 16 )"></span>
+            </button>
+            <template x-for="(p, i) in pageWindow" :key="i">
+              <button type="button" class="page-btn" :class="p === page ? 'is-active' : ''"
+                      :disabled="p === '…'" @click="goPage(p)" x-text="p"></button>
+            </template>
+            <button type="button" class="page-btn" :disabled="page >= totalPages" @click="goPage(page + 1)"
+                    aria-label="<?php esc_attr_e( 'Halaman berikutnya', 'absensi-sekolah' ); ?>">
+              <span x-html="$icon( 'chevron-right', 16 )"></span>
+            </button>
+          </div>
+        </div>
+      </div><!-- /.table-card -->
+      </div><!-- /.group-layout -->
+
+      <!-- Modal Anggota Grup: daftar user di grup (GET /users?group_id) + cari + pagination.
+           Pengganti expand inline — kelas bisa berisi puluhan murid. -->
+      <div x-show="anggotaOpen" x-cloak class="modal-overlay"
+           @keydown.escape.window="closeAnggota()" @click.self="closeAnggota()">
+        <div class="modal modal--lg modal--plain" role="dialog" aria-modal="true" aria-labelledby="ga-title">
+          <div class="modal__head">
+            <div>
+              <h2 class="modal__title" id="ga-title"
+                  x-text="'<?php echo esc_js( __( 'Anggota —', 'absensi-sekolah' ) ); ?> ' + (anggotaGroup ? anggotaGroup.nama : '')"></h2>
+              <p class="card__sub">
+                <span class="u-num" x-text="anggotaGroup ? (anggotaGroup.jumlah_user || 0) : 0"></span>
+                <?php esc_html_e( 'anggota terdaftar', 'absensi-sekolah' ); ?>
+              </p>
+            </div>
+            <button type="button" class="modal__close" @click="closeAnggota()"
+                    aria-label="<?php esc_attr_e( 'Tutup', 'absensi-sekolah' ); ?>">
+              <span x-html="$icon( 'x', 18 )"></span>
+            </button>
+          </div>
+
+          <div class="modal__body">
+            <!-- Cari anggota (client) -->
+            <div class="input-group" x-show="anggotaSemua.length > 0">
+              <span class="input-group__icon" x-html="$icon( 'search', 16 )" aria-hidden="true"></span>
+              <input type="search" class="input" x-model.trim="anggotaSearch" @input="anggotaPage = 1"
+                     placeholder="<?php esc_attr_e( 'Cari nama atau nomor induk…', 'absensi-sekolah' ); ?>"
+                     aria-label="<?php esc_attr_e( 'Cari anggota', 'absensi-sekolah' ); ?>">
+            </div>
+
+            <!-- Loading -->
+            <div x-show="anggotaLoading" x-cloak>
+              <template x-for="n in 4" :key="n">
+                <div class="skeleton skeleton--row"></div>
+              </template>
+            </div>
+
+            <!-- Error -->
+            <div x-show="! anggotaLoading && anggotaError" x-cloak class="alert alert--danger">
+              <span class="alert__icon" x-html="$icon( 'alert-circle', 18 )" aria-hidden="true"></span>
+              <span style="flex:1;"><?php esc_html_e( 'Gagal memuat anggota.', 'absensi-sekolah' ); ?></span>
+              <button type="button" class="btn btn--outline btn--sm" @click="loadGroupUsers(anggotaId)">
+                <?php esc_html_e( 'Coba Lagi', 'absensi-sekolah' ); ?>
+              </button>
+            </div>
+
+            <!-- Kosong -->
+            <div x-show="! anggotaLoading && ! anggotaError && anggotaTotal === 0" x-cloak class="empty" style="padding:28px 16px;">
+              <div class="empty__icon" x-html="$icon( 'users', 28 )" aria-hidden="true"></div>
+              <p class="empty__desc" x-text="anggotaSemua.length === 0
+                ? '<?php echo esc_js( __( 'Belum ada anggota di grup ini.', 'absensi-sekolah' ) ); ?>'
+                : '<?php echo esc_js( __( 'Tak ada anggota cocok dengan pencarian.', 'absensi-sekolah' ) ); ?>'"></p>
+            </div>
+
+            <!-- Daftar anggota (halaman aktif) -->
+            <ul class="anggota-list" x-show="! anggotaLoading && ! anggotaError && anggotaTotal > 0" x-cloak>
+              <template x-for="u in anggotaPaged" :key="u.id">
+                <li class="anggota-item">
+                  <span class="table__avatar" :class="avatarTone(u.nama)" x-text="inisial(u.nama)" aria-hidden="true"></span>
+                  <span class="anggota-item__main">
+                    <span class="anggota-item__name" x-text="u.nama"></span>
+                    <span class="anggota-item__nis u-num" x-text="u.nomor_induk"></span>
+                  </span>
+                  <!-- UID penuh dalam chip abu — sama persis dengan kolom RFID di halaman Users -->
+                  <span class="rfid-chip-uid" x-show="u.rfid_uid" x-text="u.rfid_uid"></span>
+                  <span class="rfid-empty" x-show="! u.rfid_uid" aria-label="<?php esc_attr_e( 'Belum ada kartu', 'absensi-sekolah' ); ?>">–</span>
+                </li>
+              </template>
+            </ul>
+
+            <!-- Footer daftar: info + pagination -->
+            <div class="anggota-foot" x-show="! anggotaLoading && ! anggotaError && anggotaTotal > 0" x-cloak>
+              <span class="table-foot__info">
+                <?php esc_html_e( 'Menampilkan', 'absensi-sekolah' ); ?>
+                <strong class="u-num" x-text="anggotaStart"></strong>–<strong class="u-num" x-text="anggotaEnd"></strong>
+                <?php esc_html_e( 'dari', 'absensi-sekolah' ); ?>
+                <strong class="u-num" x-text="anggotaTotal"></strong>
+              </span>
+              <div class="pagination__pages" x-show="anggotaTotalPages > 1">
+                <button type="button" class="page-btn" :disabled="anggotaPage <= 1" @click="goAnggotaPage(anggotaPage - 1)"
+                        aria-label="<?php esc_attr_e( 'Halaman sebelumnya', 'absensi-sekolah' ); ?>">
+                  <span x-html="$icon( 'chevron-left', 16 )"></span>
+                </button>
+                <span class="pagination__info">
+                  <span class="u-num" x-text="Math.min(anggotaPage, anggotaTotalPages)"></span> /
+                  <span class="u-num" x-text="anggotaTotalPages"></span>
+                </span>
+                <button type="button" class="page-btn" :disabled="anggotaPage >= anggotaTotalPages" @click="goAnggotaPage(anggotaPage + 1)"
+                        aria-label="<?php esc_attr_e( 'Halaman berikutnya', 'absensi-sekolah' ); ?>">
+                  <span x-html="$icon( 'chevron-right', 16 )"></span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="modal__footer">
+            <button type="button" class="btn btn--outline" @click="closeAnggota()"><?php esc_html_e( 'Tutup', 'absensi-sekolah' ); ?></button>
+          </div>
         </div>
       </div>
 
       <!-- Modal Form (tambah/edit group) — design.md §6 -->
       <div x-show="modalOpen" x-cloak class="modal-overlay"
            @keydown.escape.window="closeModal()" @click.self="closeModal()">
-        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="gf-title" @keydown.tab="trapFocus($event)">
+        <div class="modal modal--plain" role="dialog" aria-modal="true" aria-labelledby="gf-title" @keydown.tab="trapFocus($event)">
           <div class="modal__head">
-            <div class="modal__head-ic">
-              <span class="card-chip card-chip--primary" x-html="$icon( 'layers', 18 )" aria-hidden="true"></span>
-              <h2 class="modal__title" id="gf-title"
-                  x-text="editing
-                    ? '<?php echo esc_js( __( 'Edit Group', 'absensi-sekolah' ) ); ?>'
-                    : '<?php echo esc_js( __( 'Tambah Group', 'absensi-sekolah' ) ); ?>'"></h2>
-            </div>
+            <h2 class="modal__title" id="gf-title"
+                x-text="editing
+                  ? '<?php echo esc_js( __( 'Edit Grup', 'absensi-sekolah' ) ); ?>'
+                  : '<?php echo esc_js( __( 'Buat Grup Baru', 'absensi-sekolah' ) ); ?>'"></h2>
             <button type="button" class="modal__close" @click="closeModal()"
                     aria-label="<?php esc_attr_e( 'Tutup', 'absensi-sekolah' ); ?>">
               <span x-html="$icon( 'x', 18 )"></span>
@@ -198,24 +344,31 @@ defined( 'ABSPATH' ) || exit;
                 <span x-text="formError"></span>
               </div>
 
-              <!-- Nama Group (wajib, ≤100) -->
+              <!-- Nama Grup (wajib, ≤100) -->
               <div class="field">
-                <label class="field__label" for="gf-nama"><?php esc_html_e( 'Nama Group *', 'absensi-sekolah' ); ?></label>
+                <label class="field__label" for="gf-nama"><?php esc_html_e( 'Nama Grup', 'absensi-sekolah' ); ?></label>
                 <input id="gf-nama" type="text" class="input" :class="fieldErr.nama ? 'input--error' : ''"
-                       x-model.trim="form.nama" maxlength="100" required @input="fieldErr.nama = false">
+                       x-model.trim="form.nama" maxlength="100" required @input="fieldErr.nama = false"
+                       placeholder="<?php esc_attr_e( 'Contoh: XII MIPA 1', 'absensi-sekolah' ); ?>">
               </div>
 
-              <!-- Tipe (bebas ketik, BE v2.1.0 VARCHAR — bukan lagi ENUM kelas/guru/staff) -->
+              <!-- Tipe: 3 bawaan + "Lainnya" (BE simpan VARCHAR bebas sejak v2.1.0,
+                   jadi tipe kustom tetap bisa dibuat lewat opsi Lainnya) -->
               <div class="field">
                 <label class="field__label" for="gf-tipe"><?php esc_html_e( 'Tipe', 'absensi-sekolah' ); ?></label>
-                <input id="gf-tipe" type="text" class="input" list="gf-tipe-list"
-                       x-model.trim="form.tipe" maxlength="50"
-                       placeholder="<?php esc_attr_e( 'Kelas, Guru, Staff, atau ketik tipe baru...', 'absensi-sekolah' ); ?>">
-                <datalist id="gf-tipe-list">
-                  <template x-for="t in tipeSuggestions" :key="t">
-                    <option :value="t"></option>
-                  </template>
-                </datalist>
+                <select id="gf-tipe" class="select" @change="gantiTipePilihan($event.target.value)">
+                  <option value="kelas" :selected="tipePilihan === 'kelas'"><?php esc_html_e( 'Kelas', 'absensi-sekolah' ); ?></option>
+                  <option value="guru" :selected="tipePilihan === 'guru'"><?php esc_html_e( 'Guru', 'absensi-sekolah' ); ?></option>
+                  <option value="staff" :selected="tipePilihan === 'staff'"><?php esc_html_e( 'Staff', 'absensi-sekolah' ); ?></option>
+                  <option value="lainnya" :selected="tipePilihan === 'lainnya'"><?php esc_html_e( 'Lainnya…', 'absensi-sekolah' ); ?></option>
+                </select>
+              </div>
+
+              <!-- Tipe kustom (muncul hanya bila pilih "Lainnya") -->
+              <div class="field" x-show="tipePilihan === 'lainnya'" x-cloak>
+                <label class="field__label" for="gf-tipe-lain"><?php esc_html_e( 'Nama Tipe', 'absensi-sekolah' ); ?></label>
+                <input id="gf-tipe-lain" type="text" class="input" x-model.trim="form.tipe" maxlength="50"
+                       placeholder="<?php esc_attr_e( 'Contoh: Ekstrakurikuler', 'absensi-sekolah' ); ?>">
               </div>
             </div>
 
@@ -223,9 +376,7 @@ defined( 'ABSPATH' ) || exit;
               <button type="button" class="btn btn--outline" @click="closeModal()"><?php esc_html_e( 'Batal', 'absensi-sekolah' ); ?></button>
               <button type="submit" class="btn btn--primary" :class="saving ? 'is-loading' : ''" :disabled="! canSave">
                 <span class="btn__spin" x-show="saving" x-cloak aria-hidden="true"></span>
-                <span class="btn__label" x-text="editing
-                  ? '<?php echo esc_js( __( 'Simpan Perubahan', 'absensi-sekolah' ) ); ?>'
-                  : '<?php echo esc_js( __( 'Simpan', 'absensi-sekolah' ) ); ?>'"></span>
+                <span class="btn__label"><?php esc_html_e( 'Simpan', 'absensi-sekolah' ); ?></span>
               </button>
             </div>
           </form>
