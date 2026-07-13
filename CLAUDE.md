@@ -75,12 +75,16 @@ Namespace `absensi/v1` (`/wp-json/absensi/v1/`). Konstanta `NAMESPACE` diulang d
 | GET/POST | `/users` | `manage_options` | [UsersEndpoint.php](includes/api/UsersEndpoint.php) |
 | GET/PUT/DELETE | `/users/{id}` | `manage_options` | UsersEndpoint |
 | POST | `/users/{id}/rfid` | `manage_options` | UsersEndpoint (bind kartu; ganti enroll lama) |
-| POST | `/users/import` | `manage_options` | UsersEndpoint (xlsx, PhpSpreadsheet) |
+| POST | `/users/bulk-delete` | `manage_options` | UsersEndpoint (`{ids:[int]}` → `{deleted:N}`; hapus massal dari checklist tabel, 1 query `DELETE ... IN`, cap 500) |
+| POST | `/users/import` | `manage_options` | UsersEndpoint (xlsx, PhpSpreadsheet; kolom `nama`,`nomor_induk` + opsional `group`,`tipe` — group resolve by nama+tipe, auto-create pakai tipe dari file; tanpa `tipe` group wajib sudah ada) |
 | POST | `/guru/import` | `manage_options` | UsersEndpoint (`import_guru`: bulk WP user role `guru` dari xlsx) |
 | GET/POST | `/group` | `manage_options` | [GroupEndpoint.php](includes/api/GroupEndpoint.php) |
 | GET/PUT/DELETE | `/group/{id}` | `manage_options` | GroupEndpoint |
 | GET/POST/PUT/DELETE | `/jadwal`, `/jadwal/{id}` | `manage_options` | [JadwalEndpoint.php](includes/api/JadwalEndpoint.php) |
-| GET | `/laporan`, `/laporan/summary`, `/laporan/export` | `manage_options` | [LaporanEndpoint.php](includes/api/LaporanEndpoint.php) |
+| POST | `/rekap/status` | `manage_options` | [RekapEndpoint.php](includes/api/RekapEndpoint.php) — koreksi status admin (Alpha→Izin/Sakit dst). **UPSERT by (`user_id`,`tanggal`)**, BUKAN by id: baris alpha itu virtual (tak ada di DB) → belum ada = INSERT `mode=manual` (201), sudah ada = UPDATE **status+catatan saja** (200; jam masuk/keluar & bukti selfie tak diutak-atik). FE selalu kirim user_id+tanggal, tak perlu bercabang. |
+| DELETE | `/rekap/{id}` | `manage_options` | RekapEndpoint — batalkan penyesuaian → baris kembali dihitung otomatis (alpha lagi). **Hanya `mode=manual`**; rekap selfie/RFID → **409 `bukan_manual`** (bukti kehadiran, bukan penyesuaian). |
+| GET/POST/PUT/DELETE | `/libur`, `/libur/{id}` | `manage_options` | [LiburEndpoint.php](includes/api/LiburEndpoint.php) — hari libur (v2.2.0). `GET` filter `dari`/`sampai` = **bersinggungan** (libur semester tetap muncul saat lihat 1 bulan di tengahnya). `tanggal_selesai` kosong → libur sehari. 422 `tanggal_invalid` / `rentang_terbalik` |
+| GET | `/laporan`, `/laporan/summary`, `/laporan/export` | `manage_options` | [LaporanEndpoint.php](includes/api/LaporanEndpoint.php) — **hasilnya = rekap nyata + baris ALPHA virtual** (KehadiranHelper). Rekap diambil TANPA `LIMIT` lalu digabung+diurut+dipaginasi di PHP (kalau `LIMIT` di SQL, halaman 2 melewatkan alpha). Export ikut memuat alpha. |
 | GET/PUT | `/settings` | `manage_options` | [SettingsEndpoint.php](includes/api/SettingsEndpoint.php) |
 
 **Auth model (tiga kelas):**
@@ -97,7 +101,8 @@ Namespace `absensi/v1` (`/wp-json/absensi/v1/`). Konstanta `NAMESPACE` diulang d
 
 ## Helpers (`includes/helpers/`)
 
-- **[SanitizeHelper.php](includes/helpers/SanitizeHelper.php)** — WAJIB sebelum tiap `$wpdb->insert/update`. `::users()` (nomor_induk≤30, nama≤150, group_id absint, rfid_uid), `::group()` (nama≤100, tipe whitelist), `::rekap()` (whitelist `status`/`mode`, kunci `user_id`/`group_id`), `::jadwal()` (group_id, normalize jam), `::rfid_uid()` (strip non-hex, uppercase, trim CR/LF dari HID). (`::siswa()`/`::kelas()` lama sudah dibuang.)
+- **[SanitizeHelper.php](includes/helpers/SanitizeHelper.php)** — WAJIB sebelum tiap `$wpdb->insert/update`. `::users()` (nomor_induk≤30, nama≤150, group_id absint, rfid_uid), `::group()` (nama≤100, **tipe string bebas ≤50** — bukan whitelist; `GroupEndpoint` menolak tipe kosong → 422 `tipe_wajib`, tak ada preset/default), `::rekap()` (whitelist `status`/`mode`, kunci `user_id`/`group_id`), `::jadwal()` (group_id, normalize jam), `::libur()` (tanggal via `::normalize_date()` — tolak 2026-02-31 pakai `checkdate`; keterangan ≤150), `::rfid_uid()` (strip non-hex, uppercase, trim CR/LF dari HID). (`::siswa()`/`::kelas()` lama sudah dibuang.)
+- **[KehadiranHelper.php](includes/helpers/KehadiranHelper.php)** — **mesin ALPHA (v2.2.0)**. Rekap hanya lahir saat orang tap/selfie → yang bolos TAK punya baris. Helper ini menghitung alpha **saat laporan dibuka** (tanpa cron, tanpa nulis baris): `::alpha_rows($dari,$sampai,$group_id,$tipe)` / `::hitung_alpha(...)`. Aturan: hari aktif ikut **`absensi_jadwal` per group** (group tanpa jadwal → Sen–Jum + `absensi_jam_keluar` global) · tanggal di `absensi_libur` → bukan hari aktif · user dihitung **sejak `users.created_at`** · alpha baru sah **setelah jam pulang hari itu lewat** (hari berjalan = "belum absen", masa depan tak pernah alpha) · sudah punya rekap → bukan alpha. Baris alpha **virtual** (`id=null`, `virtual=true`) — ubah status = INSERT, bukan UPDATE. Dipakai `/laporan`, `/laporan/summary`, DAN export.
 - **[GeoHelper.php](includes/helpers/GeoHelper.php)** — `::haversine($lat1,$lng1,$lat2,$lng2)` → meter. `::is_valid()` range cek.
 - **[FileHelper.php](includes/helpers/FileHelper.php)** — `::save_selfie($base64,$user_id)` → `uploads/absensi-selfie/Y/m/`, validasi magic bytes (JPEG `ffd8ff`/PNG `89504e47`), cap 5MB, nama random. `::save_bukti()` (izin/sakit, terima JPG/PNG/PDF — dormant tapi ada). `::selfie_url()`/`::file_url()` → URL publik. Guard `.htaccess`+`index.php` di folder upload.
 

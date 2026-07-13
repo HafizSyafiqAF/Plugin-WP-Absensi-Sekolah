@@ -248,6 +248,12 @@ defined( 'ABSPATH' ) || exit;
                             :aria-label="'<?php echo esc_js( __( 'Detail absensi', 'absensi-sekolah' ) ); ?> ' + (r.nama || '')">
                       <?php esc_html_e( 'Detail', 'absensi-sekolah' ); ?>
                     </button>
+                    <!-- Koreksi status (mis. Alpha → Izin). Baris alpha virtual (id null) pun bisa:
+                         BE upsert by (user_id, tanggal). -->
+                    <button type="button" class="link-btn" @click="openStatus(r)"
+                            :aria-label="'<?php echo esc_js( __( 'Ubah status', 'absensi-sekolah' ) ); ?> ' + (r.nama || '')">
+                      <?php esc_html_e( 'Ubah', 'absensi-sekolah' ); ?>
+                    </button>
                   </td>
                 </tr>
               </template>
@@ -340,7 +346,76 @@ defined( 'ABSPATH' ) || exit;
 
           <div class="modal__footer">
             <button type="button" class="btn btn--outline" @click="closeDetail()"><?php esc_html_e( 'Tutup', 'absensi-sekolah' ); ?></button>
+            <button type="button" class="btn btn--primary" @click="openStatus(detailRow)">
+              <span x-html="$icon( 'square-pen', 16 )" aria-hidden="true"></span>
+              <?php esc_html_e( 'Ubah Status', 'absensi-sekolah' ); ?>
+            </button>
           </div>
+        </div>
+      </div>
+
+      <!-- Modal Ubah Status (koreksi admin) → POST /rekap/status { user_id, tanggal, status, catatan }.
+           Baris Alpha tak punya id (virtual) → BE upsert lewat (user_id + tanggal). -->
+      <div x-show="statusOpen" x-cloak class="modal-overlay"
+           @keydown.escape.window="closeStatus()" @click.self="closeStatus()">
+        <!-- (modal Detail di atas juga tanpa focus-trap: laporanManager belum punya trapFocus) -->
+        <div class="modal modal--plain" role="dialog" aria-modal="true" aria-labelledby="ls-title">
+          <div class="modal__head">
+            <div>
+              <h2 class="modal__title" id="ls-title"><?php esc_html_e( 'Ubah Status Kehadiran', 'absensi-sekolah' ); ?></h2>
+              <p class="card__sub" x-text="statusRow ? (statusRow.nama || '—') + ' · ' + tglPendek(statusRow.tanggal) : ''"></p>
+            </div>
+            <button type="button" class="modal__close" @click="closeStatus()"
+                    aria-label="<?php esc_attr_e( 'Tutup', 'absensi-sekolah' ); ?>">
+              <span x-html="$icon( 'x', 18 )"></span>
+            </button>
+          </div>
+
+          <form @submit.prevent="simpanStatus()">
+            <div class="modal__body">
+              <div class="alert alert--danger" x-show="statusError" x-cloak>
+                <span class="alert__icon" x-html="$icon( 'alert-triangle', 18 )" aria-hidden="true"></span>
+                <span x-text="statusError"></span>
+              </div>
+
+              <!-- Baris alpha belum punya rekap → beri tahu admin bahwa ini akan MEMBUAT catatan baru. -->
+              <div class="alert alert--info" x-show="statusRow && statusRow.virtual" x-cloak>
+                <span class="alert__icon" x-html="$icon( 'info', 18 )" aria-hidden="true"></span>
+                <span><?php esc_html_e( 'Belum ada catatan absensi untuk hari ini (dihitung Alpha otomatis). Menyimpan akan membuat catatan baru.', 'absensi-sekolah' ); ?></span>
+              </div>
+
+              <div class="field">
+                <label class="field__label" for="ls-status"><?php esc_html_e( 'Status', 'absensi-sekolah' ); ?></label>
+                <select id="ls-status" class="select" x-model="statusPilih" required>
+                  <template x-for="o in statusOpsi" :key="o.value">
+                    <option :value="o.value" x-text="o.label"></option>
+                  </template>
+                </select>
+              </div>
+
+              <div class="field">
+                <label class="field__label" for="ls-catatan"><?php esc_html_e( 'Catatan (opsional)', 'absensi-sekolah' ); ?></label>
+                <textarea id="ls-catatan" class="input textarea" x-model.trim="statusNote" maxlength="500"
+                          placeholder="<?php esc_attr_e( 'mis. Surat dokter, dispensasi lomba…', 'absensi-sekolah' ); ?>"></textarea>
+              </div>
+            </div>
+
+            <div class="modal__footer">
+              <!-- Hanya baris hasil koreksi admin (mode manual) yang bisa dibatalkan; absensi
+                   selfie/RFID = bukti kehadiran, BE menolaknya (409). -->
+              <button type="button" class="btn btn--ghost" x-show="statusBisaBatal" x-cloak
+                      @click="batalkanStatus()" :disabled="statusBusy">
+                <span x-html="$icon( 'rotate-ccw', 16 )" aria-hidden="true"></span>
+                <?php esc_html_e( 'Batalkan penyesuaian', 'absensi-sekolah' ); ?>
+              </button>
+              <button type="button" class="btn btn--outline" @click="closeStatus()"><?php esc_html_e( 'Batal', 'absensi-sekolah' ); ?></button>
+              <button type="submit" class="btn btn--primary" :class="statusBusy ? 'is-loading' : ''"
+                      :disabled="! statusPilih || statusBusy">
+                <span class="btn__spin" x-show="statusBusy" x-cloak aria-hidden="true"></span>
+                <span class="btn__label"><?php esc_html_e( 'Simpan', 'absensi-sekolah' ); ?></span>
+              </button>
+            </div>
+          </form>
         </div>
       </div>
 

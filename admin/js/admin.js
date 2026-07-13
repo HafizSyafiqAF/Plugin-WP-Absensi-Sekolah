@@ -1967,6 +1967,76 @@ tr:nth-child(even) td{background:#f9f9f9}
     closeDetail()  { this.detailOpen = false; },
     metodeLabel(m) { return ({ selfie: 'Selfie', rfid: 'RFID', manual: 'Manual' })[m] || '—'; },
 
+    /* ── Ubah status (koreksi admin) → POST /rekap/status ────────────────────
+     * Baris ALPHA itu VIRTUAL (id = null, virtual = true): tak ada barisnya di DB. Maka kirimannya
+     * SELALU kunci alami (user_id + tanggal), bukan id — BE yang memutuskan INSERT (alpha) atau
+     * UPDATE (baris sudah ada). FE tak perlu bercabang.
+     * "Batalkan penyesuaian" (DELETE) hanya untuk baris buatan admin (mode manual) → baris kembali
+     * dihitung otomatis. Rekap selfie/RFID tak boleh dihapus (BE balas 409). */
+    statusOpen:  false,
+    statusRow:   null,   // baris yang sedang dikoreksi
+    statusPilih: '',     // status baru
+    statusNote:  '',     // catatan
+    statusBusy:  false,
+    statusError: '',
+    statusOpsi: [
+      { value: 'hadir', label: 'Hadir' },
+      { value: 'telat', label: 'Telat' },
+      { value: 'izin',  label: 'Izin'  },
+      { value: 'sakit', label: 'Sakit' },
+      { value: 'alpha', label: 'Alpha' },
+    ],
+
+    openStatus(r) {
+      this.statusRow   = r;
+      this.statusPilih = r.status || '';
+      this.statusNote  = r.catatan || '';
+      this.statusError = '';
+      this.statusOpen  = true;
+      this.detailOpen  = false;   // dipanggil juga dari modal Detail
+    },
+    closeStatus() { this.statusOpen = false; },
+
+    /* Baris hasil koreksi admin (bukan bukti selfie/RFID) → boleh dibatalkan. */
+    get statusBisaBatal() {
+      return !! (this.statusRow && this.statusRow.id && this.statusRow.mode === 'manual');
+    },
+
+    async simpanStatus() {
+      if (! this.statusRow || ! this.statusPilih || this.statusBusy) return;
+      this.statusBusy = true; this.statusError = '';
+      try {
+        await window.api.post('rekap/status', {
+          user_id: this.statusRow.user_id,
+          tanggal: this.statusRow.tanggal,
+          status:  this.statusPilih,
+          catatan: this.statusNote,
+        });
+        window.absensiToast('Status diperbarui.', 'success');
+        this.statusOpen = false;
+        this.loadSummary(); this.loadLaporan(); this.loadTrend();
+      } catch (err) {
+        this.statusError = window.absensiApiError(err).message;
+      } finally {
+        this.statusBusy = false;
+      }
+    },
+
+    async batalkanStatus() {
+      if (! this.statusBisaBatal || this.statusBusy) return;
+      this.statusBusy = true; this.statusError = '';
+      try {
+        await window.api.delete('rekap/' + this.statusRow.id);
+        window.absensiToast('Penyesuaian dibatalkan.', 'success');
+        this.statusOpen = false;
+        this.loadSummary(); this.loadLaporan(); this.loadTrend();
+      } catch (err) {
+        this.statusError = window.absensiApiError(err).message;   // 409 bila bukan manual
+      } finally {
+        this.statusBusy = false;
+      }
+    },
+
     // Format export tersedia (design.md §8): CSV/XLSX/PDF.
     exportFormats: [
       { key: 'csv',  label: 'CSV' },
