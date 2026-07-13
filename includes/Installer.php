@@ -10,7 +10,7 @@ defined( 'ABSPATH' ) || exit;
 class Installer {
 
     /** Versi skema DB – naikkan setiap ada perubahan tabel. */
-    const DB_VERSION = '2.1.0';
+    const DB_VERSION = '2.2.0';
 
     /**
      * Capability gerbang akses kiosk RFID (page /absensi/guru + endpoint /absen/rfid).
@@ -127,6 +127,20 @@ class Installer {
             UNIQUE KEY unik_user_tanggal (user_id, tanggal),
             KEY tanggal (tanggal),
             KEY group_id (group_id)
+        ) $charset;" );
+
+        // Tabel hari libur (v2.2.0) — tanggal yang TIDAK dihitung kehadiran (jadi bukan alpha).
+        // Disimpan sebagai RENTANG: libur sehari → tanggal_mulai = tanggal_selesai. Rentang boleh
+        // tumpang tindih (libur tetap libur), jadi tak ada constraint anti-overlap.
+        dbDelta( "CREATE TABLE {$wpdb->prefix}absensi_libur (
+            id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            tanggal_mulai   DATE NOT NULL,
+            tanggal_selesai DATE NOT NULL,
+            keterangan      VARCHAR(150) NOT NULL DEFAULT '' COMMENT 'mis. Idul Fitri, Libur Semester',
+            created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY tanggal_mulai (tanggal_mulai),
+            KEY tanggal_selesai (tanggal_selesai)
         ) $charset;" );
 
         update_option( 'absensi_db_version', self::DB_VERSION );

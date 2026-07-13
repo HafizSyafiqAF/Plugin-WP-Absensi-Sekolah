@@ -82,7 +82,7 @@ function absensi_uninstall_cleanup(): void {
     if ( $remove_data ) {
         // Urutan tak penting (tanpa FK). Sertakan nama lama (pra-pivot v2) + baru agar
         // bersih apa pun status migrasi; DROP IF EXISTS abaikan yang tak ada.
-        $tables = [ 'absensi_rekap', 'absensi_jadwal', 'absensi_users', 'absensi_group', 'absensi_wali', 'absensi_siswa', 'absensi_kelas' ];
+        $tables = [ 'absensi_rekap', 'absensi_jadwal', 'absensi_libur', 'absensi_users', 'absensi_group', 'absensi_wali', 'absensi_siswa', 'absensi_kelas' ];
         foreach ( $tables as $suffix ) {
             // Nama tabel tak bisa di-prepare; dirakit dari prefix + literal (tanpa input user).
             $table = $wpdb->prefix . $suffix;

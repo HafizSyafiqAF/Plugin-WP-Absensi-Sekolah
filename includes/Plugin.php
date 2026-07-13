@@ -40,6 +40,7 @@ final class Plugin {
         add_action( 'rest_api_init', [ new api\UsersEndpoint(),    'register_routes' ] );
         add_action( 'rest_api_init', [ new api\GroupEndpoint(),    'register_routes' ] );
         add_action( 'rest_api_init', [ new api\JadwalEndpoint(),   'register_routes' ] );
+        add_action( 'rest_api_init', [ new api\LiburEndpoint(),    'register_routes' ] );
         add_action( 'rest_api_init', [ new api\LaporanEndpoint(),  'register_routes' ] );
         add_action( 'rest_api_init', [ new api\SettingsEndpoint(), 'register_routes' ] );
 

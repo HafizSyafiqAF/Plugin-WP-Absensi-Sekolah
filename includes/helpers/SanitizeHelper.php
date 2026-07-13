@@ -59,6 +59,38 @@ class SanitizeHelper {
     }
 
     /**
+     * Sanitasi data hari libur (v2.2.0) untuk INSERT/UPDATE.
+     * Kolom: tanggal_mulai/tanggal_selesai (DATE 'Y-m-d'), keterangan (≤150).
+     * Tanggal tak valid → '' (endpoint menolak dengan 422). Urutan mulai>selesai TIDAK dibetulkan
+     * di sini — endpoint yang menolak, supaya admin sadar salah input (bukan diam-diam ditukar).
+     */
+    public static function libur( array $data ): array {
+        $clean = [];
+        if ( isset( $data['tanggal_mulai'] ) )   $clean['tanggal_mulai']   = self::normalize_date( $data['tanggal_mulai'] );
+        if ( isset( $data['tanggal_selesai'] ) ) $clean['tanggal_selesai'] = self::normalize_date( $data['tanggal_selesai'] );
+        if ( isset( $data['keterangan'] ) ) {
+            $clean['keterangan'] = substr( sanitize_text_field( (string) $data['keterangan'] ), 0, 150 );
+        }
+        return $clean;
+    }
+
+    /**
+     * Normalisasi tanggal ke format MySQL DATE 'Y-m-d'.
+     * Terima 'Y-m-d'. Return '' jika tak valid (termasuk tanggal mustahil seperti 2026-02-31).
+     */
+    public static function normalize_date( $value ): string {
+        $value = trim( (string) $value );
+        if ( ! preg_match( '/^(\d{4})-(\d{2})-(\d{2})$/', $value, $m ) ) {
+            return '';
+        }
+        // checkdate menolak 31 Feb / 30 Feb dll — regex saja tak cukup.
+        if ( ! checkdate( (int) $m[2], (int) $m[3], (int) $m[1] ) ) {
+            return '';
+        }
+        return sprintf( '%04d-%02d-%02d', (int) $m[1], (int) $m[2], (int) $m[3] );
+    }
+
+    /**
      * Normalisasi jam ke format MySQL TIME 'H:i:s'.
      * Terima 'H:i' atau 'H:i:s'. Return '' jika tak valid.
      */
