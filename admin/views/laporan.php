@@ -133,15 +133,26 @@ defined( 'ABSPATH' ) || exit;
                      @change="onDateChange(); applyFilter()">
             </div>
 
+            <!-- Tipe: opsinya dari tipe group yang ada di data (teks bebas, tanpa preset).
+                 Server-side (param `tipe`) → summary, tabel, DAN export ikut tersaring. -->
+            <select class="select select--sm" x-model="filter.tipe" @change="onTipeChange(); applyFilter()"
+                    aria-label="<?php esc_attr_e( 'Filter tipe', 'absensi-sekolah' ); ?>">
+              <option value=""><?php esc_html_e( 'Semua Tipe', 'absensi-sekolah' ); ?></option>
+              <template x-for="t in tipeOptions" :key="t.value">
+                <option :value="t.value" x-text="t.label"></option>
+              </template>
+            </select>
+
+            <!-- Grup: opsinya ikut menyempit sesuai Tipe (nama grup boleh kembar antar tipe). -->
             <select class="select select--sm" x-model="filter.group_id" @change="applyFilter()"
                     aria-label="<?php esc_attr_e( 'Filter grup', 'absensi-sekolah' ); ?>">
               <option value=""><?php esc_html_e( 'Semua Grup', 'absensi-sekolah' ); ?></option>
-              <template x-for="g in groups" :key="g.id">
+              <template x-for="g in groupsForFilter" :key="g.id">
                 <option :value="g.id" x-text="g.nama"></option>
               </template>
             </select>
 
-            <button type="button" class="btn btn--ghost btn--sm" x-show="filter.dari || filter.sampai || filter.group_id" x-cloak
+            <button type="button" class="btn btn--ghost btn--sm" x-show="filter.dari || filter.sampai || filter.group_id || filter.tipe" x-cloak
                     @click="resetFilter()">
               <span x-html="$icon( 'rotate-ccw', 16 )" aria-hidden="true"></span>
               <?php esc_html_e( 'Reset', 'absensi-sekolah' ); ?>

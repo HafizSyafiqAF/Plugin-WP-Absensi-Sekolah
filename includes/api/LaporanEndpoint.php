@@ -42,6 +42,7 @@ class LaporanEndpoint {
                 'sampai'   => [ 'type' => 'string' ],
                 'preset'   => [ 'type' => 'string', 'enum' => [ 'harian', 'mingguan', 'bulanan' ] ],
                 'group_id' => [ 'type' => 'integer' ],
+                'tipe'     => [ 'type' => 'string', 'maxLength' => 50 ],
             ],
         ] );
     }
@@ -88,8 +89,9 @@ class LaporanEndpoint {
         $format            = sanitize_text_field( $req->get_param( 'format' ) ) ?: 'csv';
         [ $dari, $sampai ] = $this->resolve_range( $req );
         $group             = absint( $req->get_param( 'group_id' ) );
+        $tipe              = trim( sanitize_text_field( (string) $req->get_param( 'tipe' ) ) );
 
-        $rows = $this->query_rows( $dari, $sampai, $group );
+        $rows = $this->query_rows( $dari, $sampai, $group, $tipe );
         $base = "laporan-absensi-{$dari}_sd_{$sampai}";
 
         switch ( $format ) {
@@ -141,12 +143,15 @@ class LaporanEndpoint {
      * Ambil baris laporan untuk export (tanpa paginasi, dibatasi EXPORT_MAX_ROWS).
      * Return array of row objects.
      */
-    private function query_rows( string $dari, string $sampai, int $group_id ): array {
+    private function query_rows( string $dari, string $sampai, int $group_id, string $tipe = '' ): array {
         global $wpdb;
 
         $where_parts = [ $wpdb->prepare( 'r.tanggal BETWEEN %s AND %s', $dari, $sampai ) ];
         if ( $group_id ) {
             $where_parts[] = $wpdb->prepare( 'r.group_id = %d', $group_id );
+        }
+        if ( '' !== $tipe ) {
+            $where_parts[] = $this->tipe_where( $tipe, 'r.group_id' );
         }
         $where = 'WHERE ' . implode( ' AND ', $where_parts );
 
@@ -241,6 +246,7 @@ class LaporanEndpoint {
 
         [ $tanggal_mulai, $tanggal_akhir ] = $this->resolve_range( $req );
         $group_id = absint( $req->get_param( 'group_id' ) );
+        $tipe     = trim( sanitize_text_field( (string) $req->get_param( 'tipe' ) ) );
         $per_page = min( absint( $req->get_param( 'per_page' ) ?: 50 ), 200 );
         $page     = max( 1, absint( $req->get_param( 'page' ) ?: 1 ) );
         $offset   = ( $page - 1 ) * $per_page;
@@ -250,6 +256,9 @@ class LaporanEndpoint {
         ];
         if ( $group_id ) {
             $where_parts[] = $wpdb->prepare( 'r.group_id = %d', $group_id );
+        }
+        if ( '' !== $tipe ) {
+            $where_parts[] = $this->tipe_where( $tipe, 'r.group_id' );
         }
         $where = 'WHERE ' . implode( ' AND ', $where_parts );
 
@@ -287,6 +296,7 @@ class LaporanEndpoint {
 
         [ $dari, $sampai ] = $this->resolve_range( $req );
         $group_id = absint( $req->get_param( 'group_id' ) );
+        $tipe     = trim( sanitize_text_field( (string) $req->get_param( 'tipe' ) ) );
 
         // WHERE dirakit dari fragmen yang sudah di-prepare.
         $where_parts = [
@@ -294,6 +304,9 @@ class LaporanEndpoint {
         ];
         if ( $group_id ) {
             $where_parts[] = $wpdb->prepare( 'group_id = %d', $group_id );
+        }
+        if ( '' !== $tipe ) {
+            $where_parts[] = $this->tipe_where( $tipe, 'group_id' ); // query tanpa alias
         }
         $where = 'WHERE ' . implode( ' AND ', $where_parts );
 
@@ -345,6 +358,7 @@ class LaporanEndpoint {
             'sampai'   => [ 'type' => 'string' ],
             'preset'   => [ 'type' => 'string', 'enum' => [ 'harian', 'mingguan', 'bulanan' ] ],
             'group_id' => [ 'type' => 'integer' ],
+            'tipe'     => [ 'type' => 'string', 'maxLength' => 50 ],
             'per_page' => [ 'type' => 'integer', 'default' => 50 ],
             'page'     => [ 'type' => 'integer', 'default' => 1 ],
         ];
@@ -356,6 +370,23 @@ class LaporanEndpoint {
             'sampai'   => [ 'type' => 'string' ],
             'preset'   => [ 'type' => 'string', 'enum' => [ 'harian', 'mingguan', 'bulanan' ] ],
             'group_id' => [ 'type' => 'integer' ],
+            'tipe'     => [ 'type' => 'string', 'maxLength' => 50 ],
         ];
+    }
+
+    /**
+     * Fragmen WHERE untuk filter tipe group. `tipe` milik `absensi_group`, sedangkan rekap hanya
+     * menyimpan `group_id` → dipakai subquery supaya bisa dipasang di query yang JOIN maupun yang
+     * tidak (summary query tabel rekap saja). Kolom di-whitelist pemanggil (literal, bukan input user).
+     *
+     * @param string $tipe  Tipe group (string bebas, sudah disanitasi pemanggil).
+     * @param string $kolom `r.group_id` (query ber-alias) atau `group_id` (tanpa alias).
+     */
+    private function tipe_where( string $tipe, string $kolom ): string {
+        global $wpdb;
+        return $wpdb->prepare(
+            "{$kolom} IN ( SELECT id FROM {$wpdb->prefix}absensi_group WHERE tipe = %s )",
+            $tipe
+        );
     }
 }

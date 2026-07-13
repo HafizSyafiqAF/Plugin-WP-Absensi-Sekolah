@@ -1915,6 +1915,26 @@ tr:nth-child(even) td{background:#f9f9f9}
       catch (e) { this.groups = []; }
     },
 
+    /* Opsi filter Tipe — dari daftar GROUP (tipe = string bebas, tanpa preset). Belum ada group → kosong. */
+    get tipeOptions() {
+      var dipakai = this.groups.map(function (g) { return String(g.tipe || '').trim(); }).filter(Boolean);
+      return Array.from(new Set(dipakai))
+        .sort(function (a, b) { return a.localeCompare(b, 'id'); })
+        .map(function (t) { return { value: t, label: t.charAt(0).toUpperCase() + t.slice(1) }; });
+    },
+    /* Opsi dropdown Grup — ikut Tipe yang dipilih (nama grup boleh kembar antar tipe, mis. dua "5B"). */
+    get groupsForFilter() {
+      var t = this.filter.tipe;
+      if (! t) return this.groups;
+      return this.groups.filter(function (g) { return String(g.tipe || '').trim() === t; });
+    },
+    /* Ganti Tipe → buang pilihan Grup yang tak lagi cocok. */
+    onTipeChange() {
+      if (! this.filter.group_id) return;
+      var masih = this.groupsForFilter.some((g) => String(g.id) === String(this.filter.group_id));
+      if (! masih) this.filter.group_id = '';
+    },
+
     /* Preset dipilih → kosongkan dari/sampai agar preset efektif (BE: dari+sampai > preset). */
     onPresetChange() { if (this.filter.preset) { this.filter.dari = ''; this.filter.sampai = ''; } },
     /* Tanggal manual diketik → kosongkan preset. */
@@ -1924,16 +1944,18 @@ tr:nth-child(even) td{background:#f9f9f9}
     applyFilter() { this.page = 1; this.loadSummary(); this.loadLaporan(); this.loadTrend(); },
     /* Reset semua filter ke default (rentang server = hari ini). */
     resetFilter() {
-      this.filter = { dari: '', sampai: '', preset: '', group_id: '' };
+      this.filter = { dari: '', sampai: '', preset: '', group_id: '', tipe: '' };
       this.applyFilter();
     },
 
-    /* Rakit query string dari filter aktif (abaikan yang kosong). */
+    /* Rakit query string dari filter aktif (abaikan yang kosong). Dipakai tabel, summary, DAN export
+       → filter Tipe otomatis ikut ke file export. */
     _filterQuery() {
       var p = [];
       if (this.filter.dari)     p.push('dari=' + encodeURIComponent(this.filter.dari));
       if (this.filter.sampai)   p.push('sampai=' + encodeURIComponent(this.filter.sampai));
       if (this.filter.preset)   p.push('preset=' + encodeURIComponent(this.filter.preset));
+      if (this.filter.tipe)     p.push('tipe=' + encodeURIComponent(this.filter.tipe));
       if (this.filter.group_id) p.push('group_id=' + encodeURIComponent(this.filter.group_id));
       return p.join('&');
     },
