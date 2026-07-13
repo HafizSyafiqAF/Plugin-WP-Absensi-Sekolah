@@ -865,105 +865,177 @@ tr:nth-child(even) td{background:#f9f9f9}
     },
   }));
 
+  /* ─── Jadwal & Hari Libur (design.md §7 — halaman Jadwal, v2.2.0) ────────────
+   * Dua tab dalam satu halaman karena keduanya menjawab satu pertanyaan: "kapan absensi berlaku".
+   * Keduanya jadi masukan mesin ALPHA (KehadiranHelper):
+   *   - Jadwal per group → HARI AKTIF group itu (group tanpa jadwal → Sen–Jum + Jadwal Default).
+   *   - Hari libur       → tanggal yang tak dihitung sama sekali (tak ada alpha).
+   * Endpoint: /jadwal (CRUD per group+hari), /libur (CRUD rentang tanggal), /group (opsi).
+   * (Manager lama pra-pivot dibuang: masih memanggil endpoint `kelas` yang sudah 404.) */
   Alpine.data('jadwalManager', () => ({
-    rows:      [],
-    loading:   false,
-    saving:    false,
-    error:     null,
-    showModal: false,
-    isEditing: false,
-    editId:    null,
-    kelasList: [],
-    form: { kelas_id: '', hari: 1, jam_masuk: '07:00', jam_keluar: '15:00' },
+    tab: 'jadwal',            // 'jadwal' | 'libur'
+
+    // ── Data ──
+    groups:  [],
+    jadwal:  [],              // GET /jadwal (bawa nama_group)
+    libur:   [],              // GET /libur
+    loading: false,
+    error:   false,
+
     HARI: ['', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'],
 
+    // ── Tab Jadwal: satu group dilihat sekaligus 7 hari ──
+    groupId: '',              // group yang sedang diatur
+    baris:   {},              // { [hari]: { aktif, jam_masuk, jam_keluar, id } } — form 7 hari
+    simpanHari: 0,            // hari yang sedang disimpan (0 = tak ada)
+    jadwalError: '',
+
+    // ── Tab Libur ──
+    formLibur:  { tanggal_mulai: '', tanggal_selesai: '', keterangan: '' },
+    liburBusy:  false,
+    liburError: '',
+    hapusLiburId: 0,
+
     init() {
-      this.loadKelas();
-      this.load();
+      // Tabel 7 hari SELALU dirender (x-show hanya menyembunyikan, tak mencegah render x-for) →
+      // baris[h] harus sudah ada sejak awal, kalau tidak Alpine melempar "reading 'aktif'".
+      this.isiBaris();
+      this.loadGroups();
+      this.loadJadwal();
+      this.loadLibur();
     },
 
-    async loadKelas() {
-      try {
-        const data = await window.api.get('kelas');
-        this.kelasList = data.data ?? data ?? [];
-      } catch {}
+    async loadGroups() {
+      try { this.groups = await window.api.get('group') || []; }
+      catch (e) { this.groups = []; }
     },
 
-    async load() {
-      this.loading = true;
-      this.error   = null;
+    async loadJadwal() {
+      this.loading = true; this.error = false;
       try {
-        const data = await window.api.get('jadwal');
-        this.rows = data.data ?? data ?? [];
-      } catch (err) {
-        this.error = err.message;
+        this.jadwal = await window.api.get('jadwal') || [];
+        this.isiBaris();
+      } catch (e) {
+        this.error = true; this.jadwal = [];
       } finally {
         this.loading = false;
       }
     },
 
-    openAdd() {
-      this.form      = { kelas_id: '', hari: 1, jam_masuk: '07:00', jam_keluar: '15:00' };
-      this.editId    = null;
-      this.isEditing = false;
-      this.showModal = true;
+    async loadLibur() {
+      try { this.libur = await window.api.get('libur') || []; }
+      catch (e) { this.libur = []; }
     },
 
-    openEdit(row) {
-      this.form = {
-        kelas_id:   String(row.kelas_id),
-        hari:       row.hari,
-        jam_masuk:  row.jam_masuk.slice(0, 5),
-        jam_keluar: row.jam_keluar.slice(0, 5),
-      };
-      this.editId    = row.id;
-      this.isEditing = true;
-      this.showModal = true;
+    /* Bangun form 7 hari untuk group terpilih dari jadwal yang termuat.
+       Hari yang belum punya jadwal → kosong (tak aktif). */
+    isiBaris() {
+      var gid = String(this.groupId);
+      var out = {};
+      for (var h = 1; h <= 7; h++) {
+        var j = this.jadwal.filter(function (x) {
+          return String(x.group_id) === gid && Number(x.hari) === h;
+        })[0];
+        out[h] = j
+          ? { aktif: true,  id: j.id, jam_masuk: String(j.jam_masuk).slice(0, 5), jam_keluar: String(j.jam_keluar).slice(0, 5) }
+          : { aktif: false, id: null, jam_masuk: '07:00', jam_keluar: '15:00' };
+      }
+      this.baris = out;
+    },
+    gantiGroup() { this.jadwalError = ''; this.isiBaris(); },
+
+    /* Group yang SUDAH punya jadwal → dipakai untuk keterangan "memakai Jadwal Default" di toolbar. */
+    punyaJadwal(gid) {
+      return this.jadwal.some(function (j) { return String(j.group_id) === String(gid); });
+    },
+    get groupTerpilih() {
+      var gid = String(this.groupId);
+      return this.groups.filter(function (g) { return String(g.id) === gid; })[0] || null;
     },
 
-    async save() {
-      if (!this.form.kelas_id || !this.form.hari) return;
-      this.saving = true;
+    /* Simpan satu hari: belum ada → POST, sudah ada → PUT. Toggle mati → DELETE. */
+    async simpanBaris(h) {
+      if (! this.groupId || this.simpanHari) return;
+      var b = this.baris[h];
+      this.simpanHari = h; this.jadwalError = '';
       try {
-        const body = {
-          kelas_id:   parseInt(this.form.kelas_id, 10),
-          hari:       parseInt(this.form.hari, 10),
-          jam_masuk:  this.form.jam_masuk,
-          jam_keluar: this.form.jam_keluar,
-        };
-        if (this.isEditing) {
-          await window.api.put(`jadwal/${this.editId}`, body);
+        if (! b.aktif) {
+          if (b.id) { await window.api.delete('jadwal/' + b.id); }
         } else {
-          await window.api.post('jadwal', body);
+          var body = {
+            group_id:   parseInt(this.groupId, 10),
+            hari:       h,
+            jam_masuk:  b.jam_masuk,
+            jam_keluar: b.jam_keluar,
+          };
+          if (b.id) { await window.api.put('jadwal/' + b.id, body); }
+          else      { await window.api.post('jadwal', body); }
         }
-        this.showModal = false;
-        await this.load();
+        window.absensiToast('Jadwal ' + this.HARI[h] + ' disimpan.', 'success');
+        await this.loadJadwal();
       } catch (err) {
-        const code = err.data?.code;
-        alert(
-          code === 'jadwal_duplikat' ? 'Jadwal untuk kelas dan hari ini sudah ada.'
-          : code === 'jam_urutan'   ? 'Jam keluar harus lebih besar dari jam masuk.'
-          : code === 'jam_invalid'  ? 'Format jam tidak valid. Gunakan format HH:MM.'
-          : code === 'kelas_invalid'? 'Kelas tidak ditemukan.'
-          : err.message
-        );
+        // 409 jadwal_duplikat · 422 jam_urutan/jam_invalid → tampilkan pesan BE apa adanya.
+        this.jadwalError = window.absensiApiError(err).message;
       } finally {
-        this.saving = false;
+        this.simpanHari = 0;
       }
     },
 
-    async del(id, label) {
-      if (!confirm(`Hapus jadwal "${label}"?`)) return;
+    // ── Hari libur ──
+    get liburValid() { return !! this.formLibur.tanggal_mulai; },
+
+    async tambahLibur() {
+      if (! this.liburValid || this.liburBusy) return;
+      this.liburBusy = true; this.liburError = '';
       try {
-        await window.api.delete(`jadwal/${id}`);
-        this.rows = this.rows.filter(r => r.id !== id);
+        var body = {
+          tanggal_mulai: this.formLibur.tanggal_mulai,
+          keterangan:    this.formLibur.keterangan,
+        };
+        // Kosong → BE anggap libur sehari (selesai = mulai).
+        if (this.formLibur.tanggal_selesai) { body.tanggal_selesai = this.formLibur.tanggal_selesai; }
+        await window.api.post('libur', body);
+        window.absensiToast('Hari libur ditambahkan.', 'success');
+        this.formLibur = { tanggal_mulai: '', tanggal_selesai: '', keterangan: '' };
+        await this.loadLibur();
       } catch (err) {
-        alert(err.message);
+        this.liburError = window.absensiApiError(err).message;   // 422 rentang_terbalik / tanggal_invalid
+      } finally {
+        this.liburBusy = false;
       }
     },
 
-    kelasNama(kelas_id) {
-      return this.kelasList.find(k => k.id == kelas_id)?.nama_kelas ?? `Kelas #${kelas_id}`;
+    async hapusLibur(l) {
+      if (this.hapusLiburId) return;
+      this.hapusLiburId = l.id; this.liburError = '';
+      try {
+        await window.api.delete('libur/' + l.id);
+        window.absensiToast('Hari libur dihapus.', 'success');
+        await this.loadLibur();
+      } catch (err) {
+        this.liburError = window.absensiApiError(err).message;
+      } finally {
+        this.hapusLiburId = 0;
+      }
+    },
+
+    /* '2026-08-17' → '17 Agu 2026'. Libur sehari tampil satu tanggal saja. */
+    tglPendek(t) {
+      if (! t) return '—';
+      var B = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+      var p = String(t).slice(0, 10).split('-');
+      return Number(p[2]) + ' ' + B[Number(p[1]) - 1] + ' ' + p[0];
+    },
+    rentangTeks(l) {
+      return l.tanggal_mulai === l.tanggal_selesai
+        ? this.tglPendek(l.tanggal_mulai)
+        : this.tglPendek(l.tanggal_mulai) + ' – ' + this.tglPendek(l.tanggal_selesai);
+    },
+    /* Jumlah hari yang dicakup satu baris libur (inklusif). */
+    jumlahHari(l) {
+      var a = new Date(l.tanggal_mulai + 'T00:00:00');
+      var b = new Date(l.tanggal_selesai + 'T00:00:00');
+      return Math.round((b - a) / 86400000) + 1;
     },
   }));
 

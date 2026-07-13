@@ -569,6 +569,35 @@ Skeleton 10 baris (avatar bulat + 4 balok teks). Modal saat submit: tombol spinn
 
 ---
 
+### Ubah Status (koreksi admin — v2.2.0)
+Tiap baris punya aksi **Ubah** (juga tombol **Ubah Status** di modal Detail) → modal:
+- **Status** (select): Hadir · Telat · Izin · Sakit · Alpha. **Catatan** (opsional, ≤500).
+- Baris **Alpha** = virtual (belum ada catatan di DB) → modal menampilkan info *"Belum ada catatan absensi untuk hari ini (dihitung Alpha otomatis). Menyimpan akan membuat catatan baru."*
+- Simpan → `POST /rekap/status {user_id, tanggal, status, catatan}` (upsert). Summary + tabel + grafik ikut refresh.
+- **Batalkan penyesuaian** (hanya muncul bila baris `mode=manual`) → `DELETE /rekap/{id}` → baris kembali dihitung otomatis (Alpha lagi). Rekap selfie/RFID tak bisa dihapus (BE 409) — itu bukti kehadiran; statusnya boleh dikoreksi, jam & fotonya tidak.
+
+---
+
+## 5b. Halaman: Jadwal (v2.2.0)
+
+**Menu:** Absensi → Jadwal (admin-only). Dua tab dalam satu halaman — keduanya menjawab "kapan absensi berlaku", dan keduanya jadi masukan mesin **Alpha**.
+
+**Tab 1 — Jadwal per Group** (`/jadwal`)
+- Dropdown pilih grup → tabel **7 hari** (Senin–Minggu): checkbox **Aktif** · **Jam Masuk** · **Jam Pulang** · tombol **Simpan** per baris.
+- Hari tak aktif = **bukan hari absensi** (tak dihitung Alpha); barisnya diredupkan (`.is-off`).
+- Simpan per hari: belum ada → `POST /jadwal`; sudah ada → `PUT /jadwal/{id}`; toggle dimatikan → `DELETE /jadwal/{id}`.
+- Grup **tanpa jadwal** → memakai **Jadwal Default** dari Pengaturan (Senin–Jumat). Ditulis eksplisit di alert + keterangan di toolbar. (Dulu dinamai "Jadwal Global" — menyesatkan: kesannya menimpa semua grup, padahal cuma cadangan untuk grup yang belum diatur. **Tidak** ada penanda di halaman Group — sengaja, agar halaman Group tetap bersih.)
+- **Toleransi telat tetap di Pengaturan dan berlaku untuk SEMUA grup** — dihitung dari `jam_masuk` jadwal grup masing-masing, bukan dari jam di Jadwal Default. (`batas telat = jam_masuk grup + toleransi`.)
+- Error BE ditampilkan apa adanya: 409 `jadwal_duplikat`, 422 `jam_urutan` (jam pulang harus > jam masuk).
+
+**Tab 2 — Hari Libur** (`/libur`)
+- Form sebaris: **Tanggal** · **Sampai (opsional)** · **Keterangan** → **Tambah**. Kosongkan "Sampai" = libur sehari.
+- Tabel: rentang tanggal (`17 Agu 2026` atau `20 Des 2026 – 5 Jan 2027`) · **Lama** (jumlah hari) · Keterangan · Hapus.
+- Tanggal libur **tak dihitung kehadiran** → tak ada tuduhan Alpha massal saat tanggal merah.
+- 422 `rentang_terbalik` bila tanggal selesai < mulai.
+
+---
+
 ## 6. Halaman: Group
 
 ### Tujuan Halaman
