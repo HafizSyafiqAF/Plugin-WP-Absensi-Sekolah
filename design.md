@@ -461,7 +461,9 @@ Kelola master orang yang diabsen (siswa/guru/staff dalam satu tabel, dibedakan l
 4. Klik **Edit** pada baris → modal terisi → ubah → Simpan (`PUT`).
 5. Klik **Bind RFID** → modal → tap kartu (UID masuk) → Simpan (`POST /users/{id}/rfid`).
 6. Klik **Import Excel** → pilih file → unggah (`POST /users/import`) → tampil hasil imported/gagal/errors.
+   Kolom: `nama`, `nomor_induk` (wajib) + `group`, `tipe` (opsional). Group di-resolve by nama+tipe; belum ada → auto-create dengan tipe dari file. Tanpa kolom `tipe`, group harus sudah ada (tak ada tipe preset).
 7. Klik **Hapus** → konfirmasi → `DELETE`.
+8. **Checklist** baris (kolom kiri) → **bulk bar** muncul → **Hapus terpilih** → konfirmasi (pratinjau nama) → `POST /users/bulk-delete {ids}`.
 
 ### Layout
 
@@ -471,15 +473,23 @@ Breadcrumb: Absensi › Users
 Judul: "Users"          [Import Excel] [+ Tambah User]
 ------------------------------------------------------------
 FILTER BAR:
-[Search: cari nama/nomor induk]   [Filter Group ▾]
+[Search: cari nama/nomor induk]   [Filter Group ▾] [Filter Tipe ▾]
+------------------------------------------------------------
+BULK BAR (hanya bila ada centang):
+N user dipilih   [Pilih semua N] [Batal pilih]        [Hapus terpilih]
 ------------------------------------------------------------
 TABLE:
-| User (avatar+nama+no.induk) | Group | Tipe | RFID | Aksi |
-| ...                         | ...   | ...  | •••• | ⋯   |
+| ☑ | User (avatar+nama+no.induk) | Group | Tipe | RFID | Aksi |
+| ☐ | ...                         | ...   | ...  | •••• | ⋯   |
 ------------------------------------------------------------
 Menampilkan 1–10 dari N        [ ‹ 1 2 3 … › ]
 ------------------------------------------------------------
 ```
+
+**Checklist / aksi massal:**
+- Checkbox header = **halaman aktif saja** (indeterminate bila sebagian) — seluruh hasil filter dicentang lewat tombol **Pilih semua N** di bulk bar.
+- Centang disimpan sebagai **id** → bertahan saat pindah halaman; id yang hilang dari data (terhapus/kena filter server) dipangkas otomatis.
+- Baris tercentang diberi latar biru tipis. Modal konfirmasi menampilkan **pratinjau maks 10 nama** + sisanya dihitung.
 
 ### Komponen
 - **Filter Bar:** Search (ikon search, debounce 300ms, kirim param `search`), Select Group (opsi dari `GET /group`, kirim `group_id`), reset filter.

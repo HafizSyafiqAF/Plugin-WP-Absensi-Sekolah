@@ -106,7 +106,7 @@ Semua submenu butuh cap `manage_options` (cuma administrator lihat menu). Nonce 
 ## B.1 — Users (`?page=absensi-users`)
 
 Master orang yang diabsen (siswa/guru/staff jadi satu tabel; dibedakan lewat group.tipe).
-**Endpoint:** `GET/POST /users`, `GET/PUT/DELETE /users/{id}`, `POST /users/{id}/rfid`, `POST /users/import`.
+**Endpoint:** `GET/POST /users`, `GET/PUT/DELETE /users/{id}`, `POST /users/{id}/rfid`, `POST /users/import`, `POST /users/bulk-delete`.
 
 ### Elemen
 
@@ -116,8 +116,9 @@ Master orang yang diabsen (siswa/guru/staff jadi satu tabel; dibedakan lewat gro
 | **Filter & pencarian** | Dropdown group (`group_id`), kotak cari (`search`), paging. Param dikirim ke `GET /users`. |
 | **Form tambah/edit** | Field: `nomor_induk`* (≤30), `nama`* (≤150), `group_id` (dropdown dari `GET /group`), `rfid_uid` (opsional). Submit `POST /users` (baru) atau `PUT /users/{id}` (edit, boleh parsial). |
 | **Tombol Bind RFID (popup)** | Pilih user → popup input UID (tap scanner) → `POST /users/{id}/rfid` body `{rfid_uid, replace?}`. Tangani 409 `kartu_terpakai` (UID milik user lain) & `sudah_punya_kartu` (kirim ulang `replace=true` untuk ganti). |
-| **Tombol Import Excel** | Upload `.xlsx` → `POST /users/import`. Kolom header wajib: `nama`, `nomor_induk`, `group` (nama group — tak ada → auto-create). Cap 2000 baris. Tampilkan hasil `{imported, gagal, errors:[{baris, pesan}]}` — daftar baris gagal + alasannya. 503 = vendor PhpSpreadsheet belum di-install. |
+| **Tombol Import Excel** | Upload `.xlsx` → `POST /users/import`. Kolom header wajib: `nama`, `nomor_induk`; opsional `group` (nama group) + `tipe` (tipe group). Group di-resolve by **nama + tipe**; belum ada → auto-create dengan tipe itu. Tanpa kolom `tipe`, group harus sudah ada (kalau belum → baris ditolak; tak ada tipe preset). Cap 2000 baris. Tampilkan hasil `{imported, gagal, errors:[{baris, pesan}]}` — daftar baris gagal + alasannya. 503 = vendor PhpSpreadsheet belum di-install. |
 | **Tombol Hapus** | Konfirmasi → `DELETE /users/{id}`. |
+| **Checklist + hapus massal** | Checkbox per baris + checkbox header (centang **halaman aktif**, indeterminate bila sebagian). Ada centang → **bulk bar**: jumlah terpilih, **Pilih semua N** (seluruh hasil filter), **Batal pilih**, **Hapus terpilih** → modal konfirmasi (pratinjau maks 10 nama) → `POST /users/bulk-delete` body `{ids:[int]}` → `{deleted:N}`. Cap 500 id; id asing/duplikat diabaikan (idempotent); 422 `ids_kosong` / `terlalu_banyak`. |
 
 **Error umum:** 409 nomor_induk/rfid_uid duplikat saat create/update; 404 user tak ada.
 

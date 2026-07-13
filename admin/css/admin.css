@@ -639,6 +639,47 @@ body.wp-admin { background-color: var(--c-bg); }
 /* Affordance ikon aksi baris: default ikut warna teks (bukan pucat), hover jelas */
 .absensi-app .table .col-actions .btn--icon { color: var(--c-text); }
 .absensi-app .table .col-actions .btn--icon:hover { background: var(--c-bg); }
+
+/* ─── Checklist tabel + bulk bar (aksi massal Users) ──────────────────────────
+   Kolom centang sempit di paling kiri; baris tercentang diberi latar biru tipis
+   supaya terlihat jelas mana yang bakal kena aksi massal. */
+/* Selebar checkbox-nya saja, nempel pinggir kiri — jangan makan ruang kolom User.
+   (Proporsi kolom users-table pakai nth-child; kolom centang jadi kolom 1 → lihat
+   pergeseran indeks di blok "Lebar kolom Users" di bawah.) */
+.absensi-app .table .col-check { width: 28px; padding: 0 0 0 12px; text-align: left; }
+.absensi-app .check {
+  width: 16px; height: 16px; margin: 0; cursor: pointer;
+  accent-color: var(--c-primary);   /* checkbox native — cukup, tak perlu custom control */
+}
+.absensi-app .table tbody tr.is-selected td { background: var(--c-primary-soft); }
+.absensi-app .table tbody tr.is-selected:hover td { background: rgba(37, 99, 235, .14); }
+
+/* ─── Halaman Jadwal (v2.2.0): tabel 7 hari + form libur sebaris ──────────────
+   Hari yang tak diaktifkan diredupkan → sekali lihat ketahuan mana hari absensi. */
+.absensi-app .jadwal-table td { vertical-align: middle; }
+.absensi-app .jadwal-table tbody tr.is-off td { color: var(--c-text-muted); background: #FBFCFD; }
+.absensi-app .jadwal-table .input--sm { width: 120px; }
+.absensi-app .jadwal-table th:nth-child(1), .absensi-app .jadwal-table td:nth-child(1) { width: 18%; }
+.absensi-app .jadwal-table th:nth-child(2), .absensi-app .jadwal-table td:nth-child(2) { width: 10%; }
+
+/* Field sebaris (form tambah libur di dalam toolbar kartu) */
+.absensi-app .field--inline { display: flex; flex-direction: column; gap: 4px; }
+.absensi-app .field--inline .field__label { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--c-text-muted); }
+.absensi-app .field--grow { flex: 1 1 200px; min-width: 160px; }
+.absensi-app .pill-tabs[role="tablist"] { margin-bottom: 14px; }
+
+.absensi-app .bulkbar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin-bottom: 12px; padding: 10px 14px;
+  background: var(--c-primary-soft); border: 1px solid rgba(37, 99, 235, .25);
+  border-radius: var(--r-lg);
+}
+.absensi-app .bulkbar__info { font-size: 13.5px; color: var(--c-text); }
+.absensi-app .bulkbar__act  { margin-left: auto; }   /* aksi merusak didorong ke kanan, jauh dari "Batal pilih" */
+
+/* Pratinjau nama di modal hapus massal */
+.absensi-app .del-preview { margin-top: 12px; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.absensi-app .del-preview li { display: flex; gap: 8px; justify-content: space-between; padding: 4px 0; border-bottom: 1px dashed var(--c-border); }
 /* Laporan (design.md §8): 10 kolom → jangan wrap, biar SCROLL-X di .table-scroll.
    width:100% bikin sel membungkus; min-width + nowrap memaksa tabel meluber → scroll. */
 .absensi-app .report-table { min-width: 880px; }
@@ -826,10 +867,12 @@ body.wp-admin { background-color: var(--c-bg); }
 
 /* Lebar kolom Users (ikut proporsi acuan): USER paling lebar, ACTIONS rata KIRI &
    sempit — supaya tombol "…" duduk tepat setelah kolom RFID, bukan mepet tepi kanan. */
-.absensi-app .users-table th:nth-child(1), .absensi-app .users-table td:nth-child(1) { width: 30%; }
-.absensi-app .users-table th:nth-child(2), .absensi-app .users-table td:nth-child(2) { width: 18%; }
-.absensi-app .users-table th:nth-child(3), .absensi-app .users-table td:nth-child(3) { width: 12%; }
-.absensi-app .users-table th:nth-child(4), .absensi-app .users-table td:nth-child(4) { width: 22%; }
+/* Kolom 1 = centang (lebar tetap, lihat .col-check) → proporsi di bawah digeser +1:
+   2=User · 3=Group · 4=Tipe · 5=RFID · col-actions. */
+.absensi-app .users-table th:nth-child(2), .absensi-app .users-table td:nth-child(2) { width: 30%; }
+.absensi-app .users-table th:nth-child(3), .absensi-app .users-table td:nth-child(3) { width: 18%; }
+.absensi-app .users-table th:nth-child(4), .absensi-app .users-table td:nth-child(4) { width: 12%; }
+.absensi-app .users-table th:nth-child(5), .absensi-app .users-table td:nth-child(5) { width: 22%; }
 .absensi-app .users-table th.col-actions,  .absensi-app .users-table td.col-actions  { width: 18%; text-align: left; }
 
 /* Sel user: nama + nomor induk berlabel (NIS/NIP) di bawahnya */

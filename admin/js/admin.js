@@ -1035,6 +1035,13 @@ tr:nth-child(even) td{background:#f9f9f9}
     delUser:  null,         // { id, nama }
     deleting: false,
 
+    // ── Checklist / aksi massal ──
+    // `selected` = id user tercentang; bertahan lintas halaman & filter (id, bukan indeks baris),
+    // jadi bisa centang di hal. 1, pindah hal. 2, centang lagi, lalu hapus sekali jalan.
+    selected:      [],
+    bulkDelOpen:   false,
+    bulkDeleting:  false,
+
     init() { this.loadGroups(); this.loadUsers(); },
 
     /* Muat opsi group untuk Select (GET /group). Gagal → biarkan kosong (filter tetap jalan). */
@@ -1049,6 +1056,7 @@ tr:nth-child(even) td{background:#f9f9f9}
       try {
         var url = this.groupId ? ('users?group_id=' + encodeURIComponent(this.groupId)) : 'users';
         this.users = await window.api.get(url) || [];
+        this.pangkasSelected();   // buang centang yang usernya sudah tak ada di data baru
       } catch (e) {
         this.error = true; this.users = [];
       } finally {
@@ -1369,6 +1377,65 @@ tr:nth-child(even) td{background:#f9f9f9}
     // ── Konfirmasi Hapus: buka/tutup/jalankan ──
     confirmDelete(u) { this.delUser = { id: u.id, nama: u.nama }; this.delOpen = true; },
     closeDelete() { this.delOpen = false; },
+
+    /* ── Checklist (pilih banyak → aksi massal) ──────────────────────────────
+     * Centang disimpan sebagai ID, bukan indeks baris: aman saat ganti halaman/filter/urut.
+     * Header checkbox = halaman AKTIF saja (bukan seluruh hasil filter) — biar tak ada yang
+     * ikut terhapus tanpa terlihat; untuk semuanya ada tombol "Pilih semua N hasil". */
+    isSelected(id) { return this.selected.indexOf(id) !== -1; },
+    toggleSelect(id) {
+      var i = this.selected.indexOf(id);
+      if (i === -1) this.selected.push(id);
+      else this.selected.splice(i, 1);
+    },
+    get selectedCount() { return this.selected.length; },
+    get pageIds() { return this.pagedUsers.map(function (u) { return u.id; }); },
+    get allPageSelected() {
+      var ids = this.pageIds;
+      return ids.length > 0 && ids.every((id) => this.isSelected(id));
+    },
+    /* Sebagian tercentang → checkbox header jadi indeterminate (bukan checked penuh). */
+    get somePageSelected() {
+      return ! this.allPageSelected && this.pageIds.some((id) => this.isSelected(id));
+    },
+    toggleSelectPage() {
+      var ids = this.pageIds;
+      if (this.allPageSelected) {
+        this.selected = this.selected.filter(function (id) { return ids.indexOf(id) === -1; });
+      } else {
+        ids.forEach((id) => { if (! this.isSelected(id)) this.selected.push(id); });
+      }
+    },
+    selectAllFiltered() { this.selected = this.filteredUsers.map(function (u) { return u.id; }); },
+    clearSelection() { this.selected = []; },
+    /* Sinkron centang dengan data terbaru: id yang hilang (terhapus / kena filter server) dibuang,
+     * supaya tak pernah mengirim id yang tak kelihatan di tabel. */
+    pangkasSelected() {
+      var ada = this.users.map(function (u) { return u.id; });
+      this.selected = this.selected.filter(function (id) { return ada.indexOf(id) !== -1; });
+    },
+
+    // ── Hapus massal → POST /users/bulk-delete { ids } (satu request, bukan N) ──
+    confirmBulkDelete() { if (this.selectedCount) this.bulkDelOpen = true; },
+    closeBulkDelete() { this.bulkDelOpen = false; },
+    async runBulkDelete() {
+      if (! this.selectedCount || this.bulkDeleting) return;
+      this.bulkDeleting = true;
+      try {
+        var data = await window.api.post('users/bulk-delete', { ids: this.selected });
+        var n = (data && data.deleted) || 0;
+        window.absensiToast(n + ' user dihapus.', 'success');
+        this.bulkDelOpen = false;
+        this.clearSelection();
+        this.page = 1;
+        this.loadUsers();
+      } catch (err) {
+        window.absensiToastError(err);   // gagal → toast merah, modal tetap terbuka
+      } finally {
+        this.bulkDeleting = false;
+      }
+    },
+
     async runDelete() {
       if (!this.delUser || this.deleting) return;
       this.deleting = true;

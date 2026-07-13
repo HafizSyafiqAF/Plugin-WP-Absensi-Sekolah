@@ -50,6 +50,21 @@ class UsersEndpoint {
             ],
         ] );
 
+        // POST /users/bulk-delete – hapus banyak user sekaligus (checklist di tabel).
+        // POST (bukan DELETE) karena body pada DELETE tak dijamin lolos proxy/klien.
+        register_rest_route( self::NAMESPACE, '/users/bulk-delete', [
+            'methods'             => \WP_REST_Server::CREATABLE,
+            'callback'            => [ $this, 'bulk_delete_users' ],
+            'permission_callback' => [ $this, 'can_manage' ],
+            'args'                => [
+                'ids' => [
+                    'required' => true,
+                    'type'     => 'array',
+                    'items'    => [ 'type' => 'integer' ],
+                ],
+            ],
+        ] );
+
         // POST /users/{id}/rfid – bind/ganti UID RFID
         register_rest_route( self::NAMESPACE, '/users/(?P<id>\d+)/rfid', [
             'methods'             => \WP_REST_Server::CREATABLE,
@@ -139,6 +154,35 @@ class UsersEndpoint {
             [ '%d' ]
         );
         return new \WP_REST_Response( [ 'deleted' => true ] );
+    }
+
+    /**
+     * Hapus banyak user sekaligus (dari checklist tabel Users).
+     * Satu query DELETE ... IN (...) — bukan N request DELETE /users/{id}.
+     * `ids` di-absint + dedup; id tak ada di DB diabaikan (idempotent).
+     * Cap 500 id per request. Balas jumlah baris yang benar-benar terhapus.
+     */
+    public function bulk_delete_users( \WP_REST_Request $req ): \WP_REST_Response {
+        global $wpdb;
+
+        $ids = array_values( array_unique( array_filter(
+            array_map( 'absint', (array) $req->get_param( 'ids' ) )
+        ) ) );
+
+        if ( empty( $ids ) ) {
+            return $this->error( 'ids_kosong', 'Tidak ada user yang dipilih.', 422 );
+        }
+        if ( count( $ids ) > 500 ) {
+            return $this->error( 'terlalu_banyak', 'Maksimal 500 user per penghapusan.', 422 );
+        }
+
+        $ph      = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
+        $deleted = (int) $wpdb->query( $wpdb->prepare(
+            "DELETE FROM {$wpdb->prefix}absensi_users WHERE id IN ( {$ph} )",
+            $ids
+        ) );
+
+        return new \WP_REST_Response( [ 'deleted' => $deleted ], 200 );
     }
 
     /** Bind/ganti UID RFID ke user (cek duplikasi UID lintas user). */

@@ -93,6 +93,28 @@ defined( 'ABSPATH' ) || exit;
         </button>
       </div>
 
+      <!-- Bulk bar: muncul saat ada baris tercentang. Aksi massal (kini: hapus). -->
+      <div class="bulkbar" x-show="selectedCount > 0" x-cloak role="region"
+           aria-label="<?php esc_attr_e( 'Aksi untuk user terpilih', 'absensi-sekolah' ); ?>">
+        <span class="bulkbar__info">
+          <strong class="u-num" x-text="selectedCount"></strong>
+          <?php esc_html_e( 'user dipilih', 'absensi-sekolah' ); ?>
+        </span>
+        <!-- Centang header hanya mengenai halaman aktif → sediakan jalan pintas ke seluruh hasil filter. -->
+        <button type="button" class="btn btn--ghost btn--sm"
+                x-show="selectedCount < totalFiltered" @click="selectAllFiltered()">
+          <?php esc_html_e( 'Pilih semua', 'absensi-sekolah' ); ?>
+          <strong class="u-num" x-text="totalFiltered"></strong>
+        </button>
+        <button type="button" class="btn btn--ghost btn--sm" @click="clearSelection()">
+          <?php esc_html_e( 'Batal pilih', 'absensi-sekolah' ); ?>
+        </button>
+        <button type="button" class="btn btn--danger btn--sm bulkbar__act" @click="confirmBulkDelete()">
+          <span x-html="$icon( 'trash-2', 16 )" aria-hidden="true"></span>
+          <?php esc_html_e( 'Hapus terpilih', 'absensi-sekolah' ); ?>
+        </button>
+      </div>
+
       <!-- Tabel Users (design.md §5): skeleton · error · tabel · empty · pagination -->
       <div class="table-card">
 
@@ -101,6 +123,7 @@ defined( 'ABSPATH' ) || exit;
           <table class="table users-table">
             <thead>
               <tr>
+                <th class="col-check"></th>
                 <th><?php esc_html_e( 'User', 'absensi-sekolah' ); ?></th>
                 <th><?php esc_html_e( 'Group', 'absensi-sekolah' ); ?></th>
                 <th><?php esc_html_e( 'Tipe', 'absensi-sekolah' ); ?></th>
@@ -111,6 +134,7 @@ defined( 'ABSPATH' ) || exit;
             <tbody>
               <template x-for="n in 8" :key="n">
                 <tr>
+                  <td class="col-check"><span class="skeleton" style="width:16px;height:16px;border-radius:4px"></span></td>
                   <td><div class="table__user"><span class="skeleton" style="width:32px;height:32px;border-radius:50%"></span><span class="skeleton skeleton--text" style="width:120px"></span></div></td>
                   <td><span class="skeleton skeleton--text" style="width:80px"></span></td>
                   <td><span class="skeleton skeleton--text" style="width:56px"></span></td>
@@ -602,6 +626,53 @@ defined( 'ABSPATH' ) || exit;
                     :class="deleting ? 'is-loading' : ''" :disabled="deleting">
               <span class="btn__spin" x-show="deleting" x-cloak aria-hidden="true"></span>
               <span class="btn__label"><?php esc_html_e( 'Hapus', 'absensi-sekolah' ); ?></span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal Konfirmasi Hapus MASSAL (checklist) → POST /users/bulk-delete { ids } -->
+      <div x-show="bulkDelOpen" x-cloak class="modal-overlay"
+           @keydown.escape.window="closeBulkDelete()" @click.self="closeBulkDelete()">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="bulkdel-title" @keydown.tab="trapFocus($event)">
+          <div class="modal__head">
+            <div class="modal__head-ic">
+              <span class="card-chip card-chip--danger" x-html="$icon( 'trash-2', 18 )" aria-hidden="true"></span>
+              <h2 class="modal__title" id="bulkdel-title"><?php esc_html_e( 'Hapus User Terpilih', 'absensi-sekolah' ); ?></h2>
+            </div>
+            <button type="button" class="modal__close" @click="closeBulkDelete()"
+                    aria-label="<?php esc_attr_e( 'Tutup', 'absensi-sekolah' ); ?>">
+              <span x-html="$icon( 'x', 18 )"></span>
+            </button>
+          </div>
+          <div class="modal__body">
+            <div class="alert alert--danger">
+              <span class="alert__icon" x-html="$icon( 'alert-triangle', 18 )" aria-hidden="true"></span>
+              <span>
+                <?php esc_html_e( 'Yakin hapus', 'absensi-sekolah' ); ?>
+                <strong class="u-num" x-text="selectedCount"></strong> <?php esc_html_e( 'user terpilih?', 'absensi-sekolah' ); ?>
+                <?php esc_html_e( 'Tindakan ini tidak bisa dibatalkan.', 'absensi-sekolah' ); ?>
+              </span>
+            </div>
+            <!-- Pratinjau nama (maks 10) → biar tak salah hapus. -->
+            <ul class="del-preview">
+              <template x-for="u in filteredUsers.filter((x) => isSelected(x.id)).slice(0, 10)" :key="u.id">
+                <li><span x-text="u.nama"></span> <span class="u-muted u-num" x-text="u.nomor_induk"></span></li>
+              </template>
+            </ul>
+            <p class="u-muted" x-show="selectedCount > 10" x-cloak>
+              <?php esc_html_e( '…dan', 'absensi-sekolah' ); ?>
+              <span class="u-num" x-text="selectedCount - 10"></span> <?php esc_html_e( 'user lainnya.', 'absensi-sekolah' ); ?>
+            </p>
+          </div>
+          <div class="modal__footer">
+            <button type="button" class="btn btn--outline" @click="closeBulkDelete()"><?php esc_html_e( 'Batal', 'absensi-sekolah' ); ?></button>
+            <button type="button" class="btn btn--danger" @click="runBulkDelete()"
+                    :class="bulkDeleting ? 'is-loading' : ''" :disabled="bulkDeleting">
+              <span class="btn__spin" x-show="bulkDeleting" x-cloak aria-hidden="true"></span>
+              <span class="btn__label">
+                <?php esc_html_e( 'Hapus', 'absensi-sekolah' ); ?> <span class="u-num" x-text="selectedCount"></span>
+              </span>
             </button>
           </div>
         </div>
