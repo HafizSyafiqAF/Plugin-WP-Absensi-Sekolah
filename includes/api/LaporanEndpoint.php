@@ -4,11 +4,16 @@ namespace Absensi\api;
 defined( 'ABSPATH' ) || exit;
 
 use Absensi\helpers\FileHelper;
+use Absensi\helpers\KehadiranHelper;
 
 /**
  * REST Endpoint: /wp-json/absensi/v1/laporan
  * Rekap & export absensi (JSON, trigger download Excel/PDF via admin).
  * Skema v2 (users/group). Admin-only (cap manage_options); tanpa scope ortu.
+ *
+ * ALPHA (v2.2.0): baris "tidak hadir" TIDAK ada di tabel rekap (rekap hanya lahir saat orang
+ * tap/selfie). Alpha dihitung KehadiranHelper saat endpoint dipanggil lalu digabung ke hasil —
+ * berlaku untuk daftar, summary, DAN export. Baris alpha bertanda `virtual: true` (id = null).
  */
 class LaporanEndpoint {
 
@@ -155,16 +160,20 @@ class LaporanEndpoint {
         }
         $where = 'WHERE ' . implode( ' AND ', $where_parts );
 
-        return (array) $wpdb->get_results( $wpdb->prepare(
+        $rows = (array) $wpdb->get_results( $wpdb->prepare(
             "SELECT r.*, u.nama, u.nomor_induk, g.nama AS nama_group
                FROM {$wpdb->prefix}absensi_rekap r
                LEFT JOIN {$wpdb->prefix}absensi_users u ON u.id = r.user_id
                LEFT JOIN {$wpdb->prefix}absensi_group g ON g.id = r.group_id
                $where
-               ORDER BY r.tanggal DESC, u.nama ASC
                LIMIT %d",
             self::EXPORT_MAX_ROWS
         ) );
+
+        // Export WAJIB ikut memuat alpha — kalau tidak, file yang dikirim ke wali kelas hanya
+        // berisi yang hadir, dan yang bolos hilang dari laporan.
+        $rows = array_merge( $rows, KehadiranHelper::alpha_rows( $dari, $sampai, $group_id, $tipe ) );
+        return array_slice( $this->urutkan( $rows ), 0, self::EXPORT_MAX_ROWS );
     }
 
     /** Bangun isi CSV (UTF-8 BOM agar Excel kenali). */
@@ -262,33 +271,46 @@ class LaporanEndpoint {
         }
         $where = 'WHERE ' . implode( ' AND ', $where_parts );
 
-        $rows = $wpdb->get_results( $wpdb->prepare(
+        // Baris rekap NYATA diambil tanpa LIMIT: alpha virtual (KehadiranHelper) harus digabung
+        // dulu, baru dipaginasi — kalau LIMIT di SQL, halaman 2 akan melewatkan baris alpha.
+        // Dibatasi EXPORT_MAX_ROWS sebagai rem memori.
+        $rows = (array) $wpdb->get_results( $wpdb->prepare(
             "SELECT r.*, u.nama, u.nomor_induk, g.nama AS nama_group
                FROM {$wpdb->prefix}absensi_rekap r
                LEFT JOIN {$wpdb->prefix}absensi_users u ON u.id = r.user_id
                LEFT JOIN {$wpdb->prefix}absensi_group g ON g.id = r.group_id
                $where
-               ORDER BY r.tanggal DESC, u.nama ASC
-               LIMIT %d OFFSET %d",
-            $per_page, $offset
+               LIMIT %d",
+            self::EXPORT_MAX_ROWS
         ) );
-
-        $total = (int) $wpdb->get_var(
-            "SELECT COUNT(*) FROM {$wpdb->prefix}absensi_rekap r $where"
-        );
 
         // izin_tipe + bukti_status ikut via r.*; tambah URL publik bukti.
         foreach ( $rows as $r ) {
+            $r->virtual   = false;
             $r->bukti_url = empty( $r->bukti_path ) ? null : FileHelper::file_url( $r->bukti_path );
         }
 
+        // Yang tak punya rekap pada hari aktif → alpha (dihitung, tak ditulis ke DB).
+        $rows  = array_merge( $rows, KehadiranHelper::alpha_rows( $tanggal_mulai, $tanggal_akhir, $group_id, $tipe ) );
+        $rows  = $this->urutkan( $rows );
+        $total = count( $rows );
+
         return new \WP_REST_Response( [
-            'data'       => $rows,
+            'data'       => array_slice( $rows, $offset, $per_page ),
             'total'      => $total,
             'page'       => $page,
             'per_page'   => $per_page,
             'total_page' => (int) ceil( $total / $per_page ),
         ] );
+    }
+
+    /** Urut baris laporan: tanggal terbaru dulu, lalu nama A→Z (sama dgn ORDER BY lama). */
+    private function urutkan( array $rows ): array {
+        usort( $rows, static function ( $a, $b ) {
+            $c = strcmp( (string) $b->tanggal, (string) $a->tanggal ); // DESC
+            return 0 !== $c ? $c : strcmp( (string) $a->nama, (string) $b->nama );
+        } );
+        return $rows;
     }
 
     public function get_summary( \WP_REST_Request $req ): \WP_REST_Response {
@@ -322,7 +344,10 @@ class LaporanEndpoint {
         $telat = (int) ( $summary['telat']->jumlah ?? 0 );
         $izin  = (int) ( $summary['izin']->jumlah  ?? 0 );
         $sakit = (int) ( $summary['sakit']->jumlah ?? 0 );
-        $alpha = (int) ( $summary['alpha']->jumlah ?? 0 );
+        // Alpha = yang tersimpan di rekap (mis. di-set manual admin) + yang dihitung dari
+        // hari aktif tanpa rekap. Tanpa penjumlahan ini, "Alpha" selamanya 0.
+        $alpha = (int) ( $summary['alpha']->jumlah ?? 0 )
+            + KehadiranHelper::hitung_alpha( $dari, $sampai, $group_id, $tipe );
 
         return new \WP_REST_Response( [
             'dari'     => $dari,
