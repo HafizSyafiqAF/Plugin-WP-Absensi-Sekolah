@@ -413,8 +413,8 @@ defined( 'ABSPATH' ) || exit;
               <span>
                 <?php esc_html_e( 'Kolom wajib:', 'absensi-sekolah' ); ?>
                 <strong>nama</strong>, <strong>nomor_induk</strong>.
-                <?php esc_html_e( 'Opsional', 'absensi-sekolah' ); ?> <strong>group</strong>
-                (<?php esc_html_e( 'dibuat otomatis bila belum ada', 'absensi-sekolah' ); ?>).
+                <?php esc_html_e( 'Opsional:', 'absensi-sekolah' ); ?> <strong>group</strong>, <strong>tipe</strong>
+                (<?php esc_html_e( 'group belum ada → dibuat otomatis dengan tipe tsb; tanpa tipe, group harus sudah ada', 'absensi-sekolah' ); ?>).
                 <?php esc_html_e( 'Maksimal 2000 baris.', 'absensi-sekolah' ); ?>
               </span>
             </div>

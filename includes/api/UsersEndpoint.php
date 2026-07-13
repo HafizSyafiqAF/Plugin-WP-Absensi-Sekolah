@@ -169,8 +169,11 @@ class UsersEndpoint {
     }
 
     /**
-     * Impor massal user dari Excel (.xlsx). Kolom header: nama, nomor_induk, group (opsional).
-     * group: resolve by nama → pakai id yang ada, atau auto-create (tipe kelas).
+     * Impor massal user dari Excel (.xlsx). Kolom header: nama, nomor_induk, group (opsional),
+     * tipe (opsional — tipe group).
+     * group: resolve by (nama + tipe) → pakai id yang ada, atau auto-create dengan tipe itu.
+     * Kalau kolom tipe kosong dan group-nya belum ada → baris ditolak (tipe group wajib, tak ada
+     * preset default). Buat group dulu di menu Group, atau isi kolom tipe.
      * Validasi + sanitasi per baris; cap 2000 baris; lapor error per baris.
      * File via multipart ($_FILES['file']) ATAU base64 param 'file'.
      */
@@ -202,8 +205,9 @@ class UsersEndpoint {
         $col_nama  = $this->find_col( $header, [ 'nama' ] );
         $col_nomor = $this->find_col( $header, [ 'nomor_induk', 'nomor induk', 'nis', 'nip' ] );
         $col_group = $this->find_col( $header, [ 'group', 'grup', 'kelas' ] );
+        $col_tipe  = $this->find_col( $header, [ 'tipe', 'tipe_group', 'tipe group', 'jenis' ] );
         if ( null === $col_nama || null === $col_nomor ) {
-            return $this->error( 'header_invalid', 'Header wajib memuat kolom: nama, nomor_induk (opsional: group).', 422 );
+            return $this->error( 'header_invalid', 'Header wajib memuat kolom: nama, nomor_induk (opsional: group, tipe).', 422 );
         }
 
         if ( count( $rows ) > 2000 ) {
@@ -237,8 +241,16 @@ class UsersEndpoint {
             $group_id = 0;
             if ( null !== $col_group ) {
                 $gnama = trim( (string) ( $row[ $col_group ] ?? '' ) );
+                $gtipe = null !== $col_tipe ? trim( (string) ( $row[ $col_tipe ] ?? '' ) ) : '';
                 if ( '' !== $gnama ) {
-                    $group_id = $this->resolve_group( $gnama, $group_cache );
+                    $group_id = $this->resolve_group( $gnama, $gtipe, $group_cache );
+                    if ( ! $group_id ) {
+                        $errors[] = [
+                            'baris' => $baris,
+                            'pesan' => "Group '{$gnama}' belum ada. Isi kolom 'tipe' agar group dibuat otomatis, atau buat group-nya dulu di menu Group.",
+                        ];
+                        continue;
+                    }
                 }
             }
 
@@ -428,19 +440,28 @@ class UsersEndpoint {
         return null;
     }
 
-    /** Resolve group by nama → id yang ada, atau auto-create (tipe kelas). Di-cache per impor. */
-    private function resolve_group( string $nama, array &$cache ): int {
+    /**
+     * Resolve group dari baris impor → id.
+     *
+     * Nama group boleh kembar beda tipe (mis. "5B" Siswa vs "5B" Guru), jadi:
+     * - `$tipe` diisi → cari by (nama, tipe); tak ada → auto-create dengan tipe itu.
+     * - `$tipe` kosong → cari by nama saja; tak ada → 0 (BUKAN auto-create: tipe wajib,
+     *   tak boleh ada preset diam-diam. Pemanggil melaporkan error per baris).
+     * Di-cache per impor.
+     */
+    private function resolve_group( string $nama, string $tipe, array &$cache ): int {
         global $wpdb;
-        $key = strtolower( $nama );
+        $key = strtolower( $nama ) . '|' . strtolower( $tipe );
         if ( isset( $cache[ $key ] ) ) {
             return $cache[ $key ];
         }
-        $id = (int) $wpdb->get_var( $wpdb->prepare(
-            "SELECT id FROM {$wpdb->prefix}absensi_group WHERE nama = %s LIMIT 1",
-            $nama
-        ) );
-        if ( ! $id ) {
-            $wpdb->insert( $wpdb->prefix . 'absensi_group', SanitizeHelper::group( [ 'nama' => $nama, 'tipe' => 'kelas' ] ) );
+        $sql = '' !== $tipe
+            ? $wpdb->prepare( "SELECT id FROM {$wpdb->prefix}absensi_group WHERE nama = %s AND tipe = %s LIMIT 1", $nama, $tipe )
+            : $wpdb->prepare( "SELECT id FROM {$wpdb->prefix}absensi_group WHERE nama = %s LIMIT 1", $nama );
+        $id  = (int) $wpdb->get_var( $sql );
+
+        if ( ! $id && '' !== $tipe ) {
+            $wpdb->insert( $wpdb->prefix . 'absensi_group', SanitizeHelper::group( [ 'nama' => $nama, 'tipe' => $tipe ] ) );
             $id = (int) $wpdb->insert_id;
         }
         return $cache[ $key ] = $id;
