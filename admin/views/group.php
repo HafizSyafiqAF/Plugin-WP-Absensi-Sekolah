@@ -352,23 +352,23 @@ defined( 'ABSPATH' ) || exit;
                        placeholder="<?php esc_attr_e( 'Contoh: XII MIPA 1', 'absensi-sekolah' ); ?>">
               </div>
 
-              <!-- Tipe: 3 bawaan + "Lainnya" (BE simpan VARCHAR bebas sejak v2.1.0,
-                   jadi tipe kustom tetap bisa dibuat lewat opsi Lainnya) -->
+              <!-- Tipe: WAJIB, teks bebas (BE VARCHAR(50) sejak v2.1.0). TANPA preset —
+                   saran <datalist> murni diambil dari tipe yang sudah dipakai di data;
+                   belum ada group → daftar saran kosong, admin ketik sendiri. -->
               <div class="field">
                 <label class="field__label" for="gf-tipe"><?php esc_html_e( 'Tipe', 'absensi-sekolah' ); ?></label>
-                <select id="gf-tipe" class="select" @change="gantiTipePilihan($event.target.value)">
-                  <option value="kelas" :selected="tipePilihan === 'kelas'"><?php esc_html_e( 'Kelas', 'absensi-sekolah' ); ?></option>
-                  <option value="guru" :selected="tipePilihan === 'guru'"><?php esc_html_e( 'Guru', 'absensi-sekolah' ); ?></option>
-                  <option value="staff" :selected="tipePilihan === 'staff'"><?php esc_html_e( 'Staff', 'absensi-sekolah' ); ?></option>
-                  <option value="lainnya" :selected="tipePilihan === 'lainnya'"><?php esc_html_e( 'Lainnya…', 'absensi-sekolah' ); ?></option>
-                </select>
-              </div>
-
-              <!-- Tipe kustom (muncul hanya bila pilih "Lainnya") -->
-              <div class="field" x-show="tipePilihan === 'lainnya'" x-cloak>
-                <label class="field__label" for="gf-tipe-lain"><?php esc_html_e( 'Nama Tipe', 'absensi-sekolah' ); ?></label>
-                <input id="gf-tipe-lain" type="text" class="input" x-model.trim="form.tipe" maxlength="50"
-                       placeholder="<?php esc_attr_e( 'Contoh: Ekstrakurikuler', 'absensi-sekolah' ); ?>">
+                <input id="gf-tipe" type="text" class="input" :class="fieldErr.tipe ? 'input--error' : ''"
+                       x-model.trim="form.tipe" maxlength="50" required list="gf-tipe-list"
+                       @input="fieldErr.tipe = false"
+                       placeholder="<?php esc_attr_e( 'Ketik tipe group…', 'absensi-sekolah' ); ?>">
+                <datalist id="gf-tipe-list">
+                  <template x-for="t in tipeSuggestions" :key="t">
+                    <option :value="t"></option>
+                  </template>
+                </datalist>
+                <p class="field__hint" x-show="tipeSuggestions.length === 0" x-cloak>
+                  <?php esc_html_e( 'Belum ada tipe apa pun — ketik tipe baru (mis. Kelas, Siswa, Guru, Staff).', 'absensi-sekolah' ); ?>
+                </p>
               </div>
             </div>
 

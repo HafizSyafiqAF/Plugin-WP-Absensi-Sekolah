@@ -83,6 +83,11 @@ class GroupEndpoint {
         if ( empty( $data['nama'] ) ) {
             return $this->error( 'nama_wajib', 'Nama group wajib diisi.', 422 );
         }
+        // Tipe WAJIB diisi — tak ada preset/default lagi. Dicek dari param MENTAH karena
+        // SanitizeHelper masih punya fallback 'kelas' (dipakai auto-create group saat import).
+        if ( '' === trim( (string) $req->get_param( 'tipe' ) ) ) {
+            return $this->error( 'tipe_wajib', 'Tipe group wajib diisi.', 422 );
+        }
         $wpdb->insert( $wpdb->prefix . 'absensi_group', $data );
         return new \WP_REST_Response( [ 'id' => (int) $wpdb->insert_id ], 201 );
     }
@@ -102,6 +107,11 @@ class GroupEndpoint {
         }
         if ( array_key_exists( 'nama', $data ) && '' === $data['nama'] ) {
             return $this->error( 'nama_wajib', 'Nama group tidak boleh kosong.', 422 );
+        }
+        // Tipe wajib bila field-nya ikut dikirim (update parsial tanpa `tipe` tetap boleh).
+        $tipe_param = $req->get_param( 'tipe' );
+        if ( null !== $tipe_param && '' === trim( (string) $tipe_param ) ) {
+            return $this->error( 'tipe_wajib', 'Tipe group tidak boleh kosong.', 422 );
         }
 
         $wpdb->update( $table, $data, [ 'id' => $id ] );

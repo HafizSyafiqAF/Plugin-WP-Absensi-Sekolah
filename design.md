@@ -577,6 +577,10 @@ Kelola kelompok absen (kelas/guru/staff). CRUD group + lihat jumlah user per gro
 Breadcrumb: Absensi › Group
 Judul: "Group"                          [+ Tambah Group]
 ------------------------------------------------------------
+TOOLBAR KARTU:
+[▽ Semua Tipe  11 ⌄]                    [🔍 Cari grup…]
+   └─ menu: ✓ Semua Tipe 11 · Siswa 4 · Guru 1 · Ekskul 1 … (scroll)
+------------------------------------------------------------
 TABLE:
 | Nama Group | Tipe | Jumlah User | Aksi |
 | Kelas 7A   |Kelas | 32          | ⋯   |
@@ -586,7 +590,11 @@ TABLE:
 ```
 
 ### Komponen
-- **Tabel Group:** kolom Nama (Body Strong), Tipe (badge Kelas/Guru/Staff), Jumlah User (angka + ikon `users` kecil), Aksi (Edit/Hapus).
+- **Filter Tipe = dropdown (`.dd-select`)**, bukan pill-tabs sebaris. Tipe = teks bebas tanpa batas jumlah → pill sebaris meluber begitu tipe bertambah; dropdown tingginya tetap, **menunya** yang menggulir (`max-height` + `overflow-y`).
+  - Tombol: ikon `filter` + label tipe aktif + **hitungan group** + chevron (berputar saat terbuka). Ada filter aktif → tombol diwarnai (`is-filled`).
+  - Menu: `role="listbox"`, tiap opsi `role="option"` + **centang** di yang aktif + hitungan per tipe. Opsi = "Semua Tipe" + tipe yang benar-benar ada datanya (dari data, tanpa preset).
+  - Tutup: klik opsi, klik-luar, atau **Escape**.
+- **Tabel Group:** kolom Nama (Body Strong), Tipe (badge), Jumlah User (angka + ikon `users` kecil), Aksi (Edit/Hapus).
 - **Modal Form Group.**
 - **Modal Konfirmasi Hapus.**
 
@@ -597,7 +605,7 @@ TABLE:
 | Field | Tipe | Aturan | Param |
 |---|---|---|---|
 | Nama Group | text | wajib, ≤100 | `nama` |
-| Tipe | select | Kelas (default) / Guru / Staff | `tipe` |
+| Tipe | text + `<datalist>` | **wajib**, ≤50, **teks bebas — TANPA preset**. Saran datalist diambil dari tipe yang sudah dipakai di data; belum ada group → saran kosong, admin ketik sendiri. BE tolak kosong (422 `tipe_wajib`). | `tipe` |
 
 ### Button
 - **Tambah Group** (Primary, ikon `plus`).
@@ -605,7 +613,7 @@ TABLE:
 - Modal: **Simpan** (Primary), **Batal** (Outline).
 
 ### Warna
-- Badge tipe: Kelas = Primary 12%, Guru = Purple 12%, Staff = Info 12%. Hapus = Danger.
+- Badge tipe: `kelas` = Primary 12%, `guru` = Purple 12%, `staff` = Info 12% (warna warisan bila tipe itu dipakai). **Tipe bebas lain → badge netral.** Hapus = Danger.
 
 ### Interaction
 - **Hover:** baris highlight.

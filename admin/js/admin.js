@@ -2106,10 +2106,11 @@ tr:nth-child(even) td{background:#f9f9f9}
     goPage(p) { if (typeof p === 'number' && p >= 1 && p <= this.totalPages) this.page = p; },
     pilihTipe(t) { this.tipeFilter = t; this.page = 1; },
 
-    /* Saran <datalist> tipe (design.md TODO-FE#1): 3 bawaan + tipe kustom yang sudah dipakai di data. */
+    /* Saran <datalist> tipe — MURNI dari tipe yang sudah dipakai di data (tanpa bawaan).
+       Belum ada group → kosong, admin wajib mengetik tipe baru. */
     get tipeSuggestions() {
-      var custom = this.groups.map(function (g) { return g.tipe; }).filter(Boolean);
-      return Array.from(new Set(['kelas', 'guru', 'staff'].concat(custom)));
+      var dipakai = this.groups.map(function (g) { return g.tipe; }).filter(Boolean);
+      return Array.from(new Set(dipakai)).sort(function (a, b) { return a.localeCompare(b); });
     },
 
     /* Toggle expand baris group → tampil daftar user di bawahnya. Klik ulang = tutup.
@@ -2178,16 +2179,10 @@ tr:nth-child(even) td{background:#f9f9f9}
     },
 
     // ── Modal Form: buka/tutup/simpan ──
-    /* Dropdown Tipe = 3 bawaan + "Lainnya". BE simpan tipe sbg VARCHAR bebas (v2.1.0),
-     * jadi "Lainnya" membuka input teks agar tipe kustom tetap bisa dibuat. */
-    tipePilihan: 'kelas',   // kelas | guru | staff | lainnya
-    gantiTipePilihan(v) {
-      this.tipePilihan = v;
-      this.form.tipe = (v === 'lainnya') ? '' : v;
-    },
+    /* Tipe = input teks BEBAS + saran <datalist> dari data (tanpa preset). WAJIB diisi:
+     * BE menolak tipe kosong (422 tipe_wajib) — tak ada lagi default 'kelas'. */
     _resetForm() {
-      this.form = { nama: '', tipe: 'kelas' };
-      this.tipePilihan = 'kelas';
+      this.form = { nama: '', tipe: '' };
       this.formError = ''; this.fieldErr = {};
     },
     openCreate() {
@@ -2197,21 +2192,21 @@ tr:nth-child(even) td{background:#f9f9f9}
     openEdit(g) {
       this._resetForm();
       this.editing = g.id;
-      var t = g.tipe || 'kelas';
-      this.form = { nama: g.nama || '', tipe: t };
-      this.tipePilihan = ['kelas', 'guru', 'staff'].indexOf(t) !== -1 ? t : 'lainnya';
+      this.form = { nama: g.nama || '', tipe: g.tipe || '' };
       this.modalOpen = true;
       this._focusById('gf-nama');
     },
     closeModal() { this.modalOpen = false; },
-    get canSave() { return !this.saving && this.form.nama.trim() !== ''; },
+    get canSave() {
+      return !this.saving && this.form.nama.trim() !== '' && this.form.tipe.trim() !== '';
+    },
 
-    /* Simpan (POST tambah / PUT edit). Tangani 422 nama_wajib. */
+    /* Simpan (POST tambah / PUT edit). Tangani 422 nama_wajib / tipe_wajib. */
     async save() {
       if (!this.canSave) return;
       this.saving = true; this.formError = ''; this.fieldErr = {};
       try {
-        var body = { nama: this.form.nama.trim(), tipe: this.form.tipe };
+        var body = { nama: this.form.nama.trim(), tipe: this.form.tipe.trim() };
         if (this.editing) await window.api.put('group/' + this.editing, body);
         else              await window.api.post('group', body);
         window.absensiToast(this.editing ? 'Group diperbarui.' : 'Group ditambahkan.', 'success');
@@ -2219,7 +2214,10 @@ tr:nth-child(even) td{background:#f9f9f9}
         this.loadGroups();
       } catch (err) {
         var e = window.absensiApiError(err);
-        if (e.status === 422) this.fieldErr = { nama: true };   // nama_wajib
+        if (e.status === 422) {
+          if (e.code === 'tipe_wajib')      this.fieldErr = { tipe: true };
+          else if (e.code === 'nama_wajib') this.fieldErr = { nama: true };
+        }
         this.formError = e.message;
       } finally {
         this.saving = false;
