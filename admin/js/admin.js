@@ -1062,20 +1062,35 @@ tr:nth-child(even) td{background:#f9f9f9}
       this.loadUsers();
     },
 
-    /* Opsi dropdown Tipe — dibangun dari data yang TERMUAT, bukan daftar statis: `tipe` group
-     * = string bebas (BE v2.1.0 VARCHAR), jadi tipe kustom ("Ekskul Basket") wajib ikut muncul.
-     * User tanpa group (group_id=0) punya tipe_group null → diberi opsi sentinel TIPE_NONE,
-     * kalau tidak mereka lenyap dari tiap filter dan terlihat seperti data hilang. */
+    /* Opsi dropdown Tipe (filter) — sumbernya DAFTAR GROUP, bukan daftar user: `tipe` milik group
+     * (BE v2.1.0 VARCHAR bebas, tanpa preset). Dulu dibangun dari user yang termuat, tapi itu bikin
+     * filter KOSONG selama belum ada user — padahal group + tipenya sudah dibuat. Kalau sebuah tipe
+     * belum punya user, filternya sah-sah saja menghasilkan tabel kosong.
+     * User tanpa group (group_id=0) → sentinel TIPE_NONE, kalau tidak mereka lenyap dari tiap filter. */
     get tipeOptions() {
-      var set = {}, adaTanpaGroup = false;
-      this.users.forEach(function (u) {
-        var t = String(u.tipe_group || '').trim();
-        if (t) { set[t] = true; } else { adaTanpaGroup = true; }
+      var opts = this.tipeGroupOptions.map(function (t) {
+        return { value: t, label: t.charAt(0).toUpperCase() + t.slice(1) };
       });
-      var opts = Object.keys(set).sort(function (a, b) { return a.localeCompare(b, 'id'); })
-        .map(function (t) { return { value: t, label: t.charAt(0).toUpperCase() + t.slice(1) }; });
+      var adaTanpaGroup = this.users.some(function (u) { return ! String(u.tipe_group || '').trim(); });
       if (adaTanpaGroup) { opts.push({ value: TIPE_NONE, label: 'Tanpa Group' }); }
       return opts;
+    },
+
+    /* Opsi dropdown Grup di TOOLBAR — ikut filter Tipe yang sedang dipilih. Kalau tidak, memilih
+       tipe "Guru" tetap menampilkan grup bertipe lain (mis. dua "5B" beda tipe) → membingungkan.
+       Label sengaja nama polos (tanpa tempelan tipe) sesuai permintaan; ambiguitas nama kembar
+       diselesaikan lewat penyempitan by Tipe ini. */
+    get groupsForFilter() {
+      var t = this.tipeFilter;
+      if (! t || t === TIPE_NONE) return this.groups;
+      return this.groups.filter(function (g) { return String(g.tipe || '').trim() === t; });
+    },
+    /* Ganti filter Tipe → buang pilihan Grup yang tak lagi cocok (muat ulang, filter grup server-side). */
+    gantiTipeFilter() {
+      this.page = 1;
+      if (! this.groupId) return;
+      var masih = this.groupsForFilter.some((g) => String(g.id) === String(this.groupId));
+      if (! masih) { this.groupId = ''; this.loadUsers(); }
     },
 
     // ── Turunan client-side: search + tipe + pagination (bersusun) ──
@@ -1138,8 +1153,9 @@ tr:nth-child(even) td{background:#f9f9f9}
       for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 997;
       return 'table__avatar--t' + ((h % 6) + 1);
     },
-    /* Label nomor induk: siswa = NIS, guru/staff = NIP (ikut tipe group). */
-    nomorLabel(tipe) { return tipe === 'kelas' ? 'NIS' : 'NIP'; },
+    /* Label nomor induk: SATU field untuk NIS maupun NIP (tipe group kini bebas,
+       jadi heuristik kelas→NIS tak lagi berlaku). */
+    nomorLabel() { return 'NIS/NIP'; },
 
     // ── Menu aksi per baris ("…") ──
     toggleRowMenu(id) { this.rowMenu = this.rowMenu === id ? null : id; },
@@ -1150,13 +1166,21 @@ tr:nth-child(even) td{background:#f9f9f9}
     // ── Modal Form: buka/tutup/simpan ──
     _resetForm() {
       this.form = { nomor_induk: '', nama: '', group_id: '', rfid_uid: '' };
-      this.formTipe = 'kelas';
+      this.formTipe = '';   // '' = semua tipe (tak ada preset; tipe datang dari data group)
       this.formError = ''; this.fieldErr = {};
     },
 
-    /* Opsi grup pada modal, disaring sesuai radio Tipe. */
+    /* Opsi radio Tipe pada MODAL — MURNI dari tipe daftar GROUP (tanpa preset). Belum ada group → kosong.
+       Beda dari `tipeOptions` di atas: itu untuk dropdown FILTER (dibangun dari tipe_group milik USERS
+       + sentinel Tanpa Group). Jangan disatukan — nama harus beda, kalau tidak getter-nya saling timpa. */
+    get tipeGroupOptions() {
+      var dipakai = this.groups.map(function (g) { return g.tipe; }).filter(Boolean);
+      return Array.from(new Set(dipakai)).sort(function (a, b) { return a.localeCompare(b, 'id'); });
+    },
+    /* Opsi grup pada modal, disaring sesuai radio Tipe. formTipe '' = tampilkan semua. */
     get groupsByTipe() {
       var t = this.formTipe;
+      if (! t) return this.groups;
       return this.groups.filter(function (g) { return g.tipe === t; });
     },
     /* Ganti Tipe → kosongkan pilihan grup yang tak lagi cocok. */

@@ -35,7 +35,7 @@ defined( 'ABSPATH' ) || exit;
           <span class="input-group__icon" x-html="$icon( 'search', 18 )" aria-hidden="true"></span>
           <input type="search" class="input" x-model.trim="search"
                  @input.debounce.300ms="page = 1"
-                 placeholder="<?php esc_attr_e( 'Cari NIS atau nama…', 'absensi-sekolah' ); ?>"
+                 placeholder="<?php esc_attr_e( 'Cari NIS/NIP atau nama…', 'absensi-sekolah' ); ?>"
                  aria-label="<?php esc_attr_e( 'Cari user', 'absensi-sekolah' ); ?>">
           <button type="button" class="input-group__clear" x-show="search" x-cloak
                   @click="search = ''; page = 1"
@@ -44,10 +44,13 @@ defined( 'ABSPATH' ) || exit;
           </button>
         </div>
 
+        <!-- Grup: opsinya ikut menyempit sesuai filter Tipe (groupsForFilter). Nama grup boleh kembar
+             ("5B" tipe Siswa DAN "5B" tipe Guru) → dibedakan lewat penyempitan Tipe, BUKAN dengan
+             menempelkan tipe ke label (label sengaja nama polos). -->
         <select class="select" x-model="groupId" @change="page = 1; loadUsers()"
                 aria-label="<?php esc_attr_e( 'Filter grup', 'absensi-sekolah' ); ?>">
           <option value=""><?php esc_html_e( 'Semua Grup', 'absensi-sekolah' ); ?></option>
-          <template x-for="g in groups" :key="g.id">
+          <template x-for="g in groupsForFilter" :key="g.id">
             <option :value="g.id" x-text="g.nama"></option>
           </template>
         </select>
@@ -55,7 +58,7 @@ defined( 'ABSPATH' ) || exit;
         <!-- Tipe = milik GROUP (absensi_group.tipe), bukan kolom di absensi_users. Opsi dibangun
              dari data termuat (tipe = string bebas) → tipe kustom ikut muncul tanpa ubah kode.
              Penyaringan client-side: seluruh user memang sudah ada di browser. -->
-        <select class="select" x-model="tipeFilter" @change="page = 1"
+        <select class="select" x-model="tipeFilter" @change="gantiTipeFilter()"
                 aria-label="<?php esc_attr_e( 'Filter tipe', 'absensi-sekolah' ); ?>">
           <option value=""><?php esc_html_e( 'Semua Tipe', 'absensi-sekolah' ); ?></option>
           <template x-for="t in tipeOptions" :key="t.value">
@@ -135,6 +138,13 @@ defined( 'ABSPATH' ) || exit;
           <table class="table users-table">
             <thead>
               <tr>
+                <!-- Centang semua = HALAMAN AKTIF saja (indeterminate bila sebagian). Seluruh hasil
+                     filter dicentang lewat tombol "Pilih semua N" di bulk bar. -->
+                <th class="col-check">
+                  <input type="checkbox" class="check" :checked="allPageSelected"
+                         :indeterminate="somePageSelected" @change="toggleSelectPage()"
+                         aria-label="<?php esc_attr_e( 'Pilih semua user di halaman ini', 'absensi-sekolah' ); ?>">
+                </th>
                 <th><?php esc_html_e( 'User', 'absensi-sekolah' ); ?></th>
                 <th><?php esc_html_e( 'Group', 'absensi-sekolah' ); ?></th>
                 <th><?php esc_html_e( 'Tipe', 'absensi-sekolah' ); ?></th>
@@ -144,7 +154,13 @@ defined( 'ABSPATH' ) || exit;
             </thead>
             <tbody>
               <template x-for="u in pagedUsers" :key="u.id">
-                <tr>
+                <tr :class="isSelected(u.id) ? 'is-selected' : ''">
+                  <!-- Checklist baris -->
+                  <td class="col-check" data-label="">
+                    <input type="checkbox" class="check" :checked="isSelected(u.id)"
+                           @change="toggleSelect(u.id)"
+                           :aria-label="'<?php echo esc_js( __( 'Pilih', 'absensi-sekolah' ) ); ?> ' + u.nama">
+                  </td>
                   <!-- User: avatar (warna deterministik dari nama) + nama + NIS/NIP -->
                   <td data-label="<?php esc_attr_e( 'User', 'absensi-sekolah' ); ?>">
                     <div class="table__user">
@@ -152,7 +168,7 @@ defined( 'ABSPATH' ) || exit;
                       <div>
                         <div class="table__user-name" x-text="u.nama"></div>
                         <div class="table__user-id">
-                          <span x-text="nomorLabel(u.tipe_group)"></span>:
+                          <span x-text="nomorLabel()"></span>:
                           <span class="u-num" x-text="u.nomor_induk"></span>
                         </div>
                       </div>
@@ -287,27 +303,22 @@ defined( 'ABSPATH' ) || exit;
               </div>
 
               <!-- Tipe: BUKAN kolom user — penyaring daftar grup (tipe user ikut grupnya) -->
+              <!-- Tipe = filter opsional untuk daftar Group. TANPA preset: opsinya diambil
+                   dari tipe group yang benar-benar ada di data. Belum ada group → kosong. -->
               <div class="field">
                 <span class="field__label"><?php esc_html_e( 'Tipe', 'absensi-sekolah' ); ?></span>
                 <div class="radio-row" role="radiogroup" aria-label="<?php esc_attr_e( 'Tipe', 'absensi-sekolah' ); ?>">
-                  <?php
-                  $tipe_opsi = [
-                      'kelas' => __( 'Kelas', 'absensi-sekolah' ),
-                      'guru'  => __( 'Guru', 'absensi-sekolah' ),
-                      'staff' => __( 'Staff', 'absensi-sekolah' ),
-                  ];
-                  foreach ( $tipe_opsi as $val => $label ) :
-                      $id = 'uf-tipe-' . $val;
-                      ?>
-                    <label class="radio" for="<?php echo esc_attr( $id ); ?>">
-                      <input type="radio" id="<?php echo esc_attr( $id ); ?>" name="uf-tipe"
-                             value="<?php echo esc_attr( $val ); ?>"
-                             :checked="formTipe === '<?php echo esc_attr( $val ); ?>'"
-                             @change="gantiTipe('<?php echo esc_attr( $val ); ?>')">
-                      <span><?php echo esc_html( $label ); ?></span>
+                  <template x-for="t in tipeGroupOptions" :key="t">
+                    <label class="radio" :for="'uf-tipe-' + t">
+                      <input type="radio" :id="'uf-tipe-' + t" name="uf-tipe" :value="t"
+                             :checked="formTipe === t" @change="gantiTipe(t)">
+                      <span x-text="tipeLabel(t)"></span>
                     </label>
-                  <?php endforeach; ?>
+                  </template>
                 </div>
+                <p class="field__hint" x-show="tipeGroupOptions.length === 0" x-cloak>
+                  <?php esc_html_e( 'Belum ada tipe — buat group dulu di menu Group.', 'absensi-sekolah' ); ?>
+                </p>
               </div>
             </div>
 
