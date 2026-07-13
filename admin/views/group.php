@@ -72,13 +72,36 @@ defined( 'ABSPATH' ) || exit;
       <!-- Kolom kanan: tab tipe + search + tabel -->
       <div class="table-card">
 
-        <!-- Toolbar kartu: tab tipe (kiri) + cari group (kanan) -->
+        <!-- Toolbar kartu: filter tipe (dropdown) + cari group (kanan).
+             Dulu pill-tabs sebaris: tipe = string bebas & jumlahnya tak terbatas → barisnya
+             meluber begitu tipe bertambah. Dropdown tetap satu tinggi berapa pun tipenya. -->
         <div class="group-bar">
-          <div class="pill-tabs" role="tablist" aria-label="<?php esc_attr_e( 'Filter tipe', 'absensi-sekolah' ); ?>">
-            <template x-for="t in tipeTabs" :key="t.tipe">
-              <button type="button" class="pill" role="tab" :class="tipeFilter === t.tipe ? 'is-active' : ''"
-                      :aria-selected="tipeFilter === t.tipe" @click="pilihTipe(t.tipe)" x-text="t.label"></button>
-            </template>
+          <div class="dd-select" @click.outside="tipeMenuOpen = false"
+               @keydown.escape.window="tipeMenuOpen = false">
+            <button type="button" class="dd-select__btn" :class="tipeFilter ? 'is-filled' : ''"
+                    @click="tipeMenuOpen = ! tipeMenuOpen"
+                    :aria-expanded="tipeMenuOpen ? 'true' : 'false'" aria-haspopup="listbox"
+                    aria-label="<?php esc_attr_e( 'Filter tipe', 'absensi-sekolah' ); ?>">
+              <span class="dd-select__ic" x-html="$icon( 'filter', 15 )" aria-hidden="true"></span>
+              <span class="dd-select__val" x-text="tipeAktif.label"></span>
+              <span class="dd-select__count u-num" x-text="tipeAktif.jumlah"></span>
+              <span class="dd-select__chev" :class="tipeMenuOpen ? 'is-open' : ''"
+                    x-html="$icon( 'chevron-down', 16 )" aria-hidden="true"></span>
+            </button>
+
+            <div class="dd-select__menu" x-show="tipeMenuOpen" x-cloak role="listbox"
+                 aria-label="<?php esc_attr_e( 'Pilih tipe', 'absensi-sekolah' ); ?>">
+              <template x-for="t in tipeTabs" :key="t.tipe">
+                <button type="button" class="dd-select__opt" role="option"
+                        :class="tipeFilter === t.tipe ? 'is-active' : ''"
+                        :aria-selected="tipeFilter === t.tipe"
+                        @click="pilihTipe(t.tipe); tipeMenuOpen = false">
+                  <span class="dd-select__check" x-html="tipeFilter === t.tipe ? $icon( 'check', 15 ) : ''" aria-hidden="true"></span>
+                  <span class="dd-select__opt-label" x-text="t.label"></span>
+                  <span class="dd-select__count u-num" x-text="t.jumlah"></span>
+                </button>
+              </template>
+            </div>
           </div>
           <div class="input-group group-bar__search">
             <span class="input-group__icon" x-html="$icon( 'search', 16 )" aria-hidden="true"></span>

@@ -778,6 +778,55 @@ body.wp-admin { background-color: var(--c-bg); }
   padding: 12px 16px; border-bottom: 1px solid var(--c-border);
 }
 .absensi-app .group-bar__search { flex: 0 1 260px; min-width: 180px; }
+
+/* ─── Dropdown filter (dd-select) — pengganti pill-tabs ───────────────────────
+   Tipe group = string bebas (tak terbatas), pill sebaris bikin toolbar meluber.
+   Dropdown: tinggi tetap, isi menunya yang menggulir. Bukan <select> native supaya
+   bisa bawa ikon centang + hitungan per tipe. */
+.absensi-app .dd-select { position: relative; }
+.absensi-app .dd-select__btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  height: 36px; padding: 0 10px; border-radius: var(--r-md);
+  border: 1px solid var(--c-border); background: var(--c-surface); color: var(--c-text);
+  font-size: 13px; font-weight: 500; font-family: inherit; cursor: pointer;
+  transition: border-color .15s, box-shadow .15s, background .15s;
+}
+.absensi-app .dd-select__btn:hover { border-color: #CBD5E1; background: #FAFBFC; }
+.absensi-app .dd-select__btn[aria-expanded="true"] { border-color: var(--c-primary); box-shadow: var(--shadow-focus); }
+/* Ada filter aktif → tombolnya diwarnai, biar kelihatan tabel sedang tersaring */
+.absensi-app .dd-select__btn.is-filled { border-color: rgba(37,99,235,.35); background: var(--c-primary-soft); color: var(--c-primary-hover); }
+.absensi-app .dd-select__ic   { display: inline-flex; color: var(--c-text-muted); }
+.absensi-app .dd-select__btn.is-filled .dd-select__ic { color: var(--c-primary); }
+.absensi-app .dd-select__val  { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.absensi-app .dd-select__chev { display: inline-flex; color: var(--c-text-muted); transition: transform .18s ease; }
+.absensi-app .dd-select__chev.is-open { transform: rotate(180deg); }
+
+/* Hitungan (badge angka) di tombol & tiap opsi */
+.absensi-app .dd-select__count {
+  min-width: 20px; padding: 0 6px; height: 18px; border-radius: var(--r-full);
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 600; color: var(--c-text-muted); background: var(--c-bg);
+}
+.absensi-app .dd-select__btn.is-filled .dd-select__count { color: var(--c-primary-hover); background: rgba(37,99,235,.14); }
+
+.absensi-app .dd-select__menu {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 30;
+  min-width: 220px; max-height: 280px; overflow-y: auto;   /* tipe banyak → menunya yang scroll */
+  padding: 6px; background: var(--c-surface);
+  border: 1px solid var(--c-border); border-radius: var(--r-lg); box-shadow: var(--shadow-lg);
+}
+.absensi-app .dd-select__opt {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 8px 10px; border: 0; border-radius: var(--r-md); background: transparent;
+  font-size: 13px; font-family: inherit; color: var(--c-text); text-align: left; cursor: pointer;
+  transition: background .12s;
+}
+.absensi-app .dd-select__opt:hover { background: var(--c-bg); }
+.absensi-app .dd-select__opt.is-active { background: var(--c-primary-soft); color: var(--c-primary-hover); font-weight: 600; }
+.absensi-app .dd-select__opt-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Slot centang lebarnya tetap → label semua opsi tetap sejajar meski cuma satu yang tercentang */
+.absensi-app .dd-select__check { display: inline-flex; width: 15px; flex: none; color: var(--c-primary); }
+.absensi-app .dd-select__opt.is-active .dd-select__count { color: var(--c-primary-hover); background: rgba(37,99,235,.14); }
 .absensi-app .input--sm { height: 36px; font-size: 13px; }
 .absensi-app .group-bar .input-group .input { padding-left: 34px; }
 .absensi-app .group-bar .input-group__icon { left: 10px; }

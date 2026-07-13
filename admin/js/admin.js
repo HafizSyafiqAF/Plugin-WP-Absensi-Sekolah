@@ -2119,16 +2119,17 @@ tr:nth-child(even) td{background:#f9f9f9}
     error:   false,
 
     // ── Filter & paging (semua client-side; BE /group tak punya search/paging) ──
-    search:     '',
-    tipeFilter: '',       // '' = semua tipe
-    page:       1,
-    perPage:    8,
+    search:       '',
+    tipeFilter:   '',     // '' = semua tipe
+    tipeMenuOpen: false,  // dropdown filter tipe (menggantikan pill-tabs sebaris)
+    page:         1,
+    perPage:      8,
 
     // ── Modal Form (tambah/edit) ──
     modalOpen: false,
     editing:   null,      // id group saat edit; null = tambah
     saving:    false,
-    form:      { nama: '', tipe: 'kelas' },
+    form:      { nama: '', tipe: '' },   // tipe WAJIB, tanpa default — admin ketik sendiri
     formError: '',
     fieldErr:  {},
 
@@ -2168,25 +2169,35 @@ tr:nth-child(even) td{background:#f9f9f9}
     // ── Ringkasan (kartu kiri) — semua dihitung dari daftar group, bukan endpoint baru ──
     get totalGroup()  { return this.groups.length; },
     get totalMember() { return this.groups.reduce(function (t, g) { return t + (g.jumlah_user || 0); }, 0); },
-    /* Distribusi group per tipe (3 bawaan + tipe kustom yang benar-benar dipakai). */
+    /* Distribusi group per tipe — MURNI dari data (tanpa tipe bawaan). Urut: terbanyak dulu,
+       lalu abjad. Belum ada group → array kosong (chart & tab tipe ikut kosong). */
     get distribusi() {
-      var self = this, urut = ['kelas', 'guru', 'staff'], hitung = {};
+      var self = this, hitung = {};
       this.groups.forEach(function (g) {
         var t = g.tipe || 'lainnya';
         hitung[t] = (hitung[t] || 0) + 1;
       });
-      var tipe = urut.filter(function (t) { return hitung[t]; })
-        .concat(Object.keys(hitung).filter(function (t) { return urut.indexOf(t) === -1; }));
+      var tipe = Object.keys(hitung).sort(function (a, b) {
+        return (hitung[b] - hitung[a]) || a.localeCompare(b);
+      });
       var maks = Math.max.apply(null, [1].concat(tipe.map(function (t) { return hitung[t]; })));
       return tipe.map(function (t) {
         return { tipe: t, label: self.tipeLabel(t), jumlah: hitung[t], pct: Math.round((hitung[t] / maks) * 100) };
       });
     },
-    /* Tab tipe: "Semua" + tipe yang benar-benar ada datanya. */
+    /* Opsi filter tipe: "Semua" + tipe yang benar-benar ada datanya (+ jumlah group per tipe).
+       Dulu dirender sebagai pill sebaris; kini dropdown — tipe = string bebas, jumlahnya bisa
+       banyak dan barisnya meluber. Isi datanya sama, cuma cara tampilnya beda. */
     get tipeTabs() {
-      return [{ tipe: '', label: 'Semua Tipe' }].concat(
-        this.distribusi.map(function (d) { return { tipe: d.tipe, label: d.label }; })
+      return [{ tipe: '', label: 'Semua Tipe', jumlah: this.groups.length }].concat(
+        this.distribusi.map(function (d) { return { tipe: d.tipe, label: d.label, jumlah: d.jumlah }; })
       );
+    },
+    /* Opsi yang sedang aktif → dipakai sebagai label tombol dropdown. */
+    get tipeAktif() {
+      var t = this.tipeFilter;
+      var found = this.tipeTabs.filter(function (o) { return o.tipe === t; })[0];
+      return found || { tipe: '', label: 'Semua Tipe', jumlah: this.groups.length };
     },
 
     // ── Filter + paging (client) ──
