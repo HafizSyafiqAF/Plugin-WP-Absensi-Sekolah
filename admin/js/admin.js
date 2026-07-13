@@ -1071,7 +1071,7 @@ tr:nth-child(even) td{background:#f9f9f9}
     /* Tipe = milik GROUP (tak ada kolom tipe di absensi_users) → radio ini BUKAN
      * field yang disimpan, tapi penyaring daftar grup di dropdown. Tipe user
      * tetap ikut grup yang dipilih. */
-    formTipe:  'kelas',
+    formTipe:  '',        // filter tipe di modal; '' = semua (tanpa preset)
     formError: '',        // pesan error tingkat form (409/lainnya)
     fieldErr:  {},        // { nomor_induk:true, nama:true, rfid_uid:true } → tandai field
 
@@ -1288,7 +1288,7 @@ tr:nth-child(even) td{background:#f9f9f9}
         group_id:    u.group_id ? String(u.group_id) : '',
         rfid_uid:    u.rfid_uid || '',   // tak ada di form (bind lewat menu baris) — nilai lama dipertahankan
       };
-      this.formTipe = u.tipe_group || 'kelas';
+      this.formTipe = u.tipe_group || '';
       this.modalOpen = true;
       this._focusById('uf-nama');
     },
@@ -1609,10 +1609,23 @@ tr:nth-child(even) td{background:#f9f9f9}
       return 'https://www.openstreetmap.org/?mlat=' + lat + '&mlon=' + lng + '#map=17/' + lat + '/' + lng;
     },
 
+    /* Jam pulang wajib lebih malam dari jam masuk. Jam terbalik bikin mesin alpha menganggap hari
+       sudah selesai sebelum dimulai (semua ditandai Alpha) + gate pulang bolong. Shift lintas hari
+       belum didukung BE. Dicek di sini juga supaya salah ketik ketahuan SEBELUM kirim. */
+    get jamTerbalik() {
+      var m = this.form.jam_masuk, k = this.form.jam_keluar;
+      return !! (m && k && k <= m);
+    },
+
     /* Simpan (PUT /settings). Partial update; token dikirim hanya bila diisi (ganti).
      * 422 → tandai field bermasalah (errors keyed absensi_*) + toast. */
     async save() {
       if (this.saving) return;
+      if (this.jamTerbalik) {
+        this.fieldErr = { absensi_jam_masuk: true, absensi_jam_keluar: true };
+        window.absensiToast('Jam pulang harus lebih malam dari jam masuk.', 'error');
+        return;
+      }
       this.saving = true; this.fieldErr = {};
       try {
         var f = this.form;
@@ -1872,7 +1885,7 @@ tr:nth-child(even) td{background:#f9f9f9}
 
     // ── Filter server ──
     // Dikirim ke /laporan & /laporan/summary: dari, sampai, preset, group_id (+ page/per_page tabel).
-    filter: { dari: '', sampai: '', preset: '', group_id: '' },
+    filter: { dari: '', sampai: '', preset: '', group_id: '', tipe: '' },
     groups:  [],          // opsi Select Group (GET /group)
     page:    1,           // halaman tabel (pagination item Tabel)
     perPage: 50,          // per_page ke /laporan

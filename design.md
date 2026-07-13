@@ -287,7 +287,7 @@ Ukuran: **sm** (h32, px12, font 13px), **md** (h40, px16, font 14px — default)
 #### Badge
 
 - Pill (`radius-full`), padding 2px 10px, Caption medium. Warna sesuai peta status kehadiran (§2.1) atau tipe group.
-- Tipe Group: Kelas = Primary 12%, Guru = Purple 12%, Staff = Info 12% (teks versi gelap masing-masing).
+- Tipe Group (teks bebas sejak v2.1.0): `kelas` = Primary 12%, `guru` = Purple 12%, `staff` = Info 12% (warna warisan); **tipe kustom lain → badge netral**.
 
 #### Toast (Notifikasi sementara)
 

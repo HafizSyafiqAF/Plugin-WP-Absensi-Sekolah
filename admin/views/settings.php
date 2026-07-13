@@ -33,7 +33,7 @@ defined( 'ABSPATH' ) || exit;
 
       <form @submit.prevent="save()">
 
-        <!-- Baris 1: Lokasi Sekolah (lebar) + Jadwal Global -->
+        <!-- Baris 1: Lokasi Sekolah (lebar) + Jadwal Default -->
         <div class="set-grid">
 
           <!-- ── Lokasi Sekolah ── -->
@@ -98,12 +98,18 @@ defined( 'ABSPATH' ) || exit;
             </div>
           </div>
 
-          <!-- ── Jadwal Global ── -->
+          <!-- ── Jadwal Default ──
+               Dulu dinamai "Jadwal Global" — menyesatkan: kesannya menimpa semua grup, padahal
+               ini cuma CADANGAN untuk grup yang belum punya jadwal sendiri (Absensi → Jadwal).
+               Grup yang punya jadwal sendiri TIDAK memakai jam di kartu ini. -->
           <div class="card set-card">
             <div class="card__head">
               <div class="card-head-ic">
                 <span class="card-chip card-chip--muted" x-html="$icon( 'clock', 18 )" aria-hidden="true"></span>
-                <h2 class="card__title"><?php esc_html_e( 'Jadwal Global', 'absensi-sekolah' ); ?></h2>
+                <div>
+                  <h2 class="card__title"><?php esc_html_e( 'Jadwal Default', 'absensi-sekolah' ); ?></h2>
+                  <p class="card__sub"><?php esc_html_e( 'Dipakai grup yang belum punya jadwal sendiri (Senin–Jumat).', 'absensi-sekolah' ); ?></p>
+                </div>
               </div>
             </div>
 
@@ -123,9 +129,16 @@ defined( 'ABSPATH' ) || exit;
                 <input id="sf-keluar" type="time" class="input" :class="fieldErr.absensi_jam_keluar ? 'input--error' : ''"
                        x-model="form.jam_keluar">
               </div>
+              <!-- Jam terbalik = jebakan senyap: mesin alpha menganggap hari sudah selesai sebelum
+                   dimulai (semua ditandai Alpha) + gate pulang bolong. Ditolak juga oleh BE (422). -->
+              <p class="field__error" x-show="jamTerbalik" x-cloak>
+                <?php esc_html_e( 'Jam pulang harus lebih malam dari jam masuk. Shift lintas hari (mis. masuk 22:00 pulang 06:00) belum didukung.', 'absensi-sekolah' ); ?>
+              </p>
             </div>
 
-            <!-- Toleransi telat: slider 0–60 menit (option absensi_telat_menit) -->
+            <!-- Toleransi telat: slider 0–60 menit (option absensi_telat_menit).
+                 BEDA dari jam di atas: toleransi berlaku untuk SEMUA grup — dihitung dari jam masuk
+                 jadwal grup masing-masing, bukan dari jam default di kartu ini. -->
             <div class="set-tol">
               <div class="set-tol__head">
                 <label class="set-tol__label" for="sf-telat"><?php esc_html_e( 'Toleransi Telat', 'absensi-sekolah' ); ?></label>
@@ -136,7 +149,9 @@ defined( 'ABSPATH' ) || exit;
               <input id="sf-telat" type="range" class="set-tol__range" min="0" max="60" step="1"
                      x-model="form.telat_menit"
                      aria-label="<?php esc_attr_e( 'Toleransi telat dalam menit', 'absensi-sekolah' ); ?>">
-              <p class="set-tol__hint"><?php esc_html_e( 'Absen setelah jam masuk + toleransi dihitung Telat.', 'absensi-sekolah' ); ?></p>
+              <p class="set-tol__hint">
+                <?php esc_html_e( 'Berlaku untuk SEMUA grup — dihitung dari jam masuk jadwal grup masing-masing. Absen setelah jam masuk + toleransi = Telat.', 'absensi-sekolah' ); ?>
+              </p>
             </div>
           </div>
         </div>

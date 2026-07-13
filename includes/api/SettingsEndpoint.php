@@ -75,7 +75,7 @@ class SettingsEndpoint {
     public function update_settings( \WP_REST_Request $req ): \WP_REST_Response {
         $params  = $req->get_params();
         $errors  = [];
-        $updated = [];
+        $bersih  = [];   // nilai lolos sanitasi — BELUM ditulis
 
         foreach ( $this->fields() as $key => $type ) {
             if ( ! array_key_exists( $key, $params ) ) {
@@ -86,10 +86,14 @@ class SettingsEndpoint {
                 $errors[ $key ] = $msg;
                 continue;
             }
-            update_option( $key, $val );
-            $updated[ $key ] = $val;
+            $bersih[ $key ] = $val;
         }
 
+        $errors += $this->validasi_silang( $bersih );
+
+        // ATOMIK: satu field invalid → TIDAK ADA yang ditulis. Dulu update_option dipanggil di
+        // dalam loop, jadi field yang valid terlanjur tersimpan meski request dibalas 422 —
+        // pengaturan bisa berakhir setengah jadi.
         if ( $errors ) {
             return new \WP_REST_Response( [
                 'code'    => 'validasi_gagal',
@@ -99,11 +103,46 @@ class SettingsEndpoint {
             ], 422 );
         }
 
+        foreach ( $bersih as $key => $val ) {
+            update_option( $key, $val );
+        }
+
         return new \WP_REST_Response( [
             'success'  => true,
-            'updated'  => $updated,
+            'updated'  => $bersih,
             'settings' => $this->current(),
         ] );
+    }
+
+    /**
+     * Validasi antar-field (tak bisa dilakukan per field sendiri-sendiri).
+     *
+     * Jam pulang HARUS lebih malam dari jam masuk. Jam terbalik bukan sekadar aneh: mesin alpha
+     * memakai jam pulang sebagai penanda "hari sudah selesai", jadi jam pulang < jam masuk membuat
+     * semua orang ditandai Alpha SEBELUM sekolah dimulai, dan gate pulang jadi bolong.
+     * Shift lintas hari (masuk 22:00, pulang 06:00) belum didukung model data (rekap = 1 baris per
+     * tanggal, sesi pulang dicari pada tanggal yang sama) → sengaja ditolak, bukan diam-diam rusak.
+     * Aturan ini sama dengan JadwalEndpoint (422 `jam_urutan`) supaya dua halaman tak beda aturan.
+     *
+     * Update parsial: field yang tak dikirim diambil dari nilai tersimpan.
+     */
+    private function validasi_silang( array $bersih ): array {
+        $masuk  = $bersih['absensi_jam_masuk']  ?? (string) get_option( 'absensi_jam_masuk', '07:00' );
+        $keluar = $bersih['absensi_jam_keluar'] ?? (string) get_option( 'absensi_jam_keluar', '15:00' );
+
+        // Hanya berlaku bila salah satunya memang sedang diubah.
+        if ( ! isset( $bersih['absensi_jam_masuk'] ) && ! isset( $bersih['absensi_jam_keluar'] ) ) {
+            return [];
+        }
+        if ( '' === $masuk || '' === $keluar || $keluar > $masuk ) {
+            return [];
+        }
+
+        $pesan = 'Jam pulang harus lebih malam dari jam masuk (shift lintas hari belum didukung).';
+        return [
+            'absensi_jam_keluar' => $pesan,
+            'absensi_jam_masuk'  => $pesan,   // tandai keduanya: admin tak perlu menebak yang mana
+        ];
     }
 
     /** @return array{0:bool,1:mixed,2:string} [ok, value, message] */
@@ -125,7 +164,9 @@ class SettingsEndpoint {
             case 'akurasi':
                 return [ true, max( 1, min( 1000, (int) $raw ) ), '' ];
             case 'debounce':
-                return [ true, max( 0, min( 60, (int) $raw ) ), '' ];
+                // Minimal 1 detik: 0 = anti double-tap MATI. Scanner RFID kerap mengirim UID dua
+                // kali dalam hitungan milidetik → tap sekali bisa tercatat masuk + pulang.
+                return [ true, max( 1, min( 60, (int) $raw ) ), '' ];
             case 'retensi':
                 return [ true, max( 0, min( 3650, (int) $raw ) ), '' ];
             case 'url':
