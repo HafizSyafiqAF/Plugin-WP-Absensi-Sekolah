@@ -437,7 +437,7 @@ defined( 'ABSPATH' ) || exit;
               <span>
                 <?php esc_html_e( 'Yakin hapus', 'absensi-sekolah' ); ?>
                 <strong x-text="delGroup ? delGroup.nama : ''"></strong>?
-                <?php esc_html_e( 'Tindakan ini tidak bisa dibatalkan.', 'absensi-sekolah' ); ?>
+                <?php esc_html_e( 'Jadwal group ini ikut terhapus. Tindakan ini tidak bisa dibatalkan.', 'absensi-sekolah' ); ?>
               </span>
             </div>
 

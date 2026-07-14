@@ -134,8 +134,14 @@ class GroupEndpoint {
             return $this->error( 'group_ada_user', "Group masih memiliki $jumlah user. Pindahkan dulu sebelum hapus.", 409 );
         }
 
+        // Jadwal group ikut dihapus (cascade manual — tak ada FK). Kalau ditinggal, barisnya jadi
+        // yatim: tak terlihat di halaman Jadwal (yang mengiterasi group), tapi kalau id group
+        // dipakai ulang, group BARU diam-diam mewarisi jam masuk/pulang group lama — dan itu
+        // menyetir status telat + mesin alpha.
+        $jadwal = (int) $wpdb->delete( $wpdb->prefix . 'absensi_jadwal', [ 'group_id' => $id ], [ '%d' ] );
         $wpdb->delete( $wpdb->prefix . 'absensi_group', [ 'id' => $id ], [ '%d' ] );
-        return new \WP_REST_Response( [ 'deleted' => true ] );
+
+        return new \WP_REST_Response( [ 'deleted' => true, 'jadwal_dihapus' => $jadwal ] );
     }
 
     /** Admin-only. */

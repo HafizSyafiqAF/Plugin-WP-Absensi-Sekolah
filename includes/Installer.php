@@ -10,7 +10,7 @@ defined( 'ABSPATH' ) || exit;
 class Installer {
 
     /** Versi skema DB – naikkan setiap ada perubahan tabel. */
-    const DB_VERSION = '2.2.0';
+    const DB_VERSION = '2.3.0';
 
     /**
      * Capability gerbang akses kiosk RFID (page /absensi/guru + endpoint /absen/rfid).
@@ -57,8 +57,34 @@ class Installer {
         // Re-seed option default (idempotent) supaya upgrade lewat maybe_upgrade tetap
         // sinkron tanpa harus deactivate+activate ulang.
         self::seed_default_options();
+        // v2.3.0: sapu baris yatim warisan (butuh tabel sudah ada → setelah create_tables).
+        if ( version_compare( $installed, '2.3.0', '<' ) ) {
+            self::bersihkan_yatim();
+        }
         // Langkah migrasi per-versi berikutnya (backfill data) ditambah di sini.
         return true;
+    }
+
+    /**
+     * v2.3.0 — buang rekap milik user yang sudah dihapus & jadwal milik group yang sudah dihapus.
+     *
+     * Sebelum versi ini, DELETE user/group tak menyentuh tabel anaknya (skema tanpa FK), jadi
+     * barisnya menumpuk: rekap yatim tetap dihitung `/laporan/summary` (COUNT tanpa JOIN users)
+     * sehingga angka Hadir/Telat lebih besar dari kenyataan, muncul tanpa nama di Laporan/Export,
+     * dan bisa "diwarisi" user/group baru saat id dipakai ulang. Endpoint DELETE sekarang cascade;
+     * ini membersihkan sisa lama. Idempotent (jalan sekali, dan aman diulang).
+     */
+    private static function bersihkan_yatim(): void {
+        global $wpdb;
+        $p = $wpdb->prefix;
+
+        $wpdb->query( "DELETE r FROM {$p}absensi_rekap r
+            LEFT JOIN {$p}absensi_users u ON u.id = r.user_id
+            WHERE u.id IS NULL" );
+
+        $wpdb->query( "DELETE j FROM {$p}absensi_jadwal j
+            LEFT JOIN {$p}absensi_group g ON g.id = j.group_id
+            WHERE g.id IS NULL" );
     }
 
     // ─── Buat Tabel Custom ───────────────────────────────────────────────────

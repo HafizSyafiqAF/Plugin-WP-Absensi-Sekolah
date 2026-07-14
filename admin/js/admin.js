@@ -1496,7 +1496,8 @@ tr:nth-child(even) td{background:#f9f9f9}
       try {
         var data = await window.api.post('users/bulk-delete', { ids: this.selected });
         var n = (data && data.deleted) || 0;
-        window.absensiToast(n + ' user dihapus.', 'success');
+        var r = (data && data.rekap_dihapus) || 0;
+        window.absensiToast(n + ' user dihapus' + (r ? ' (' + r + ' baris absensi ikut terhapus)' : '') + '.', 'success');
         this.bulkDelOpen = false;
         this.clearSelection();
         this.page = 1;

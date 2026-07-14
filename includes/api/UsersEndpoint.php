@@ -146,14 +146,23 @@ class UsersEndpoint {
         return new \WP_REST_Response( [ 'updated' => true ] );
     }
 
+    /**
+     * Hapus user + SELURUH rekapnya (cascade manual — tak ada FK di skema).
+     *
+     * Rekap yatim bukan sekadar kotor: `/laporan/summary` menghitung COUNT(*) langsung dari
+     * absensi_rekap TANPA join users, jadi baris milik user yang sudah dihapus tetap menaikkan
+     * angka Hadir/Telat. Di list & export (LEFT JOIN) ia muncul sebagai baris tanpa nama. Dan
+     * karena `rekap.user_id` cuma angka, id yang dipakai ulang (MariaDB/MySQL 5.7 me-reset
+     * AUTO_INCREMENT ke MAX(id)+1 tiap restart) membuat riwayat orang lama nempel ke user baru.
+     */
     public function delete_user( \WP_REST_Request $req ): \WP_REST_Response {
         global $wpdb;
-        $wpdb->delete(
-            $wpdb->prefix . 'absensi_users',
-            [ 'id' => (int) $req->get_param( 'id' ) ],
-            [ '%d' ]
-        );
-        return new \WP_REST_Response( [ 'deleted' => true ] );
+        $id = (int) $req->get_param( 'id' );
+
+        $rekap = (int) $wpdb->delete( $wpdb->prefix . 'absensi_rekap', [ 'user_id' => $id ], [ '%d' ] );
+        $wpdb->delete( $wpdb->prefix . 'absensi_users', [ 'id' => $id ], [ '%d' ] );
+
+        return new \WP_REST_Response( [ 'deleted' => true, 'rekap_dihapus' => $rekap ] );
     }
 
     /**
@@ -161,6 +170,7 @@ class UsersEndpoint {
      * Satu query DELETE ... IN (...) — bukan N request DELETE /users/{id}.
      * `ids` di-absint + dedup; id tak ada di DB diabaikan (idempotent).
      * Cap 500 id per request. Balas jumlah baris yang benar-benar terhapus.
+     * Rekap milik user-user itu ikut dihapus — alasan sama seperti di delete_user().
      */
     public function bulk_delete_users( \WP_REST_Request $req ): \WP_REST_Response {
         global $wpdb;
@@ -176,13 +186,18 @@ class UsersEndpoint {
             return $this->error( 'terlalu_banyak', 'Maksimal 500 user per penghapusan.', 422 );
         }
 
-        $ph      = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
+        $ph = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
+
+        $rekap = (int) $wpdb->query( $wpdb->prepare(
+            "DELETE FROM {$wpdb->prefix}absensi_rekap WHERE user_id IN ( {$ph} )",
+            $ids
+        ) );
         $deleted = (int) $wpdb->query( $wpdb->prepare(
             "DELETE FROM {$wpdb->prefix}absensi_users WHERE id IN ( {$ph} )",
             $ids
         ) );
 
-        return new \WP_REST_Response( [ 'deleted' => $deleted ], 200 );
+        return new \WP_REST_Response( [ 'deleted' => $deleted, 'rekap_dihapus' => $rekap ], 200 );
     }
 
     /** Bind/ganti UID RFID ke user (cek duplikasi UID lintas user). */

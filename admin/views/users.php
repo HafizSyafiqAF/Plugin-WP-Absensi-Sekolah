@@ -616,7 +616,7 @@ defined( 'ABSPATH' ) || exit;
               <span>
                 <?php esc_html_e( 'Yakin hapus', 'absensi-sekolah' ); ?>
                 <strong x-text="delUser ? delUser.nama : ''"></strong>?
-                <?php esc_html_e( 'Tindakan ini tidak bisa dibatalkan.', 'absensi-sekolah' ); ?>
+                <?php esc_html_e( 'Seluruh riwayat absensinya ikut terhapus — laporan bulan lalu akan ikut berubah. Tindakan ini tidak bisa dibatalkan.', 'absensi-sekolah' ); ?>
               </span>
             </div>
           </div>
@@ -651,7 +651,7 @@ defined( 'ABSPATH' ) || exit;
               <span>
                 <?php esc_html_e( 'Yakin hapus', 'absensi-sekolah' ); ?>
                 <strong class="u-num" x-text="selectedCount"></strong> <?php esc_html_e( 'user terpilih?', 'absensi-sekolah' ); ?>
-                <?php esc_html_e( 'Tindakan ini tidak bisa dibatalkan.', 'absensi-sekolah' ); ?>
+                <?php esc_html_e( 'Seluruh riwayat absensi mereka ikut terhapus — laporan bulan lalu akan ikut berubah. Tindakan ini tidak bisa dibatalkan.', 'absensi-sekolah' ); ?>
               </span>
             </div>
             <!-- Pratinjau nama (maks 10) → biar tak salah hapus. -->
