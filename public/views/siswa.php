@@ -24,20 +24,20 @@ defined( 'ABSPATH' ) || exit;
 	<header class="kiosk-top">
 		<div class="kiosk-badge-brand">
 			<span class="kiosk-brand__ico" x-html="$icon( 'clipboard-check', 16 )" aria-hidden="true"></span>
-			<span class="kiosk-brand__txt"><?php esc_html_e( 'Kiosk Absensi Siswa', 'absensi-sekolah' ); ?></span>
+			<span class="kiosk-brand__txt"><?php esc_html_e( 'Kiosk Absensi', 'absensi-sekolah' ); ?></span>
 		</div>
 		<p class="kiosk-top__meta">
 			<span x-text="tanggal"></span> · <span x-text="jam"></span>
 		</p>
 	</header>
 
-	<!-- ── Langkah 1: Masukkan NIS ── -->
+	<!-- ── Langkah 1: Masukkan NIS/NIP ── -->
 	<section class="kiosk-panel" x-show="step === 'nis'" x-cloak>
 		<span class="kiosk-panel__ico" x-html="$icon( 'user-check', 22 )" aria-hidden="true"></span>
-		<h2 class="kiosk-panel__title"><?php esc_html_e( 'Masukkan NIS', 'absensi-sekolah' ); ?></h2>
-		<p class="kiosk-panel__sub"><?php esc_html_e( 'Nomor Induk Siswa', 'absensi-sekolah' ); ?></p>
+		<h2 class="kiosk-panel__title"><?php esc_html_e( 'Masukkan NIS/NIP', 'absensi-sekolah' ); ?></h2>
+		<p class="kiosk-panel__sub"><?php esc_html_e( 'NIS/NIP', 'absensi-sekolah' ); ?></p>
 
-		<label class="u-sr" for="ks-nis"><?php esc_html_e( 'Nomor induk siswa', 'absensi-sekolah' ); ?></label>
+		<label class="u-sr" for="ks-nis"><?php esc_html_e( 'Nomor induk (NIS/NIP)', 'absensi-sekolah' ); ?></label>
 		<input id="ks-nis" type="text" inputmode="numeric" autocomplete="off"
 		       class="kiosk-nis" :class="lookupError ? 'kiosk-nis--error' : ''"
 		       x-model.trim="nomorInduk"
@@ -150,7 +150,7 @@ defined( 'ABSPATH' ) || exit;
 				<dd x-text="siswaNama"></dd>
 			</div>
 			<div class="kiosk-summary__row">
-				<dt><?php esc_html_e( 'NIS', 'absensi-sekolah' ); ?></dt>
+				<dt><?php esc_html_e( 'NIS/NIP', 'absensi-sekolah' ); ?></dt>
 				<dd x-text="nomorInduk"></dd>
 			</div>
 			<div class="kiosk-summary__row">
