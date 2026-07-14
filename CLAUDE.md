@@ -72,9 +72,9 @@ Namespace `absensi/v1` (`/wp-json/absensi/v1/`). Konstanta `NAMESPACE` diulang d
 
 | Method | Endpoint | Permission | File |
 |---|---|---|---|
-| POST | `/absen/selfie` | **publik** (`__return_true`) | [AbsensiEndpoint.php](includes/api/AbsensiEndpoint.php) |
+| POST | `/absen/selfie` | **publik** (`__return_true`) + gerbang anti-enumerasi per-IP | [AbsensiEndpoint.php](includes/api/AbsensiEndpoint.php) |
 | POST | `/absen/rfid` | **login + cap `absensi_rfid`** (guru/admin) — `can_absen_rfid()` | AbsensiEndpoint |
-| GET | `/absen/status` | **publik** (by `nomor_induk`) | AbsensiEndpoint |
+| GET | `/absen/status` | **publik** (by `nomor_induk`) + gerbang anti-enumerasi per-IP | AbsensiEndpoint |
 | GET/POST | `/users` | `manage_options` | [UsersEndpoint.php](includes/api/UsersEndpoint.php) |
 | GET/PUT/DELETE | `/users/{id}` | `manage_options` | UsersEndpoint |
 | POST | `/users/{id}/rfid` | `manage_options` | UsersEndpoint (bind kartu; ganti enroll lama) |
@@ -91,7 +91,7 @@ Namespace `absensi/v1` (`/wp-json/absensi/v1/`). Konstanta `NAMESPACE` diulang d
 | GET/PUT | `/settings` | `manage_options` | [SettingsEndpoint.php](includes/api/SettingsEndpoint.php) |
 
 **Auth model (tiga kelas):**
-- **Kiosk publik siswa** (selfie/status): `permission_callback => __return_true`. Identitas dari **`nomor_induk`**, bukan sesi WP. Anti-abuse: rate-limit transient per nomor_induk — **wajib pertahankan** (endpoint tanpa auth).
+- **Kiosk publik siswa** (selfie/status): `permission_callback => __return_true`. Identitas dari **`nomor_induk`**, bukan sesi WP. Anti-abuse **wajib pertahankan** (endpoint tanpa auth): (a) rate-limit transient per nomor_induk (khusus selfie, `absensi_selfie_rl_detik`), DAN (b) **gerbang anti-enumerasi per-IP** (`gerbang_publik()` + `tandai_nomor_asing()` di AbsensiEndpoint, dipakai selfie & status). Kenapa perlu (b): nomor induk berurutan + endpoint membedakan 404 (asing) vs 200/403 (ada) = oracle → skrip bisa memanen daftar nama + siapa yang hari ini tak masuk. Dua lapis: `RL_MAX` hit/jendela per IP (longgar — satu kiosk dipakai sekolah) + **kunci setelah `MISS_MAX` nomor asing BERUNTUN** (`MISS_LOCK` detik; nomor benar me-reset — kiosk asli tak pernah kena). Semua filterable (`absensi_publik_rl_max`/`_miss_max`/`_lock_detik`, `absensi_client_ip` untuk di belakang proxy). Sengaja TIDAK baca `X-Forwarded-For` default (bisa dipalsu).
 - **Kiosk RFID (login-gated)** (`/absen/rfid`): `can_absen_rfid()` = `is_user_logged_in() && current_user_can('absensi_rfid')` (role `guru`/admin). Nonce `wp_rest` (cookie auth REST). Debounce anti double-tap **wajib pertahankan**. Identitas absen dari **`rfid_uid` siswa** (login guru = gerbang akses, tak masuk rekap).
 - **Admin** (users/group/guru-import/jadwal/laporan/settings): `current_user_can('manage_options')`. Cookie WP + nonce `wp_rest` (header `X-WP-Nonce`), di-inject via `wp_localize_script` → `AbsensiConfig` (public) / `AbsensiAdmin` (admin) `{ restUrl, nonce, ... }`.
 - **Role `guru` AKTIF kembali** (fitur Akun Guru): di-seed `Installer::seed_roles()` (caps `read` + `absensi_rfid`, tanpa cap admin lain). Cap `absensi_rfid` juga di administrator. Gate/blok terkait di §Akun Guru. (Role pra-pivot lain — `orang_tua`/`absensi_admin`/`absensi_siswa` — mungkin masih nyangkut di DB tapi tak ada gate yang membacanya; dihapus saat uninstall.)
