@@ -1071,6 +1071,7 @@ tr:nth-child(even) td{background:#f9f9f9}
      * field yang disimpan, tapi penyaring daftar grup di dropdown. Tipe user
      * tetap ikut grup yang dipilih. */
     formTipe:  '',        // filter tipe di modal; '' = semua (tanpa preset)
+    formTipeMenuOpen: false, // dropdown Tipe modal buka/tutup
     formError: '',        // pesan error tingkat form (409/lainnya)
     fieldErr:  {},        // { nomor_induk:true, nama:true, rfid_uid:true } → tandai field
 
@@ -1246,17 +1247,22 @@ tr:nth-child(even) td{background:#f9f9f9}
     _resetForm() {
       this.form = { nomor_induk: '', nama: '', group_id: '', rfid_uid: '' };
       this.formTipe = '';   // '' = semua tipe (tak ada preset; tipe datang dari data group)
+      this.formTipeMenuOpen = false;
       this.formError = ''; this.fieldErr = {};
     },
 
-    /* Opsi radio Tipe pada MODAL — MURNI dari tipe daftar GROUP (tanpa preset). Belum ada group → kosong.
+    /* Opsi dropdown Tipe pada MODAL — MURNI dari tipe daftar GROUP (tanpa preset). Belum ada group → kosong.
        Beda dari `tipeOptions` di atas: itu untuk dropdown FILTER (dibangun dari tipe_group milik USERS
        + sentinel Tanpa Group). Jangan disatukan — nama harus beda, kalau tidak getter-nya saling timpa. */
     get tipeGroupOptions() {
       var dipakai = this.groups.map(function (g) { return g.tipe; }).filter(Boolean);
       return Array.from(new Set(dipakai)).sort(function (a, b) { return a.localeCompare(b, 'id'); });
     },
-    /* Opsi grup pada modal, disaring sesuai radio Tipe. formTipe '' = tampilkan semua. */
+    /* Label tombol dropdown Tipe modal: '' → "Semua Tipe", selain itu label tipe-nya. */
+    get formTipeLabel() {
+      return this.formTipe ? this.tipeLabel(this.formTipe) : 'Semua Tipe';
+    },
+    /* Opsi grup pada modal, disaring sesuai Tipe terpilih. formTipe '' = tampilkan semua. */
     get groupsByTipe() {
       var t = this.formTipe;
       if (! t) return this.groups;

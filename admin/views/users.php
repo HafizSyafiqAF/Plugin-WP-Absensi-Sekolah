@@ -312,7 +312,48 @@ defined( 'ABSPATH' ) || exit;
                        placeholder="<?php esc_attr_e( 'Contoh: 2023001', 'absensi-sekolah' ); ?>">
               </div>
 
-              <!-- Grup: opsinya disaring oleh radio Tipe di bawah -->
+              <!-- Tipe: BUKAN kolom user — penyaring daftar grup (tipe user ikut grupnya).
+                   Pilih tipe DULU → dropdown Grup di bawah cuma menampilkan grup bertipe itu.
+                   Dropdown modern (bukan radio) supaya rapi walau tipe banyak. Opsinya dari tipe
+                   group yang benar-benar ada di data (tanpa preset). -->
+              <div class="field">
+                <label class="field__label"><?php esc_html_e( 'Tipe', 'absensi-sekolah' ); ?></label>
+                <div class="dd-select" @click.outside="formTipeMenuOpen = false"
+                     @keydown.escape.window="formTipeMenuOpen = false">
+                  <button type="button" class="dd-select__btn" :class="formTipe ? 'is-filled' : ''"
+                          @click="formTipeMenuOpen = ! formTipeMenuOpen"
+                          :aria-expanded="formTipeMenuOpen ? 'true' : 'false'" aria-haspopup="listbox"
+                          aria-label="<?php esc_attr_e( 'Pilih tipe', 'absensi-sekolah' ); ?>">
+                    <span class="dd-select__ic" x-html="$icon( 'filter', 15 )" aria-hidden="true"></span>
+                    <span class="dd-select__val" x-text="formTipeLabel"></span>
+                    <span class="dd-select__chev" :class="formTipeMenuOpen ? 'is-open' : ''"
+                          x-html="$icon( 'chevron-down', 16 )" aria-hidden="true"></span>
+                  </button>
+
+                  <div class="dd-select__menu" x-show="formTipeMenuOpen" x-cloak role="listbox"
+                       aria-label="<?php esc_attr_e( 'Pilih tipe', 'absensi-sekolah' ); ?>">
+                    <button type="button" class="dd-select__opt" role="option"
+                            :class="! formTipe ? 'is-active' : ''" :aria-selected="! formTipe"
+                            @click="gantiTipe(''); formTipeMenuOpen = false">
+                      <span class="dd-select__check" x-html="! formTipe ? $icon( 'check', 15 ) : ''" aria-hidden="true"></span>
+                      <span class="dd-select__opt-label"><?php esc_html_e( 'Semua Tipe', 'absensi-sekolah' ); ?></span>
+                    </button>
+                    <template x-for="t in tipeGroupOptions" :key="t">
+                      <button type="button" class="dd-select__opt" role="option"
+                              :class="formTipe === t ? 'is-active' : ''" :aria-selected="formTipe === t"
+                              @click="gantiTipe(t); formTipeMenuOpen = false">
+                        <span class="dd-select__check" x-html="formTipe === t ? $icon( 'check', 15 ) : ''" aria-hidden="true"></span>
+                        <span class="dd-select__opt-label" x-text="tipeLabel(t)"></span>
+                      </button>
+                    </template>
+                  </div>
+                </div>
+                <p class="field__hint" x-show="tipeGroupOptions.length === 0" x-cloak>
+                  <?php esc_html_e( 'Belum ada tipe — buat group dulu di menu Group.', 'absensi-sekolah' ); ?>
+                </p>
+              </div>
+
+              <!-- Grup: opsinya disaring oleh Tipe di atas (groupsByTipe). -->
               <div class="field">
                 <label class="field__label" for="uf-group"><?php esc_html_e( 'Grup', 'absensi-sekolah' ); ?></label>
                 <select id="uf-group" class="select" x-model="form.group_id">
@@ -323,25 +364,6 @@ defined( 'ABSPATH' ) || exit;
                 </select>
                 <p class="field__hint" x-show="groupsByTipe.length === 0" x-cloak>
                   <?php esc_html_e( 'Belum ada grup bertipe ini — buat dulu di halaman Group.', 'absensi-sekolah' ); ?>
-                </p>
-              </div>
-
-              <!-- Tipe: BUKAN kolom user — penyaring daftar grup (tipe user ikut grupnya) -->
-              <!-- Tipe = filter opsional untuk daftar Group. TANPA preset: opsinya diambil
-                   dari tipe group yang benar-benar ada di data. Belum ada group → kosong. -->
-              <div class="field">
-                <span class="field__label"><?php esc_html_e( 'Tipe', 'absensi-sekolah' ); ?></span>
-                <div class="radio-row" role="radiogroup" aria-label="<?php esc_attr_e( 'Tipe', 'absensi-sekolah' ); ?>">
-                  <template x-for="t in tipeGroupOptions" :key="t">
-                    <label class="radio" :for="'uf-tipe-' + t">
-                      <input type="radio" :id="'uf-tipe-' + t" name="uf-tipe" :value="t"
-                             :checked="formTipe === t" @change="gantiTipe(t)">
-                      <span x-text="tipeLabel(t)"></span>
-                    </label>
-                  </template>
-                </div>
-                <p class="field__hint" x-show="tipeGroupOptions.length === 0" x-cloak>
-                  <?php esc_html_e( 'Belum ada tipe — buat group dulu di menu Group.', 'absensi-sekolah' ); ?>
                 </p>
               </div>
             </div>
