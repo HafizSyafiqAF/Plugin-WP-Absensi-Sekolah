@@ -28,17 +28,42 @@ $logout_url = wp_logout_url( get_permalink() ?: home_url( '/' ) );
 
 	<!-- Identitas guru login + Keluar (pojok kiri atas) -->
 	<?php if ( '' !== $guru_nama ) : ?>
-	<div class="kioskg2-user">
+	<div class="kioskg2-user" x-data="{ konfirmasi: false }">
 		<span class="kioskg2-user__ico" x-html="$icon( 'user-check', 15 )" aria-hidden="true"></span>
 		<span class="kioskg2-user__name">
 			<span class="kioskg2-user__label"><?php esc_html_e( 'Login sebagai', 'absensi-sekolah' ); ?></span>
 			<?php echo esc_html( $guru_nama ); ?>
 		</span>
-		<a class="kioskg2-user__out" href="<?php echo esc_url( $logout_url ); ?>"
-		   @click.stop="if ( ! confirm( '<?php echo esc_js( __( 'Keluar dari akun ini? Perlu login lagi untuk absen.', 'absensi-sekolah' ) ); ?>' ) ) $event.preventDefault()">
+		<button type="button" class="kioskg2-user__out" @click.stop="konfirmasi = true">
 			<span x-html="$icon( 'log-out', 14 )" aria-hidden="true"></span>
 			<?php esc_html_e( 'Keluar', 'absensi-sekolah' ); ?>
-		</a>
+		</button>
+
+		<!-- Popup konfirmasi keluar -->
+		<div class="kioskg2-confirm" x-show="konfirmasi" x-cloak
+		     @click.self.stop="konfirmasi = false" @keydown.escape.window="konfirmasi = false"
+		     role="dialog" aria-modal="true" aria-labelledby="kg-out-title">
+			<div class="kioskg2-confirm__box" @click.stop>
+				<span class="kioskg2-confirm__ico" x-html="$icon( 'log-out', 26 )" aria-hidden="true"></span>
+				<p class="kioskg2-confirm__title" id="kg-out-title"><?php esc_html_e( 'Keluar dari akun ini?', 'absensi-sekolah' ); ?></p>
+				<p class="kioskg2-confirm__sub">
+					<?php
+					printf(
+						/* translators: %s = nama guru */
+						esc_html__( 'Anda login sebagai %s. Perlu login lagi untuk absen.', 'absensi-sekolah' ),
+						'<strong>' . esc_html( $guru_nama ) . '</strong>'
+					);
+					?>
+				</p>
+				<div class="kioskg2-confirm__act">
+					<button type="button" class="kioskg2-confirm__batal" @click.stop="konfirmasi = false"><?php esc_html_e( 'Batal', 'absensi-sekolah' ); ?></button>
+					<a class="kioskg2-confirm__ya" href="<?php echo esc_url( $logout_url ); ?>">
+						<span x-html="$icon( 'log-out', 15 )" aria-hidden="true"></span>
+						<?php esc_html_e( 'Keluar', 'absensi-sekolah' ); ?>
+					</a>
+				</div>
+			</div>
+		</div>
 	</div>
 	<?php endif; ?>
 

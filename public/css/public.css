@@ -622,6 +622,36 @@ html:has(.absensi-kiosk) .entry-content { margin-block: 0 !important; padding-bl
 }
 .kiosk-guru2 .kioskg2-user__out:hover { background: rgba(239,68,68,.16); color: #F87171; border-color: rgba(239,68,68,.3); }
 
+/* Popup konfirmasi keluar (overlay fullscreen) */
+.kiosk-guru2 .kioskg2-confirm {
+  position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center;
+  padding: 20px; background: rgba(6, 10, 26, .72); backdrop-filter: blur(3px);
+}
+.kiosk-guru2 .kioskg2-confirm__box {
+  width: 100%; max-width: 380px; padding: 30px 26px 24px; text-align: center;
+  border: 1px solid rgba(255,255,255,.12); border-radius: 18px;
+  background: linear-gradient(180deg, #1B2350 0%, #131A3B 100%);
+  box-shadow: 0 24px 60px rgba(0,0,0,.5);
+}
+.kiosk-guru2 .kioskg2-confirm__ico {
+  display: inline-flex; align-items: center; justify-content: center; width: 52px; height: 52px; margin-bottom: 14px;
+  border-radius: 14px; background: rgba(239,68,68,.14); color: #F87171; border: 1px solid rgba(239,68,68,.28);
+}
+.kiosk-guru2 .kioskg2-confirm__title { margin: 0 0 6px; font-size: 19px; font-weight: 700; color: #fff; }
+.kiosk-guru2 .kioskg2-confirm__sub { margin: 0 0 22px; font-size: 13px; line-height: 1.5; color: rgba(255,255,255,.6); }
+.kiosk-guru2 .kioskg2-confirm__sub strong { color: rgba(255,255,255,.85); font-weight: 600; }
+.kiosk-guru2 .kioskg2-confirm__act { display: flex; gap: 10px; }
+.kiosk-guru2 .kioskg2-confirm__batal,
+.kiosk-guru2 .kioskg2-confirm__ya {
+  flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  padding: 11px 14px; border-radius: 11px; font-size: 14px; font-weight: 600; cursor: pointer;
+  text-decoration: none; border: 1px solid transparent;
+}
+.kiosk-guru2 .kioskg2-confirm__batal { background: rgba(255,255,255,.07); color: rgba(255,255,255,.8); border-color: rgba(255,255,255,.12); }
+.kiosk-guru2 .kioskg2-confirm__batal:hover { background: rgba(255,255,255,.12); color: #fff; }
+.kiosk-guru2 .kioskg2-confirm__ya { background: #EF4444; color: #fff; }
+.kiosk-guru2 .kioskg2-confirm__ya:hover { background: #DC2626; }
+
 /* Tombol bisukan (pojok kanan atas) */
 .kiosk-guru2 .kioskg2-mute {
   position: absolute; top: 18px; right: 18px; display: inline-flex; align-items: center; justify-content: center;
