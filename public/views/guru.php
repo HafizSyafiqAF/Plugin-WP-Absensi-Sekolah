@@ -14,9 +14,33 @@
  * Config: AbsensiConfig (restUrl, nonce, rfidDebounce).
  */
 defined( 'ABSPATH' ) || exit;
+
+// Identitas guru yang login (halaman ini login-gated cap `absensi_rfid`, jadi selalu ada).
+// Tap kartu tercatat atas nama SISWA, bukan guru — tapi guru perlu tahu ia login sebagai
+// siapa (device kadang dipinjam/ketuker) + jalan bersih untuk keluar/ganti akun.
+$guru_cur   = wp_get_current_user();
+$guru_nama  = $guru_cur && $guru_cur->exists() ? ( $guru_cur->display_name ?: $guru_cur->user_login ) : '';
+// Logout balik ke kiosk → gate mengalihkan ke wp-login (harus login lagi untuk absen).
+$logout_url = wp_logout_url( get_permalink() ?: home_url( '/' ) );
 ?>
 <div class="absensi-kiosk kiosk-guru kiosk-guru2" x-data="kioskGuru" x-cloak
      @click="focusInput()"><?php // klik di mana pun → rebut fokus ke input UID (target scanner) ?>
+
+	<!-- Identitas guru login + Keluar (pojok kiri atas) -->
+	<?php if ( '' !== $guru_nama ) : ?>
+	<div class="kioskg2-user">
+		<span class="kioskg2-user__ico" x-html="$icon( 'user-check', 15 )" aria-hidden="true"></span>
+		<span class="kioskg2-user__name">
+			<span class="kioskg2-user__label"><?php esc_html_e( 'Login sebagai', 'absensi-sekolah' ); ?></span>
+			<?php echo esc_html( $guru_nama ); ?>
+		</span>
+		<a class="kioskg2-user__out" href="<?php echo esc_url( $logout_url ); ?>"
+		   @click.stop="if ( ! confirm( '<?php echo esc_js( __( 'Keluar dari akun ini? Perlu login lagi untuk absen.', 'absensi-sekolah' ) ); ?>' ) ) $event.preventDefault()">
+			<span x-html="$icon( 'log-out', 14 )" aria-hidden="true"></span>
+			<?php esc_html_e( 'Keluar', 'absensi-sekolah' ); ?>
+		</a>
+	</div>
+	<?php endif; ?>
 
 	<!-- Bisukan/aktifkan beep -->
 	<button type="button" class="kioskg2-mute" @click.stop="toggleMute()"
