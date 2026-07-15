@@ -68,7 +68,10 @@ class SettingsEndpoint {
             'absensi_rfid_debounce' => (int) get_option( 'absensi_rfid_debounce', 3 ),
             'absensi_retensi_hari'  => (int) get_option( 'absensi_retensi_hari', 90 ),
             'absensi_wa_gateway'    => (string) get_option( 'absensi_wa_gateway', '' ),
-            'absensi_wa_token'      => (string) get_option( 'absensi_wa_token', '' ),
+            // JANGAN pantulkan token mentah (rahasia). GET cukup memberi tahu apakah token
+            // SUDAH diset → FE bisa tampilkan placeholder ••••. Token tetap bisa disimpan
+            // lewat PUT (whitelist di fields()), cuma tak pernah dikirim balik.
+            'absensi_wa_token_set'  => '' !== (string) get_option( 'absensi_wa_token', '' ),
         ];
     }
 

@@ -833,9 +833,8 @@ tr:nth-child(even) td{background:#f9f9f9}
       if (s.retensiHari)  this.fields.absensi_retensi_hari  = parseInt(s.retensiHari,  10) || this.fields.absensi_retensi_hari;
       if (s.waGateway)    this.fields.absensi_wa_gateway    = s.waGateway;
 
-      window.api.get('settings').then(data => {
-        if (data?.absensi_wa_token) this.fields.absensi_wa_token = data.absensi_wa_token;
-      }).catch(() => {});
+      // Token WA sengaja TIDAK di-prefill dari server (rahasia — GET /settings tak lagi
+      // mengembalikan nilainya, hanya flag absensi_wa_token_set).
 
       window.addEventListener('map-pin-moved', e => {
         this.fields.absensi_lat = e.detail.lat;
@@ -1566,7 +1565,7 @@ tr:nth-child(even) td{background:#f9f9f9}
       this.form.rfid_debounce = d.absensi_rfid_debounce ?? 3;
       this.form.retensi_hari  = d.absensi_retensi_hari ?? 90;
       this.form.wa_gateway    = d.absensi_wa_gateway || '';
-      this.hasToken           = !!d.absensi_wa_token;   // token ada tapi tak ditaruh di field
+      this.hasToken           = !!d.absensi_wa_token_set;   // flag boolean; token mentah tak dikirim server
     },
 
     /* Prefill GET /settings; gagal → fallback AbsensiAdmin.settings. */
