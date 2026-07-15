@@ -1756,13 +1756,14 @@ tr:nth-child(even) td{background:#f9f9f9}
       }
     },
 
-    /* Muat tren Sen–Jum minggu terpilih: satu /laporan/summary per hari (paralel).
-     * DUA seri: hadir & telat (dipisah, sesuai acuan desain). */
+    /* Muat tren seminggu penuh (Sen–Min) minggu terpilih: satu /laporan/summary per hari
+     * (paralel). Sabtu/Minggu ikut supaya sekolah/kampus yang masuk akhir pekan tak kehilangan
+     * datanya (hari libur → 0, wajar). DUA seri: hadir & telat (dipisah, sesuai acuan desain). */
     async loadTrend() {
       this.trendLoading = true; this.trendError = false;
       var senin = this.senin(new Date());
       if (this.week === 'lalu') senin = this.geser(senin, -7);
-      var hari = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum'];
+      var hari = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
       var tgl  = hari.map((_, i) => this.ymd(this.geser(senin, i)));
       try {
         var res = await Promise.all(
@@ -1933,9 +1934,10 @@ tr:nth-child(even) td{background:#f9f9f9}
     },
     fmtNum(n) { return Number(n || 0).toLocaleString('id-ID'); },
 
-    // ── Grafik Kehadiran Mingguan (Sen–Jum) ──
+    // ── Grafik Kehadiran Mingguan (Sen–Min, seminggu penuh) ──
     // Satu /laporan/summary per hari (paralel), ikut filter group. Mengikuti minggu
-    // dari tanggal `sampai` (atau hari ini bila filter tanggal kosong).
+    // dari tanggal `sampai` (atau hari ini bila filter tanggal kosong). Sabtu/Minggu ikut
+    // supaya sekolah/kampus yang masuk akhir pekan tak kehilangan datanya (libur → 0).
     trend:        [],     // [{ label, tanggal, hadir }]
     trendLoading: false,
     trendError:   false,
@@ -1945,7 +1947,7 @@ tr:nth-child(even) td{background:#f9f9f9}
       var acuan = this.filter.sampai ? new Date(this.filter.sampai + 'T00:00:00') : new Date();
       if (isNaN(acuan.getTime())) acuan = new Date();
       var senin = this.senin(acuan);
-      var hari  = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum'];
+      var hari  = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
       var tgl   = hari.map((_, i) => this.ymd(this.geser(senin, i)));
       var grup  = this.filter.group_id ? '&group_id=' + encodeURIComponent(this.filter.group_id) : '';
       try {
