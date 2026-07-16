@@ -24,7 +24,7 @@ defined( 'ABSPATH' ) || exit;
 	<header class="kiosk-top">
 		<div class="kiosk-badge-brand">
 			<span class="kiosk-brand__ico" x-html="$icon( 'clipboard-check', 16 )" aria-hidden="true"></span>
-			<span class="kiosk-brand__txt"><?php esc_html_e( 'Kiosk Absensi', 'absensi-sekolah' ); ?></span>
+			<span class="kiosk-brand__txt"><?php esc_html_e( 'Absensi', 'absensi-sekolah' ); ?></span>
 		</div>
 		<p class="kiosk-top__meta">
 			<span x-text="tanggal"></span> · <span x-text="jam"></span>
