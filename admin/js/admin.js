@@ -1053,9 +1053,10 @@ tr:nth-child(even) td{background:#f9f9f9}
     page:    1,           // halaman aktif (client)
     perPage: 8,           // 8 baris per halaman (ikut acuan desain)
 
-    // ── Menu aksi per baris (kebab "…") + dropdown Import ──
+    // ── Menu aksi per baris (kebab "…") + dropdown Import/Export ──
     rowMenu:        null,  // id user yang menunya terbuka; null = tertutup
     importMenuOpen: false,
+    exportMenuOpen: false,
 
     // ── Data tabel ──
     users:   [],          // baris GET /users (u.* + nama_group + tipe_group)
@@ -1448,6 +1449,59 @@ tr:nth-child(even) td{background:#f9f9f9}
         this.importGuruError = window.absensiApiError(err).message;   // 503 vendor / 422 header/baris
       } finally {
         this.importGuruBusy = false;
+      }
+    },
+
+    // Unduh kredensial akun guru baru (dari hasil import) sebagai CSV. Dibangun client-side
+    // dari importGuruResult.kredensial — password ada HANYA di respons ini (tak tersimpan di DB).
+    downloadGuruCredentials() {
+      var list = (this.importGuruResult && this.importGuruResult.kredensial) || [];
+      if (!list.length) return;
+      var esc = function (v) {
+        v = (v == null ? '' : String(v));
+        return /[",\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+      };
+      var lines = ['Username,Password,Nama,Email'];
+      list.forEach(function (k) {
+        lines.push([k.username, k.password, k.nama, k.email].map(esc).join(','));
+      });
+      var blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+      var url  = URL.createObjectURL(blob);
+      var a    = document.createElement('a');
+      a.href = url; a.download = 'akun-guru-baru.csv';
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+      window.absensiToast('Daftar akun diunduh. Simpan baik-baik.', 'success');
+    },
+
+    // ── Export data user / akun guru (unduh xlsx) ──
+    // Endpoint stream file + butuh X-WP-Nonce → pakai fetch blob (bukan anchor polos)
+    // supaya bisa tangani 503 (vendor absen) / error. Mirror pola export laporan.
+    exportUsers() { this._downloadExport('users/export?format=xlsx', 'data-user.xlsx'); },
+    exportGuru()  { this._downloadExport('guru/export?format=xlsx', 'akun-guru.xlsx'); },
+    async _downloadExport(path, fallbackName) {
+      var cfg = window.AbsensiAdmin || {};
+      var url = (cfg.restUrl || '/wp-json/absensi/v1/') + path;
+      try {
+        var res = await fetch(url, { headers: { 'X-WP-Nonce': cfg.nonce || '' } });
+        if (!res.ok) {
+          var err = await res.json().catch(function () { return null; });
+          var msg = (err && err.message) || ('Export gagal (HTTP ' + res.status + ').');
+          window.absensiToast(msg, res.status === 503 ? 'warning' : 'error');
+          return;
+        }
+        var blob = await res.blob();
+        var fname = fallbackName;
+        var m = (res.headers.get('Content-Disposition') || '').match(/filename="?([^";]+)"?/);
+        if (m) fname = m[1];
+        var objUrl = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = objUrl; a.download = fname;
+        document.body.appendChild(a); a.click(); a.remove();
+        URL.revokeObjectURL(objUrl);
+        window.absensiToast('File diunduh: ' + fname, 'success');
+      } catch (e) {
+        window.absensiToast('Export gagal. Periksa koneksi lalu coba lagi.', 'error');
       }
     },
 
