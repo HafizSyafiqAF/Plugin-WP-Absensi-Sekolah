@@ -24,7 +24,7 @@ defined( 'ABSPATH' ) || exit;
         <div class="absensi-page__actions">
           <div class="dropdown" @keydown.escape="exportOpen = false" @click.outside="exportOpen = false">
             <button type="button" class="btn btn--primary" @click="exportOpen = ! exportOpen"
-                    :disabled="total === 0"
+                    :disabled="serverTotal === 0"
                     :aria-expanded="exportOpen ? 'true' : 'false'" aria-haspopup="menu">
               <span x-html="$icon( 'download', 18 )" aria-hidden="true"></span>
               <?php esc_html_e( 'Export Data', 'absensi-sekolah' ); ?>
@@ -159,14 +159,23 @@ defined( 'ABSPATH' ) || exit;
             </button>
           </div>
 
-          <!-- Pill status: menyaring baris yang SUDAH termuat (BE tak punya param status) -->
+          <!-- Pill status: menyaring SELURUH data terambil (client-side), langsung
+               berlaku lintas halaman + balik ke halaman 1. -->
           <div class="pill-tabs" role="group" aria-label="<?php esc_attr_e( 'Filter status kehadiran', 'absensi-sekolah' ); ?>">
             <template x-for="s in statusPills" :key="s.key">
               <button type="button" class="pill pill--dark" :class="statusFilter === s.key ? 'is-active' : ''"
                       :aria-pressed="statusFilter === s.key ? 'true' : 'false'"
-                      @click="statusFilter = s.key" x-text="s.label"></button>
+                      @click="setStatus(s.key)" x-text="s.label"></button>
             </template>
           </div>
+        </div>
+
+        <!-- Data terpangkas batas ambil (200): beri tahu admin agar mempersempit rentang -->
+        <div x-show="overCap" x-cloak class="alert alert--warning" style="margin:12px 16px 0;">
+          <span class="alert__icon" x-html="$icon( 'alert-triangle', 18 )" aria-hidden="true"></span>
+          <span>
+            <?php esc_html_e( 'Hanya 200 data teratas yang dimuat untuk difilter di halaman ini. Persempit rentang tanggal atau pilih grup agar seluruh data tercakup — atau gunakan Export untuk mengambil semuanya.', 'absensi-sekolah' ); ?>
+          </span>
         </div>
 
         <!-- Skeleton -->
@@ -187,14 +196,14 @@ defined( 'ABSPATH' ) || exit;
         </div>
 
         <!-- Empty -->
-        <div x-show="! laporanLoading && ! laporanError && filteredRows.length === 0" x-cloak class="empty">
+        <div x-show="! laporanLoading && ! laporanError && total === 0" x-cloak class="empty">
           <div class="empty__icon" x-html="$icon( 'clipboard-check', 32 )" aria-hidden="true"></div>
           <p class="empty__title"><?php esc_html_e( 'Tidak ada data', 'absensi-sekolah' ); ?></p>
           <p class="empty__desc"><?php esc_html_e( 'Ubah rentang tanggal, grup, atau status.', 'absensi-sekolah' ); ?></p>
         </div>
 
         <!-- Tabel -->
-        <div x-show="! laporanLoading && ! laporanError && filteredRows.length > 0" x-cloak class="table-scroll">
+        <div x-show="! laporanLoading && ! laporanError && total > 0" x-cloak class="table-scroll">
           <table class="table report-table">
             <thead>
               <tr>
@@ -209,7 +218,7 @@ defined( 'ABSPATH' ) || exit;
               </tr>
             </thead>
             <tbody>
-              <template x-for="(r, i) in filteredRows" :key="i">
+              <template x-for="(r, i) in pagedRows" :key="i">
                 <tr>
                   <td data-label="<?php esc_attr_e( 'Tanggal', 'absensi-sekolah' ); ?>">
                     <span x-text="tglPendek(r.tanggal)"></span>

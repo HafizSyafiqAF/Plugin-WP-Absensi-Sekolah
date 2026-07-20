@@ -1959,13 +1959,15 @@ tr:nth-child(even) td{background:#f9f9f9}
     summaryLoading: false,
     summaryError:   false,
 
-    // ── Tabel rows (GET /laporan) + filter status client ──
-    rows:           [],   // baris rekap halaman aktif (GET /laporan .data)
-    total:          0,    // total baris (server)
-    totalPage:      1,    // total_page (server)
+    // ── Tabel rows: ambil SEMUA baris utk filter aktif, lalu saring status +
+    //    potong halaman DI BROWSER (client-side) → pill status langsung berlaku
+    //    lintas halaman. Batas ambil = fetchMax (server cap per_page 200). ──
+    allRows:        [],   // semua baris utk filter tanggal/grup/tipe aktif (≤ fetchMax)
+    serverTotal:    0,    // total baris di server (bila > allRows.length → terpangkas)
+    fetchMax:       200,  // batas ambil sekali (server membatasi per_page ke 200)
     laporanLoading: false,
     laporanError:   false,
-    statusFilter: '',     // '' = Semua; else saring rows client-side
+    statusFilter: '',     // '' = Semua; saring SELURUH allRows (client-side)
     statusPills: [
       { key: '',      label: 'Semua' },
       { key: 'hadir', label: 'Hadir' },
@@ -1974,12 +1976,22 @@ tr:nth-child(even) td{background:#f9f9f9}
       { key: 'sakit', label: 'Sakit' },
       { key: 'alpha', label: 'Alpha' },
     ],
-    /* Baris setelah saring status (client — BE tak punya param status). */
-    get filteredRows() {
-      if (!this.statusFilter) return this.rows;
+    /* Baris setelah saring status — atas SELURUH data terambil (bukan per halaman). */
+    get statusRows() {
+      if (!this.statusFilter) return this.allRows;
       var s = this.statusFilter;
-      return this.rows.filter(function (r) { return r.status === s; });
+      return this.allRows.filter(function (r) { return r.status === s; });
     },
+    /* Baris halaman aktif = potong statusRows per perPage (paging di browser). */
+    get pagedRows() {
+      var start = (Math.min(this.page, this.totalPage) - 1) * this.perPage;
+      return this.statusRows.slice(start, start + this.perPage);
+    },
+    /* Total & jumlah halaman IKUT hasil filter status (bukan total mentah server). */
+    get total()     { return this.statusRows.length; },
+    get totalPage() { return Math.max(1, Math.ceil(this.statusRows.length / this.perPage)); },
+    /* Data terpangkas cap: server punya lebih banyak dari yang bisa diambil sekali. */
+    get overCap()   { return this.serverTotal > this.allRows.length; },
 
     // 6 KPI (design.md §8): Total + 5 status. `share`: tampilkan "% dari total".
     sumCards: [
@@ -2260,25 +2272,27 @@ tr:nth-child(even) td{background:#f9f9f9}
       }
     },
 
-    /* Ambil baris tabel rekap (GET /laporan + filter + page/per_page). Pagination server. */
+    /* Ambil SEMUA baris utk filter aktif dalam satu permintaan (per_page=fetchMax).
+     * Penyaringan status + pemotongan halaman dikerjakan di browser (getter). */
     async loadLaporan() {
       this.laporanLoading = true; this.laporanError = false;
       try {
         var q  = this._filterQuery();
-        var qs = 'per_page=' + this.perPage + '&page=' + this.page + (q ? '&' + q : '');
+        var qs = 'per_page=' + this.fetchMax + '&page=1' + (q ? '&' + q : '');
         var data = await window.api.get('laporan?' + qs);   // { data, total, page, per_page, total_page }
-        this.rows      = (data && data.data) || [];
-        this.total     = (data && data.total) || 0;
-        this.totalPage = (data && data.total_page) || 1;
-        this.page      = (data && data.page) || this.page;
+        this.allRows     = (data && data.data) || [];
+        this.serverTotal = (data && data.total) || 0;
+        this.page        = 1;
       } catch (e) {
-        this.laporanError = true; this.rows = [];
+        this.laporanError = true; this.allRows = []; this.serverTotal = 0;
       } finally {
         this.laporanLoading = false;
       }
     },
-    /* Pindah halaman (server-side) → refetch. */
-    goPage(p) { if (typeof p === 'number' && p >= 1 && p <= this.totalPage && p !== this.page) { this.page = p; this.loadLaporan(); } },
+    /* Pindah halaman = murni client-side (semua baris sudah di memori, tanpa refetch). */
+    goPage(p) { if (typeof p === 'number' && p >= 1 && p <= this.totalPage) { this.page = p; } },
+    /* Ganti pill status → balik ke halaman 1 supaya hasil filter tampil dari awal. */
+    setStatus(key) { this.statusFilter = key; this.page = 1; },
     /* Deret tombol halaman dgn elipsis '…'. */
     get pageWindow() {
       var tp = this.totalPage, cur = Math.min(this.page, tp), out = [];
