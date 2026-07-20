@@ -15,13 +15,53 @@ defined( 'ABSPATH' ) || exit;
   <div class="absensi-app" x-data="usersManager">
     <div class="absensi-page">
 
-      <!-- Header: judul + subjudul (kiri) · Tambah User (kanan) -->
+      <!-- Header: judul + subjudul (kiri) · Add Bulk User + Tambah User (kanan) -->
       <div class="absensi-page__head">
         <div class="page-title-wrap">
           <h1 class="absensi-page__title"><?php esc_html_e( 'Users', 'absensi-sekolah' ); ?></h1>
           <p class="page-subtitle"><?php esc_html_e( 'Kelola siswa, guru, dan staf sekolah.', 'absensi-sekolah' ); ?></p>
         </div>
         <div class="absensi-page__actions">
+          <!-- Export: dua tujuan (data user / akun guru) — unduh Excel. Endpoint stream file
+               butuh nonce → ditangani fetch blob di exportUsers()/exportGuru(). -->
+          <div class="dropdown" @click.outside="exportMenuOpen = false">
+            <button type="button" class="btn btn--outline" @click="exportMenuOpen = ! exportMenuOpen"
+                    :aria-expanded="exportMenuOpen ? 'true' : 'false'" aria-haspopup="true">
+              <span x-html="$icon( 'download', 18 )" aria-hidden="true"></span>
+              <?php esc_html_e( 'Export', 'absensi-sekolah' ); ?>
+              <span x-html="$icon( 'chevron-down', 16 )" aria-hidden="true"></span>
+            </button>
+            <div class="dropdown__menu" x-show="exportMenuOpen" x-cloak>
+              <button type="button" class="dropdown__item" @click="exportMenuOpen = false; exportUsers()">
+                <span x-html="$icon( 'file-spreadsheet', 16 )" aria-hidden="true"></span>
+                <?php esc_html_e( 'Data User', 'absensi-sekolah' ); ?>
+              </button>
+              <button type="button" class="dropdown__item" @click="exportMenuOpen = false; exportGuru()">
+                <span x-html="$icon( 'user-plus', 16 )" aria-hidden="true"></span>
+                <?php esc_html_e( 'Akun Guru', 'absensi-sekolah' ); ?>
+              </button>
+            </div>
+          </div>
+          <!-- Add Bulk User: satu tombol, dua tujuan (data user / akun guru) — endpoint beda
+               (/users/import vs /guru/import) jadi tak bisa disatukan jadi satu aksi. -->
+          <div class="dropdown" @click.outside="importMenuOpen = false">
+            <button type="button" class="btn btn--outline" @click="importMenuOpen = ! importMenuOpen"
+                    :aria-expanded="importMenuOpen ? 'true' : 'false'" aria-haspopup="true">
+              <span x-html="$icon( 'upload', 18 )" aria-hidden="true"></span>
+              <?php esc_html_e( 'Add Bulk User', 'absensi-sekolah' ); ?>
+              <span x-html="$icon( 'chevron-down', 16 )" aria-hidden="true"></span>
+            </button>
+            <div class="dropdown__menu" x-show="importMenuOpen" x-cloak>
+              <button type="button" class="dropdown__item" @click="importMenuOpen = false; openImport()">
+                <span x-html="$icon( 'file-spreadsheet', 16 )" aria-hidden="true"></span>
+                <?php esc_html_e( 'Data User', 'absensi-sekolah' ); ?>
+              </button>
+              <button type="button" class="dropdown__item" @click="importMenuOpen = false; openImportGuru()">
+                <span x-html="$icon( 'user-plus', 16 )" aria-hidden="true"></span>
+                <?php esc_html_e( 'Akun Guru', 'absensi-sekolah' ); ?>
+              </button>
+            </div>
+          </div>
           <button type="button" class="btn btn--primary" @click="openCreate()">
             <span x-html="$icon( 'plus', 18 )" aria-hidden="true"></span>
             <?php esc_html_e( 'Tambah User', 'absensi-sekolah' ); ?>
@@ -29,7 +69,7 @@ defined( 'ABSPATH' ) || exit;
         </div>
       </div>
 
-      <!-- Toolbar: Search (client, debounce) · Select Grup (server) · Import Excel -->
+      <!-- Toolbar: Search (client, debounce) · Select Grup (server) · Filter Tipe -->
       <div class="toolbar">
         <div class="input-group toolbar__search">
           <span class="input-group__icon" x-html="$icon( 'search', 18 )" aria-hidden="true"></span>
@@ -65,26 +105,6 @@ defined( 'ABSPATH' ) || exit;
             <option :value="t.value" x-text="t.label"></option>
           </template>
         </select>
-
-        <!-- Import Excel: satu tombol, dua tujuan (data user / akun guru) — endpoint beda
-             (/users/import vs /guru/import) jadi tak bisa disatukan jadi satu aksi. -->
-        <div class="dropdown" @click.outside="importMenuOpen = false">
-          <button type="button" class="btn btn--outline" @click="importMenuOpen = ! importMenuOpen"
-                  :aria-expanded="importMenuOpen ? 'true' : 'false'" aria-haspopup="true">
-            <?php esc_html_e( 'Import Excel', 'absensi-sekolah' ); ?>
-            <span x-html="$icon( 'chevron-down', 16 )" aria-hidden="true"></span>
-          </button>
-          <div class="dropdown__menu" x-show="importMenuOpen" x-cloak>
-            <button type="button" class="dropdown__item" @click="importMenuOpen = false; openImport()">
-              <span x-html="$icon( 'file-spreadsheet', 16 )" aria-hidden="true"></span>
-              <?php esc_html_e( 'Data User', 'absensi-sekolah' ); ?>
-            </button>
-            <button type="button" class="dropdown__item" @click="importMenuOpen = false; openImportGuru()">
-              <span x-html="$icon( 'user-plus', 16 )" aria-hidden="true"></span>
-              <?php esc_html_e( 'Akun Guru', 'absensi-sekolah' ); ?>
-            </button>
-          </div>
-        </div>
 
         <button type="button" class="btn btn--ghost btn--sm" x-show="search || groupId || tipeFilter" x-cloak
                 @click="resetFilter()">
@@ -312,7 +332,48 @@ defined( 'ABSPATH' ) || exit;
                        placeholder="<?php esc_attr_e( 'Contoh: 2023001', 'absensi-sekolah' ); ?>">
               </div>
 
-              <!-- Grup: opsinya disaring oleh radio Tipe di bawah -->
+              <!-- Tipe: BUKAN kolom user — penyaring daftar grup (tipe user ikut grupnya).
+                   Pilih tipe DULU → dropdown Grup di bawah cuma menampilkan grup bertipe itu.
+                   Dropdown modern (bukan radio) supaya rapi walau tipe banyak. Opsinya dari tipe
+                   group yang benar-benar ada di data (tanpa preset). -->
+              <div class="field">
+                <label class="field__label"><?php esc_html_e( 'Tipe', 'absensi-sekolah' ); ?></label>
+                <div class="dd-select" @click.outside="formTipeMenuOpen = false"
+                     @keydown.escape.window="formTipeMenuOpen = false">
+                  <button type="button" class="dd-select__btn" :class="formTipe ? 'is-filled' : ''"
+                          @click="formTipeMenuOpen = ! formTipeMenuOpen"
+                          :aria-expanded="formTipeMenuOpen ? 'true' : 'false'" aria-haspopup="listbox"
+                          aria-label="<?php esc_attr_e( 'Pilih tipe', 'absensi-sekolah' ); ?>">
+                    <span class="dd-select__ic" x-html="$icon( 'filter', 15 )" aria-hidden="true"></span>
+                    <span class="dd-select__val" x-text="formTipeLabel"></span>
+                    <span class="dd-select__chev" :class="formTipeMenuOpen ? 'is-open' : ''"
+                          x-html="$icon( 'chevron-down', 16 )" aria-hidden="true"></span>
+                  </button>
+
+                  <div class="dd-select__menu" x-show="formTipeMenuOpen" x-cloak role="listbox"
+                       aria-label="<?php esc_attr_e( 'Pilih tipe', 'absensi-sekolah' ); ?>">
+                    <button type="button" class="dd-select__opt" role="option"
+                            :class="! formTipe ? 'is-active' : ''" :aria-selected="! formTipe"
+                            @click="gantiTipe(''); formTipeMenuOpen = false">
+                      <span class="dd-select__check" x-html="! formTipe ? $icon( 'check', 15 ) : ''" aria-hidden="true"></span>
+                      <span class="dd-select__opt-label"><?php esc_html_e( 'Semua Tipe', 'absensi-sekolah' ); ?></span>
+                    </button>
+                    <template x-for="t in tipeGroupOptions" :key="t">
+                      <button type="button" class="dd-select__opt" role="option"
+                              :class="formTipe === t ? 'is-active' : ''" :aria-selected="formTipe === t"
+                              @click="gantiTipe(t); formTipeMenuOpen = false">
+                        <span class="dd-select__check" x-html="formTipe === t ? $icon( 'check', 15 ) : ''" aria-hidden="true"></span>
+                        <span class="dd-select__opt-label" x-text="tipeLabel(t)"></span>
+                      </button>
+                    </template>
+                  </div>
+                </div>
+                <p class="field__hint" x-show="tipeGroupOptions.length === 0" x-cloak>
+                  <?php esc_html_e( 'Belum ada tipe — buat group dulu di menu Group.', 'absensi-sekolah' ); ?>
+                </p>
+              </div>
+
+              <!-- Grup: opsinya disaring oleh Tipe di atas (groupsByTipe). -->
               <div class="field">
                 <label class="field__label" for="uf-group"><?php esc_html_e( 'Grup', 'absensi-sekolah' ); ?></label>
                 <select id="uf-group" class="select" x-model="form.group_id">
@@ -323,25 +384,6 @@ defined( 'ABSPATH' ) || exit;
                 </select>
                 <p class="field__hint" x-show="groupsByTipe.length === 0" x-cloak>
                   <?php esc_html_e( 'Belum ada grup bertipe ini — buat dulu di halaman Group.', 'absensi-sekolah' ); ?>
-                </p>
-              </div>
-
-              <!-- Tipe: BUKAN kolom user — penyaring daftar grup (tipe user ikut grupnya) -->
-              <!-- Tipe = filter opsional untuk daftar Group. TANPA preset: opsinya diambil
-                   dari tipe group yang benar-benar ada di data. Belum ada group → kosong. -->
-              <div class="field">
-                <span class="field__label"><?php esc_html_e( 'Tipe', 'absensi-sekolah' ); ?></span>
-                <div class="radio-row" role="radiogroup" aria-label="<?php esc_attr_e( 'Tipe', 'absensi-sekolah' ); ?>">
-                  <template x-for="t in tipeGroupOptions" :key="t">
-                    <label class="radio" :for="'uf-tipe-' + t">
-                      <input type="radio" :id="'uf-tipe-' + t" name="uf-tipe" :value="t"
-                             :checked="formTipe === t" @change="gantiTipe(t)">
-                      <span x-text="tipeLabel(t)"></span>
-                    </label>
-                  </template>
-                </div>
-                <p class="field__hint" x-show="tipeGroupOptions.length === 0" x-cloak>
-                  <?php esc_html_e( 'Belum ada tipe — buat group dulu di menu Group.', 'absensi-sekolah' ); ?>
                 </p>
               </div>
             </div>
@@ -431,17 +473,30 @@ defined( 'ABSPATH' ) || exit;
           </div>
 
           <div class="modal__body">
-            <!-- Info kolom -->
-            <div class="alert alert--info">
-              <span class="alert__icon" x-html="$icon( 'info', 18 )" aria-hidden="true"></span>
-              <span>
-                <?php esc_html_e( 'Kolom wajib:', 'absensi-sekolah' ); ?>
-                <strong>nama</strong>, <strong>nomor_induk</strong>.
-                <?php esc_html_e( 'Opsional:', 'absensi-sekolah' ); ?> <strong>group</strong>, <strong>tipe</strong>
-                (<?php esc_html_e( 'group belum ada → dibuat otomatis dengan tipe tsb; tanpa tipe, group harus sudah ada', 'absensi-sekolah' ); ?>).
-                <?php esc_html_e( 'Maksimal 2000 baris.', 'absensi-sekolah' ); ?>
-              </span>
+            <!-- Cara import (tutorial kontekstual) -->
+            <div class="import-help">
+              <div class="import-help__title">
+                <span x-html="$icon( 'info', 16 )" aria-hidden="true"></span>
+                <?php esc_html_e( 'Cara import data user', 'absensi-sekolah' ); ?>
+              </div>
+              <ol class="import-help__steps">
+                <li><?php esc_html_e( 'Unduh template di bawah, buka dengan Excel.', 'absensi-sekolah' ); ?></li>
+                <li>
+                  <?php esc_html_e( 'Isi kolom — wajib:', 'absensi-sekolah' ); ?> <strong>nama</strong>, <strong>nomor_induk</strong>.
+                  <?php esc_html_e( 'Opsional:', 'absensi-sekolah' ); ?> <strong>group</strong>, <strong>tipe</strong>.
+                  <?php esc_html_e( 'Group belum ada → dibuat otomatis dengan tipe itu; tanpa tipe, group harus sudah ada. Maks 2000 baris.', 'absensi-sekolah' ); ?>
+                  <br><span class="import-help__eg"><?php esc_html_e( 'Contoh: Andi Pratama · 2024001 · 7A · Siswa', 'absensi-sekolah' ); ?></span>
+                </li>
+                <li><?php esc_html_e( 'Simpan file, lalu unggah (.xlsx) dan klik Import.', 'absensi-sekolah' ); ?></li>
+                <li><?php esc_html_e( 'Cek hasil: jumlah berhasil/gagal + daftar error per baris.', 'absensi-sekolah' ); ?></li>
+              </ol>
             </div>
+
+            <!-- Unduh template contoh -->
+            <a class="import-tpl" href="<?php echo esc_url( ABSENSI_PLUGIN_URL . 'assets/templates/template-import-users.xlsx' ); ?>" download>
+              <span x-html="$icon( 'download', 16 )" aria-hidden="true"></span>
+              <?php esc_html_e( 'Unduh template Excel (.xlsx)', 'absensi-sekolah' ); ?>
+            </a>
 
             <!-- Area upload -->
             <label class="import-drop">
@@ -522,16 +577,30 @@ defined( 'ABSPATH' ) || exit;
           </div>
 
           <div class="modal__body">
-            <!-- Info kolom (kontrak BE /guru/import) -->
-            <div class="alert alert--info">
-              <span class="alert__icon" x-html="$icon( 'info', 18 )" aria-hidden="true"></span>
-              <span>
-                <?php esc_html_e( 'Kolom wajib:', 'absensi-sekolah' ); ?> <strong>username</strong>.
-                <?php esc_html_e( 'Opsional:', 'absensi-sekolah' ); ?>
-                <strong>nama</strong>, <strong>password</strong>, <strong>email</strong>.
-                <?php esc_html_e( 'Password kosong dibuat otomatis; bila diisi minimal 6 karakter. Email harus valid & unik bila diisi. Akun dibuat dengan role Guru (akses kiosk RFID).', 'absensi-sekolah' ); ?>
-              </span>
+            <!-- Cara import akun guru (tutorial kontekstual) -->
+            <div class="import-help">
+              <div class="import-help__title">
+                <span x-html="$icon( 'info', 16 )" aria-hidden="true"></span>
+                <?php esc_html_e( 'Cara import akun guru', 'absensi-sekolah' ); ?>
+              </div>
+              <ol class="import-help__steps">
+                <li><?php esc_html_e( 'Unduh template di bawah, buka dengan Excel.', 'absensi-sekolah' ); ?></li>
+                <li>
+                  <?php esc_html_e( 'Isi kolom — wajib:', 'absensi-sekolah' ); ?> <strong>username</strong>.
+                  <?php esc_html_e( 'Opsional:', 'absensi-sekolah' ); ?> <strong>nama</strong>, <strong>password</strong>, <strong>email</strong>.
+                  <?php esc_html_e( 'Password kosong → dibuat otomatis; bila diisi minimal 6 karakter. Email harus valid & unik bila diisi.', 'absensi-sekolah' ); ?>
+                  <br><span class="import-help__eg"><?php esc_html_e( 'Contoh: budi.guru · Budi Santoso · (kosong = auto) · budi@sekolah.sch.id', 'absensi-sekolah' ); ?></span>
+                </li>
+                <li><?php esc_html_e( 'Unggah (.xlsx) dan klik Import Guru. Akun dibuat dengan role Guru (akses kiosk RFID).', 'absensi-sekolah' ); ?></li>
+                <li><strong><?php esc_html_e( 'Penting:', 'absensi-sekolah' ); ?></strong> <?php esc_html_e( 'setelah import, password tiap akun tampil SEKALI. Klik "Unduh daftar (.csv)" dan simpan sebelum menutup — tak bisa dilihat lagi.', 'absensi-sekolah' ); ?></li>
+              </ol>
             </div>
+
+            <!-- Unduh template contoh -->
+            <a class="import-tpl" href="<?php echo esc_url( ABSENSI_PLUGIN_URL . 'assets/templates/template-import-akun-guru.xlsx' ); ?>" download>
+              <span x-html="$icon( 'download', 16 )" aria-hidden="true"></span>
+              <?php esc_html_e( 'Unduh template Excel (.xlsx)', 'absensi-sekolah' ); ?>
+            </a>
 
             <!-- Area upload -->
             <label class="import-drop">
@@ -562,6 +631,42 @@ defined( 'ABSPATH' ) || exit;
                     <span x-text="importGuruResult.gagal"></span> <?php esc_html_e( 'gagal', 'absensi-sekolah' ); ?>
                   </span>
                 </div>
+
+                <!-- Kredensial akun baru: tampil SEKALI (password tak tersimpan plaintext di DB) -->
+                <template x-if="importGuruResult.kredensial && importGuruResult.kredensial.length > 0">
+                  <div class="import-cred">
+                    <div class="alert alert--warning">
+                      <span class="alert__icon" x-html="$icon( 'alert-triangle', 18 )" aria-hidden="true"></span>
+                      <span><?php esc_html_e( 'Simpan password sekarang — hanya ditampilkan sekali ini. Setelah modal ditutup tak bisa dilihat lagi (yang tersimpan hanya hash).', 'absensi-sekolah' ); ?></span>
+                    </div>
+                    <div class="import-cred__bar">
+                      <strong><?php esc_html_e( 'Akun & password baru', 'absensi-sekolah' ); ?></strong>
+                      <button type="button" class="btn btn--outline btn--sm" @click="downloadGuruCredentials()">
+                        <span x-html="$icon( 'download', 16 )" aria-hidden="true"></span>
+                        <?php esc_html_e( 'Unduh daftar (.csv)', 'absensi-sekolah' ); ?>
+                      </button>
+                    </div>
+                    <table class="table">
+                      <thead>
+                        <tr>
+                          <th><?php esc_html_e( 'Username', 'absensi-sekolah' ); ?></th>
+                          <th><?php esc_html_e( 'Password', 'absensi-sekolah' ); ?></th>
+                          <th><?php esc_html_e( 'Nama', 'absensi-sekolah' ); ?></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <template x-for="(k, i) in importGuruResult.kredensial" :key="i">
+                          <tr>
+                            <td x-text="k.username"></td>
+                            <td><code class="import-cred__pass" x-text="k.password"></code></td>
+                            <td x-text="k.nama"></td>
+                          </tr>
+                        </template>
+                      </tbody>
+                    </table>
+                  </div>
+                </template>
+
                 <!-- Tabel error per baris -->
                 <div class="import-errors" x-show="importGuruResult.errors && importGuruResult.errors.length > 0">
                   <table class="table">
@@ -616,7 +721,7 @@ defined( 'ABSPATH' ) || exit;
               <span>
                 <?php esc_html_e( 'Yakin hapus', 'absensi-sekolah' ); ?>
                 <strong x-text="delUser ? delUser.nama : ''"></strong>?
-                <?php esc_html_e( 'Tindakan ini tidak bisa dibatalkan.', 'absensi-sekolah' ); ?>
+                <?php esc_html_e( 'Seluruh riwayat absensinya ikut terhapus — laporan bulan lalu akan ikut berubah. Tindakan ini tidak bisa dibatalkan.', 'absensi-sekolah' ); ?>
               </span>
             </div>
           </div>
@@ -651,7 +756,7 @@ defined( 'ABSPATH' ) || exit;
               <span>
                 <?php esc_html_e( 'Yakin hapus', 'absensi-sekolah' ); ?>
                 <strong class="u-num" x-text="selectedCount"></strong> <?php esc_html_e( 'user terpilih?', 'absensi-sekolah' ); ?>
-                <?php esc_html_e( 'Tindakan ini tidak bisa dibatalkan.', 'absensi-sekolah' ); ?>
+                <?php esc_html_e( 'Seluruh riwayat absensi mereka ikut terhapus — laporan bulan lalu akan ikut berubah. Tindakan ini tidak bisa dibatalkan.', 'absensi-sekolah' ); ?>
               </span>
             </div>
             <!-- Pratinjau nama (maks 10) → biar tak salah hapus. -->

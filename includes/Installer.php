@@ -10,7 +10,7 @@ defined( 'ABSPATH' ) || exit;
 class Installer {
 
     /** Versi skema DB – naikkan setiap ada perubahan tabel. */
-    const DB_VERSION = '2.2.0';
+    const DB_VERSION = '2.4.0';
 
     /**
      * Capability gerbang akses kiosk RFID (page /absensi/guru + endpoint /absen/rfid).
@@ -57,8 +57,78 @@ class Installer {
         // Re-seed option default (idempotent) supaya upgrade lewat maybe_upgrade tetap
         // sinkron tanpa harus deactivate+activate ulang.
         self::seed_default_options();
+        // v2.3.0: sapu baris yatim warisan (butuh tabel sudah ada → setelah create_tables).
+        if ( version_compare( $installed, '2.3.0', '<' ) ) {
+            self::bersihkan_yatim();
+        }
+        // v2.4.0: buang role & cap pra-pivot yang menempel di DB.
+        if ( version_compare( $installed, '2.4.0', '<' ) ) {
+            self::bersihkan_role_warisan();
+        }
         // Langkah migrasi per-versi berikutnya (backfill data) ditambah di sini.
         return true;
+    }
+
+    /**
+     * v2.4.0 — buang role & capability pra-pivot yang menempel di DB.
+     *
+     * Sebelum pivot ada role `absensi_admin`/`absensi_siswa`/`orang_tua` + cap absen di
+     * administrator. Tak ada gate v2 yang membacanya (gate pakai `manage_options` &
+     * `absensi_rfid`), jadi inert — tapi mengotori dropdown role dan MENETAP selamanya di
+     * situs produksi yang upgrade dari pra-pivot (uninstall.php cuma jalan saat plugin DIHAPUS).
+     * Dibersihkan di sini supaya ikut rapi tiap upgrade. Idempotent.
+     *
+     * `guru` + `administrator` + cap `absensi_rfid` (v2) DIPERTAHANKAN. Daftar cap/role di sini
+     * WAJIB sinkron dengan uninstall.php.
+     */
+    private static function bersihkan_role_warisan(): void {
+        // Cap pra-pivot yang mungkin masih menempel di administrator (absensi_rfid v2 DIPERTAHANKAN).
+        $caps_warisan = [ 'absensi_submit_self', 'absensi_submit_rfid', 'absensi_enroll_rfid', 'absensi_view_reports', 'absensi_view_child' ];
+        $admin = get_role( 'administrator' );
+        if ( $admin ) {
+            foreach ( $caps_warisan as $cap ) {
+                $admin->remove_cap( $cap );
+            }
+        }
+
+        // Role pra-pivot. User yang MASIH memegangnya dipindah ke `subscriber` dulu bila itu
+        // satu-satunya role-nya — supaya akun tak jadi role-less (terkunci / hilang dari daftar).
+        $roles_warisan = [ 'absensi_admin', 'absensi_siswa', 'orang_tua' ];
+        foreach ( $roles_warisan as $slug ) {
+            if ( ! get_role( $slug ) ) {
+                continue;
+            }
+            foreach ( get_users( [ 'role' => $slug, 'fields' => [ 'ID' ] ] ) as $u ) {
+                $wu = new \WP_User( (int) $u->ID );
+                $wu->remove_role( $slug );
+                if ( empty( $wu->roles ) ) {
+                    $wu->add_role( 'subscriber' );
+                }
+            }
+            remove_role( $slug );
+        }
+    }
+
+    /**
+     * v2.3.0 — buang rekap milik user yang sudah dihapus & jadwal milik group yang sudah dihapus.
+     *
+     * Sebelum versi ini, DELETE user/group tak menyentuh tabel anaknya (skema tanpa FK), jadi
+     * barisnya menumpuk: rekap yatim tetap dihitung `/laporan/summary` (COUNT tanpa JOIN users)
+     * sehingga angka Hadir/Telat lebih besar dari kenyataan, muncul tanpa nama di Laporan/Export,
+     * dan bisa "diwarisi" user/group baru saat id dipakai ulang. Endpoint DELETE sekarang cascade;
+     * ini membersihkan sisa lama. Idempotent (jalan sekali, dan aman diulang).
+     */
+    private static function bersihkan_yatim(): void {
+        global $wpdb;
+        $p = $wpdb->prefix;
+
+        $wpdb->query( "DELETE r FROM {$p}absensi_rekap r
+            LEFT JOIN {$p}absensi_users u ON u.id = r.user_id
+            WHERE u.id IS NULL" );
+
+        $wpdb->query( "DELETE j FROM {$p}absensi_jadwal j
+            LEFT JOIN {$p}absensi_group g ON g.id = j.group_id
+            WHERE g.id IS NULL" );
     }
 
     // ─── Buat Tabel Custom ───────────────────────────────────────────────────

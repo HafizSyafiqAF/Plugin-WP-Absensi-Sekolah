@@ -101,7 +101,7 @@ defined( 'ABSPATH' ) || exit;
           <path class="trend-fill trend-fill--hijau" :d="trendArea" x-show="hasTrend"></path>
           <path class="trend-line trend-line--hadir-hijau" :d="trendLine" x-show="hasTrend"></path>
 
-          <?php for ( $d = 0; $d < 5; $d++ ) : $i = (int) $d; ?>
+          <?php for ( $d = 0; $d < 7; $d++ ) : $i = (int) $d; ?>
             <text class="trend-axis trend-axis--x" y="184"
                   :x="pt(<?php echo $i; ?>).x" x-text="pt(<?php echo $i; ?>).label"></text>
             <circle class="trend-dot trend-dot--hijau" r="3.5" x-show="hasTrend"

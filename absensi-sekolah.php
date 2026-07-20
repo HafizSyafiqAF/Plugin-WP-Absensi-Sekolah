@@ -3,7 +3,7 @@
  * Plugin Name:       Absensi Sekolah
  * Plugin URI:        https://github.com/your-repo/absensi-sekolah
  * Description:       Sistem absensi sekolah dengan selfie + GPS + RFID USB scanner untuk WordPress.
- * Version:           1.0.0
+ * Version:           2.4.0
  * Requires at least: 6.0
  * Requires PHP:      8.0
  * Author:            P4 Magang
@@ -16,7 +16,7 @@
 defined( 'ABSPATH' ) || exit;
 
 // ─── Konstanta Plugin ────────────────────────────────────────────────────────
-define( 'ABSENSI_VERSION',     '1.0.0' );
+define( 'ABSENSI_VERSION',     '2.4.0' );
 define( 'ABSENSI_PLUGIN_FILE', __FILE__ );
 define( 'ABSENSI_PLUGIN_DIR',  plugin_dir_path( __FILE__ ) );
 define( 'ABSENSI_PLUGIN_URL',  plugin_dir_url( __FILE__ ) );

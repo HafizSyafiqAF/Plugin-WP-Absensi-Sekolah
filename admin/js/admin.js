@@ -833,9 +833,8 @@ tr:nth-child(even) td{background:#f9f9f9}
       if (s.retensiHari)  this.fields.absensi_retensi_hari  = parseInt(s.retensiHari,  10) || this.fields.absensi_retensi_hari;
       if (s.waGateway)    this.fields.absensi_wa_gateway    = s.waGateway;
 
-      window.api.get('settings').then(data => {
-        if (data?.absensi_wa_token) this.fields.absensi_wa_token = data.absensi_wa_token;
-      }).catch(() => {});
+      // Token WA sengaja TIDAK di-prefill dari server (rahasia — GET /settings tak lagi
+      // mengembalikan nilainya, hanya flag absensi_wa_token_set).
 
       window.addEventListener('map-pin-moved', e => {
         this.fields.absensi_lat = e.detail.lat;
@@ -1054,9 +1053,10 @@ tr:nth-child(even) td{background:#f9f9f9}
     page:    1,           // halaman aktif (client)
     perPage: 8,           // 8 baris per halaman (ikut acuan desain)
 
-    // ── Menu aksi per baris (kebab "…") + dropdown Import ──
+    // ── Menu aksi per baris (kebab "…") + dropdown Import/Export ──
     rowMenu:        null,  // id user yang menunya terbuka; null = tertutup
     importMenuOpen: false,
+    exportMenuOpen: false,
 
     // ── Data tabel ──
     users:   [],          // baris GET /users (u.* + nama_group + tipe_group)
@@ -1072,6 +1072,7 @@ tr:nth-child(even) td{background:#f9f9f9}
      * field yang disimpan, tapi penyaring daftar grup di dropdown. Tipe user
      * tetap ikut grup yang dipilih. */
     formTipe:  '',        // filter tipe di modal; '' = semua (tanpa preset)
+    formTipeMenuOpen: false, // dropdown Tipe modal buka/tutup
     formError: '',        // pesan error tingkat form (409/lainnya)
     fieldErr:  {},        // { nomor_induk:true, nama:true, rfid_uid:true } → tandai field
 
@@ -1247,17 +1248,22 @@ tr:nth-child(even) td{background:#f9f9f9}
     _resetForm() {
       this.form = { nomor_induk: '', nama: '', group_id: '', rfid_uid: '' };
       this.formTipe = '';   // '' = semua tipe (tak ada preset; tipe datang dari data group)
+      this.formTipeMenuOpen = false;
       this.formError = ''; this.fieldErr = {};
     },
 
-    /* Opsi radio Tipe pada MODAL — MURNI dari tipe daftar GROUP (tanpa preset). Belum ada group → kosong.
+    /* Opsi dropdown Tipe pada MODAL — MURNI dari tipe daftar GROUP (tanpa preset). Belum ada group → kosong.
        Beda dari `tipeOptions` di atas: itu untuk dropdown FILTER (dibangun dari tipe_group milik USERS
        + sentinel Tanpa Group). Jangan disatukan — nama harus beda, kalau tidak getter-nya saling timpa. */
     get tipeGroupOptions() {
       var dipakai = this.groups.map(function (g) { return g.tipe; }).filter(Boolean);
       return Array.from(new Set(dipakai)).sort(function (a, b) { return a.localeCompare(b, 'id'); });
     },
-    /* Opsi grup pada modal, disaring sesuai radio Tipe. formTipe '' = tampilkan semua. */
+    /* Label tombol dropdown Tipe modal: '' → "Semua Tipe", selain itu label tipe-nya. */
+    get formTipeLabel() {
+      return this.formTipe ? this.tipeLabel(this.formTipe) : 'Semua Tipe';
+    },
+    /* Opsi grup pada modal, disaring sesuai Tipe terpilih. formTipe '' = tampilkan semua. */
     get groupsByTipe() {
       var t = this.formTipe;
       if (! t) return this.groups;
@@ -1446,6 +1452,59 @@ tr:nth-child(even) td{background:#f9f9f9}
       }
     },
 
+    // Unduh kredensial akun guru baru (dari hasil import) sebagai CSV. Dibangun client-side
+    // dari importGuruResult.kredensial — password ada HANYA di respons ini (tak tersimpan di DB).
+    downloadGuruCredentials() {
+      var list = (this.importGuruResult && this.importGuruResult.kredensial) || [];
+      if (!list.length) return;
+      var esc = function (v) {
+        v = (v == null ? '' : String(v));
+        return /[",\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+      };
+      var lines = ['Username,Password,Nama,Email'];
+      list.forEach(function (k) {
+        lines.push([k.username, k.password, k.nama, k.email].map(esc).join(','));
+      });
+      var blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+      var url  = URL.createObjectURL(blob);
+      var a    = document.createElement('a');
+      a.href = url; a.download = 'akun-guru-baru.csv';
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+      window.absensiToast('Daftar akun diunduh. Simpan baik-baik.', 'success');
+    },
+
+    // ── Export data user / akun guru (unduh xlsx) ──
+    // Endpoint stream file + butuh X-WP-Nonce → pakai fetch blob (bukan anchor polos)
+    // supaya bisa tangani 503 (vendor absen) / error. Mirror pola export laporan.
+    exportUsers() { this._downloadExport('users/export?format=xlsx', 'data-user.xlsx'); },
+    exportGuru()  { this._downloadExport('guru/export?format=xlsx', 'akun-guru.xlsx'); },
+    async _downloadExport(path, fallbackName) {
+      var cfg = window.AbsensiAdmin || {};
+      var url = (cfg.restUrl || '/wp-json/absensi/v1/') + path;
+      try {
+        var res = await fetch(url, { headers: { 'X-WP-Nonce': cfg.nonce || '' } });
+        if (!res.ok) {
+          var err = await res.json().catch(function () { return null; });
+          var msg = (err && err.message) || ('Export gagal (HTTP ' + res.status + ').');
+          window.absensiToast(msg, res.status === 503 ? 'warning' : 'error');
+          return;
+        }
+        var blob = await res.blob();
+        var fname = fallbackName;
+        var m = (res.headers.get('Content-Disposition') || '').match(/filename="?([^";]+)"?/);
+        if (m) fname = m[1];
+        var objUrl = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = objUrl; a.download = fname;
+        document.body.appendChild(a); a.click(); a.remove();
+        URL.revokeObjectURL(objUrl);
+        window.absensiToast('File diunduh: ' + fname, 'success');
+      } catch (e) {
+        window.absensiToast('Export gagal. Periksa koneksi lalu coba lagi.', 'error');
+      }
+    },
+
     // ── Konfirmasi Hapus: buka/tutup/jalankan ──
     confirmDelete(u) { this.delUser = { id: u.id, nama: u.nama }; this.delOpen = true; },
     closeDelete() { this.delOpen = false; },
@@ -1496,7 +1555,8 @@ tr:nth-child(even) td{background:#f9f9f9}
       try {
         var data = await window.api.post('users/bulk-delete', { ids: this.selected });
         var n = (data && data.deleted) || 0;
-        window.absensiToast(n + ' user dihapus.', 'success');
+        var r = (data && data.rekap_dihapus) || 0;
+        window.absensiToast(n + ' user dihapus' + (r ? ' (' + r + ' baris absensi ikut terhapus)' : '') + '.', 'success');
         this.bulkDelOpen = false;
         this.clearSelection();
         this.page = 1;
@@ -1565,7 +1625,7 @@ tr:nth-child(even) td{background:#f9f9f9}
       this.form.rfid_debounce = d.absensi_rfid_debounce ?? 3;
       this.form.retensi_hari  = d.absensi_retensi_hari ?? 90;
       this.form.wa_gateway    = d.absensi_wa_gateway || '';
-      this.hasToken           = !!d.absensi_wa_token;   // token ada tapi tak ditaruh di field
+      this.hasToken           = !!d.absensi_wa_token_set;   // flag boolean; token mentah tak dikirim server
     },
 
     /* Prefill GET /settings; gagal → fallback AbsensiAdmin.settings. */
@@ -1756,13 +1816,14 @@ tr:nth-child(even) td{background:#f9f9f9}
       }
     },
 
-    /* Muat tren Sen–Jum minggu terpilih: satu /laporan/summary per hari (paralel).
-     * DUA seri: hadir & telat (dipisah, sesuai acuan desain). */
+    /* Muat tren seminggu penuh (Sen–Min) minggu terpilih: satu /laporan/summary per hari
+     * (paralel). Sabtu/Minggu ikut supaya sekolah/kampus yang masuk akhir pekan tak kehilangan
+     * datanya (hari libur → 0, wajar). DUA seri: hadir & telat (dipisah, sesuai acuan desain). */
     async loadTrend() {
       this.trendLoading = true; this.trendError = false;
       var senin = this.senin(new Date());
       if (this.week === 'lalu') senin = this.geser(senin, -7);
-      var hari = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum'];
+      var hari = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
       var tgl  = hari.map((_, i) => this.ymd(this.geser(senin, i)));
       try {
         var res = await Promise.all(
@@ -1936,9 +1997,10 @@ tr:nth-child(even) td{background:#f9f9f9}
     },
     fmtNum(n) { return Number(n || 0).toLocaleString('id-ID'); },
 
-    // ── Grafik Kehadiran Mingguan (Sen–Jum) ──
+    // ── Grafik Kehadiran Mingguan (Sen–Min, seminggu penuh) ──
     // Satu /laporan/summary per hari (paralel), ikut filter group. Mengikuti minggu
-    // dari tanggal `sampai` (atau hari ini bila filter tanggal kosong).
+    // dari tanggal `sampai` (atau hari ini bila filter tanggal kosong). Sabtu/Minggu ikut
+    // supaya sekolah/kampus yang masuk akhir pekan tak kehilangan datanya (libur → 0).
     trend:        [],     // [{ label, tanggal, hadir }]
     trendLoading: false,
     trendError:   false,
@@ -1948,7 +2010,7 @@ tr:nth-child(even) td{background:#f9f9f9}
       var acuan = this.filter.sampai ? new Date(this.filter.sampai + 'T00:00:00') : new Date();
       if (isNaN(acuan.getTime())) acuan = new Date();
       var senin = this.senin(acuan);
-      var hari  = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum'];
+      var hari  = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
       var tgl   = hari.map((_, i) => this.ymd(this.geser(senin, i)));
       var grup  = this.filter.group_id ? '&group_id=' + encodeURIComponent(this.filter.group_id) : '';
       try {

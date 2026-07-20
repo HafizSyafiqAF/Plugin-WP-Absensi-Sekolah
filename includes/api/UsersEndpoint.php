@@ -88,6 +88,20 @@ class UsersEndpoint {
             'callback'            => [ $this, 'import_guru' ],
             'permission_callback' => [ $this, 'can_manage' ],
         ] );
+
+        // GET /users/export – ekspor seluruh data user (siswa/guru/staff) ke Excel/CSV
+        register_rest_route( self::NAMESPACE, '/users/export', [
+            'methods'             => \WP_REST_Server::READABLE,
+            'callback'            => [ $this, 'export_users' ],
+            'permission_callback' => [ $this, 'can_manage' ],
+        ] );
+
+        // GET /guru/export – ekspor akun guru (WP user role `guru`) ke Excel/CSV
+        register_rest_route( self::NAMESPACE, '/guru/export', [
+            'methods'             => \WP_REST_Server::READABLE,
+            'callback'            => [ $this, 'export_guru' ],
+            'permission_callback' => [ $this, 'can_manage' ],
+        ] );
     }
 
     public function list_users( \WP_REST_Request $req ): \WP_REST_Response {
@@ -146,14 +160,23 @@ class UsersEndpoint {
         return new \WP_REST_Response( [ 'updated' => true ] );
     }
 
+    /**
+     * Hapus user + SELURUH rekapnya (cascade manual — tak ada FK di skema).
+     *
+     * Rekap yatim bukan sekadar kotor: `/laporan/summary` menghitung COUNT(*) langsung dari
+     * absensi_rekap TANPA join users, jadi baris milik user yang sudah dihapus tetap menaikkan
+     * angka Hadir/Telat. Di list & export (LEFT JOIN) ia muncul sebagai baris tanpa nama. Dan
+     * karena `rekap.user_id` cuma angka, id yang dipakai ulang (MariaDB/MySQL 5.7 me-reset
+     * AUTO_INCREMENT ke MAX(id)+1 tiap restart) membuat riwayat orang lama nempel ke user baru.
+     */
     public function delete_user( \WP_REST_Request $req ): \WP_REST_Response {
         global $wpdb;
-        $wpdb->delete(
-            $wpdb->prefix . 'absensi_users',
-            [ 'id' => (int) $req->get_param( 'id' ) ],
-            [ '%d' ]
-        );
-        return new \WP_REST_Response( [ 'deleted' => true ] );
+        $id = (int) $req->get_param( 'id' );
+
+        $rekap = (int) $wpdb->delete( $wpdb->prefix . 'absensi_rekap', [ 'user_id' => $id ], [ '%d' ] );
+        $wpdb->delete( $wpdb->prefix . 'absensi_users', [ 'id' => $id ], [ '%d' ] );
+
+        return new \WP_REST_Response( [ 'deleted' => true, 'rekap_dihapus' => $rekap ] );
     }
 
     /**
@@ -161,6 +184,7 @@ class UsersEndpoint {
      * Satu query DELETE ... IN (...) — bukan N request DELETE /users/{id}.
      * `ids` di-absint + dedup; id tak ada di DB diabaikan (idempotent).
      * Cap 500 id per request. Balas jumlah baris yang benar-benar terhapus.
+     * Rekap milik user-user itu ikut dihapus — alasan sama seperti di delete_user().
      */
     public function bulk_delete_users( \WP_REST_Request $req ): \WP_REST_Response {
         global $wpdb;
@@ -176,13 +200,18 @@ class UsersEndpoint {
             return $this->error( 'terlalu_banyak', 'Maksimal 500 user per penghapusan.', 422 );
         }
 
-        $ph      = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
+        $ph = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
+
+        $rekap = (int) $wpdb->query( $wpdb->prepare(
+            "DELETE FROM {$wpdb->prefix}absensi_rekap WHERE user_id IN ( {$ph} )",
+            $ids
+        ) );
         $deleted = (int) $wpdb->query( $wpdb->prepare(
             "DELETE FROM {$wpdb->prefix}absensi_users WHERE id IN ( {$ph} )",
             $ids
         ) );
 
-        return new \WP_REST_Response( [ 'deleted' => $deleted ], 200 );
+        return new \WP_REST_Response( [ 'deleted' => $deleted, 'rekap_dihapus' => $rekap ], 200 );
     }
 
     /** Bind/ganti UID RFID ke user (cek duplikasi UID lintas user). */
@@ -365,6 +394,7 @@ class UsersEndpoint {
         $seen_user  = [];
         $imported   = 0;
         $errors     = [];
+        $kredensial = []; // {username,password,nama,email} tiap akun baru — dibalik ke FE utk ditampilkan SEKALI
 
         foreach ( $rows as $i => $row ) {
             $baris    = $i + 2; // +1 header, +1 ke 1-indexed
@@ -428,12 +458,22 @@ class UsersEndpoint {
             }
             $seen_user[ $ukey ] = $baris;
             $imported++;
+
+            // Password plaintext (auto-generate ATAU dari file) dicatat untuk ditampilkan sekali di FE.
+            // TIDAK disimpan di DB (WP simpan hash) — hilang setelah respons ini. Aman via HTTPS + admin.
+            $kredensial[] = [
+                'username' => $login,
+                'password' => $password,
+                'nama'     => $userdata['display_name'],
+                'email'    => '' !== $email ? $email : '',
+            ];
         }
 
         return new \WP_REST_Response( [
-            'imported' => $imported,
-            'gagal'    => count( $errors ),
-            'errors'   => $errors,
+            'imported'   => $imported,
+            'gagal'      => count( $errors ),
+            'errors'     => $errors,
+            'kredensial' => $kredensial,
         ], 200 );
     }
 
@@ -509,6 +549,110 @@ class UsersEndpoint {
             $id = (int) $wpdb->insert_id;
         }
         return $cache[ $key ] = $id;
+    }
+
+    /**
+     * GET /users/export — unduh seluruh data user (siswa/guru/staff) sebagai Excel/CSV.
+     * Kolom: Nama, Nomor Induk, Group, Tipe, RFID UID. Cap manage_options.
+     * XLSX butuh PhpSpreadsheet (vendor/) → 503 bila absen; CSV selalu tersedia.
+     */
+    public function export_users( \WP_REST_Request $req ): \WP_REST_Response {
+        global $wpdb;
+        $format = sanitize_text_field( (string) $req->get_param( 'format' ) ) ?: 'xlsx';
+
+        $rows = (array) $wpdb->get_results(
+            "SELECT u.nama, u.nomor_induk, g.nama AS nama_group, g.tipe AS tipe_group, u.rfid_uid
+               FROM {$wpdb->prefix}absensi_users u
+               LEFT JOIN {$wpdb->prefix}absensi_group g ON g.id = u.group_id
+               ORDER BY u.nama ASC"
+        );
+        $data = array_map( static function ( $r ) {
+            return [ $r->nama, $r->nomor_induk, $r->nama_group, $r->tipe_group, $r->rfid_uid ];
+        }, $rows );
+
+        return $this->export_stream( $format, 'data-user', 'Data User',
+            [ 'Nama', 'Nomor Induk', 'Group', 'Tipe', 'RFID UID' ], $data );
+    }
+
+    /**
+     * GET /guru/export — unduh daftar AKUN GURU (WP user role `guru`) sebagai Excel/CSV.
+     * Kolom: Username, Nama, Email, Terdaftar. TANPA password (hash tak bisa/ tak boleh diekspor).
+     */
+    public function export_guru( \WP_REST_Request $req ): \WP_REST_Response {
+        $format = sanitize_text_field( (string) $req->get_param( 'format' ) ) ?: 'xlsx';
+
+        $users = get_users( [ 'role' => 'guru', 'orderby' => 'display_name', 'order' => 'ASC' ] );
+        $data  = array_map( static function ( $u ) {
+            return [ $u->user_login, $u->display_name, $u->user_email, $u->user_registered ];
+        }, $users );
+
+        return $this->export_stream( $format, 'akun-guru', 'Akun Guru',
+            [ 'Username', 'Nama', 'Email', 'Terdaftar' ], $data );
+    }
+
+    /**
+     * Rakit file export (xlsx|csv) dari header + baris lalu stream sebagai unduhan.
+     * XLSX → PhpSpreadsheet (503 bila vendor absen). CSV → selalu ada (UTF-8 BOM).
+     * Semua sel ditulis sebagai TEXT: nomor induk / UID panjang tak jadi notasi ilmiah
+     * atau kehilangan angka 0 di depan.
+     */
+    private function export_stream( string $format, string $base, string $sheet_title, array $columns, array $rows ): \WP_REST_Response {
+        if ( 'csv' === $format ) {
+            $fh = fopen( 'php://temp', 'r+' );
+            fputcsv( $fh, $columns );
+            foreach ( $rows as $r ) {
+                fputcsv( $fh, $r );
+            }
+            rewind( $fh );
+            $csv = stream_get_contents( $fh );
+            fclose( $fh );
+            return $this->stream_download( "\xEF\xBB\xBF" . $csv, 'text/csv; charset=utf-8', "{$base}.csv" );
+        }
+
+        if ( 'xlsx' !== $format ) {
+            return $this->error( 'format_invalid', 'Format harus xlsx atau csv.', 422 );
+        }
+        if ( ! class_exists( '\\PhpOffice\\PhpSpreadsheet\\Spreadsheet' ) ) {
+            return $this->error( 'export_unavailable', 'Export Excel butuh PhpSpreadsheet (jalankan composer install). Gunakan format CSV.', 503 );
+        }
+
+        $ss    = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+        $sheet = $ss->getActiveSheet();
+        $sheet->setTitle( $sheet_title );
+        $type = \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING;
+        foreach ( $columns as $i => $c ) {
+            $sheet->setCellValueExplicit( chr( 65 + $i ) . '1', (string) $c, $type );
+        }
+        $row_i = 2;
+        foreach ( $rows as $r ) {
+            foreach ( array_values( $r ) as $i => $v ) {
+                $sheet->setCellValueExplicit( chr( 65 + $i ) . $row_i, (string) $v, $type );
+            }
+            $row_i++;
+        }
+        $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx( $ss );
+        ob_start();
+        $writer->save( 'php://output' );
+        $bin = (string) ob_get_clean();
+
+        return $this->stream_download(
+            $bin,
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            "{$base}.xlsx"
+        );
+    }
+
+    /** Kirim konten sebagai unduhan (header + body) lalu exit — REST tak boleh membungkus JSON. */
+    private function stream_download( string $content, string $mime, string $filename ): \WP_REST_Response {
+        if ( ! headers_sent() ) {
+            header( 'Content-Type: ' . $mime );
+            header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
+            header( 'Content-Length: ' . strlen( $content ) );
+            header( 'X-Content-Type-Options: nosniff' );
+            header( 'Cache-Control: no-store, no-cache, must-revalidate' );
+        }
+        echo $content; // phpcs:ignore -- stream biner/CSV
+        exit;
     }
 
     /** Admin-only. */

@@ -177,6 +177,14 @@ final class Plugin {
     }
 
     public function enqueue_public_assets(): void {
+        // Aset kiosk (public.css + Alpine + Tailwind CDN) HANYA di halaman kiosk plugin.
+        // Tanpa guard ini hook wp_enqueue_scripts memuatnya di SETIAP halaman situs bertema →
+        // Tailwind Play CDN (preflight + utilitas seperti .collapse/.hidden) menimpa CSS tema,
+        // menu/navbar tema bisa hilang. Batasi ke surface kiosk saja.
+        if ( ! $this->is_kiosk_page() ) {
+            return;
+        }
+
         wp_enqueue_style(
             'absensi-public',
             ABSENSI_PLUGIN_URL . 'public/css/public.css',
@@ -199,6 +207,34 @@ final class Plugin {
 
         // Stack FE: Alpine + Tailwind via CDN. Alpine load setelah config (dep handle).
         $this->enqueue_frontend_cdn( 'absensi-public', false );
+    }
+
+    /**
+     * Apakah halaman yang sedang dirender = surface kiosk plugin?
+     * true bila: page kiosk yang di-seed (absensi_pages siswa/guru), ATAU konten memuat
+     * salah satu shortcode kiosk. Dipakai membatasi enqueue aset publik agar tak bocor ke
+     * seluruh situs bertema (Tailwind CDN merusak tema — lihat enqueue_public_assets).
+     */
+    private function is_kiosk_page(): bool {
+        if ( is_admin() ) {
+            return false;
+        }
+        $post = get_post();
+        if ( ! $post instanceof \WP_Post ) {
+            return false;
+        }
+        $pages = (array) get_option( 'absensi_pages', [] );
+        $ids   = array_filter( [ (int) ( $pages['siswa'] ?? 0 ), (int) ( $pages['guru'] ?? 0 ) ] );
+        if ( in_array( (int) $post->ID, $ids, true ) ) {
+            return true;
+        }
+        $konten = (string) $post->post_content;
+        foreach ( [ 'absensi_siswa', 'absensi_guru', 'absensi_selfie', 'absensi_status' ] as $sc ) {
+            if ( has_shortcode( $konten, $sc ) ) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public function enqueue_admin_assets( string $hook ): void {

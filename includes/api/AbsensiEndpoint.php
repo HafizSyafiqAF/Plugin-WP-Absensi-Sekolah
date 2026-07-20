@@ -18,6 +18,27 @@ class AbsensiEndpoint {
 
     const NAMESPACE = 'absensi/v1';
 
+    /**
+     * Anti-enumerasi endpoint publik (`/absen/status`, `/absen/selfie`).
+     *
+     * Nomor induk sekolah berurutan (…044, …045, …050), dan kedua endpoint membedakan
+     * "nomor ada" (200) dari "nomor tak ada" (404) → itu oracle: skrip bisa menyapu satu
+     * rentang nomor lalu memanen daftar nama siswa + siapa yang hari ini belum masuk.
+     *
+     * Dua lapis:
+     *   1. RL_MAX  — batas kasar hit/menit per IP. Dibuat longgar karena SATU kiosk dipakai
+     *      seluruh sekolah (semua siswa keluar dari IP yang sama saat jam masuk) — batas ketat
+     *      justru me-DoS sekolahnya sendiri.
+     *   2. MISS_MAX — nomor asing BERUNTUN per IP. Ini penjaga sesungguhnya: kiosk asli nyaris
+     *      tak pernah salah ketik 5× berturut-turut (dan 1 nomor benar me-reset hitungan),
+     *      sedangkan penyapu rentang hampir selalu 404 → terkunci di awal.
+     * Semua filterable — deployment padat / tes bisa menyetel.
+     */
+    const RL_WINDOW   = 60;   // detik, jendela hitung
+    const RL_MAX      = 60;   // hit per jendela per IP
+    const MISS_MAX    = 5;    // nomor asing beruntun sebelum dikunci
+    const MISS_LOCK   = 600;  // detik dikunci (10 menit)
+
     public function register_routes(): void {
         // Kiosk publik (tanpa login): permission terbuka; anti-abuse via rate-limit
         // per nomor_induk di handler. Identitas dari nomor_induk, bukan user WP.
@@ -79,6 +100,13 @@ class AbsensiEndpoint {
             return $this->error( 'nomor_kosong', 'Nomor induk wajib diisi.', 422 );
         }
 
+        // Gerbang per-IP (anti-enumerasi). Selfie juga membedakan 404 vs 403 → oracle yang
+        // sama seperti /absen/status, jadi dijaga gerbang yang sama.
+        $gerbang = $this->gerbang_publik();
+        if ( $gerbang ) {
+            return $gerbang;
+        }
+
         // Rate-limit anti-abuse per nomor_induk (endpoint tanpa auth). 0 = nonaktif.
         $rl = (int) get_option( 'absensi_selfie_rl_detik', 5 );
         if ( $rl > 0 ) {
@@ -91,8 +119,9 @@ class AbsensiEndpoint {
 
         $user = $this->get_user_by_nomor( $nomor );
         if ( ! $user ) {
-            return $this->error( 'nomor_tidak_terdaftar', 'Nomor induk tidak terdaftar.', 404 );
+            return $this->tandai_nomor_asing();   // 404, atau 429 bila sudah kebanyakan nebak
         }
+        $this->reset_nomor_asing();
 
         // Validasi GPS
         $lat = (float) $req->get_param( 'lat' );
@@ -376,10 +405,19 @@ class AbsensiEndpoint {
             return $this->error( 'nomor_kosong', 'Nomor induk wajib diisi.', 422 );
         }
 
+        // Gerbang per-IP: endpoint ini membalas nama + status kehadiran hari ini, dan 404 vs 200
+        // memberi tahu nomor mana yang terdaftar. Tanpa gerbang, satu skrip bisa memanen seluruh
+        // daftar nama + siapa yang hari ini tidak masuk.
+        $gerbang = $this->gerbang_publik();
+        if ( $gerbang ) {
+            return $gerbang;
+        }
+
         $user = $this->get_user_by_nomor( $nomor );
         if ( ! $user ) {
-            return $this->error( 'nomor_tidak_terdaftar', 'Nomor induk tidak terdaftar.', 404 );
+            return $this->tandai_nomor_asing();   // 404, atau 429 bila sudah kebanyakan nebak
         }
+        $this->reset_nomor_asing();
 
         // Endpoint publik → balas HANYA field presensi non-sensitif.
         // JANGAN bocorkan lat/lng/jarak/foto_path/bukti_path/catatan (privasi: bisa
@@ -470,6 +508,80 @@ class AbsensiEndpoint {
         $batas = $batas->modify( "+{$telat_menit} minutes" );
 
         return $now > $batas ? 'telat' : 'hadir';
+    }
+
+    // ─── Anti-enumerasi endpoint publik ───────────────────────────────────────
+
+    /**
+     * Identitas pemanggil untuk rate-limit. Di-hash: dipakai sebagai bagian key transient,
+     * dan IP mentah tak perlu disimpan.
+     *
+     * Di belakang proxy/CDN `REMOTE_ADDR` = IP proxy → seluruh sekolah terlihat satu IP.
+     * Filter `absensi_client_ip` disediakan untuk deployment semacam itu. Sengaja TIDAK
+     * membaca `X-Forwarded-For` secara default: header itu bisa dipalsukan penyerang, dan
+     * memercayainya membuat rate-limit ini bisa dilewati cukup dengan mengarang header.
+     */
+    private function client_ip(): string {
+        $ip = apply_filters( 'absensi_client_ip', (string) ( $_SERVER['REMOTE_ADDR'] ?? '' ) );
+        return md5( (string) $ip );
+    }
+
+    /**
+     * Gerbang endpoint publik: tolak bila IP sedang dikunci atau melewati batas hit/menit.
+     * @return \WP_REST_Response|null  429 bila ditolak, null bila lolos.
+     */
+    private function gerbang_publik(): ?\WP_REST_Response {
+        $ip = $this->client_ip();
+
+        // Sedang dihukum karena menebak-nebak nomor.
+        if ( false !== get_transient( 'absensi_pub_lock_' . $ip ) ) {
+            return $this->error( 'terlalu_banyak_percobaan', 'Terlalu banyak percobaan. Coba lagi beberapa menit lagi.', 429 );
+        }
+
+        $max = (int) apply_filters( 'absensi_publik_rl_max', self::RL_MAX );
+        if ( $max <= 0 ) {
+            return null; // rate-limit dimatikan (dev/tes)
+        }
+
+        // Jendela tetap: simpan waktu mulai sendiri, jadi TTL transient yang ter-refresh
+        // tiap set_transient() tak diam-diam memanjangkan hukuman.
+        $key = 'absensi_pub_rl_' . $ip;
+        $box = get_transient( $key );
+        if ( ! is_array( $box ) || ( time() - (int) $box['mulai'] ) >= self::RL_WINDOW ) {
+            $box = [ 'mulai' => time(), 'n' => 0 ];
+        }
+        $box['n']++;
+        set_transient( $key, $box, self::RL_WINDOW );
+
+        if ( $box['n'] > $max ) {
+            return $this->error( 'terlalu_cepat', 'Terlalu banyak permintaan. Tunggu sebentar.', 429 );
+        }
+        return null;
+    }
+
+    /**
+     * Catat satu nomor asing (404) dari IP ini. Setelah MISS_MAX beruntun → IP dikunci.
+     * @return \WP_REST_Response  429 bila kena kunci, atau 404 biasa.
+     */
+    private function tandai_nomor_asing(): \WP_REST_Response {
+        $ip  = $this->client_ip();
+        $max = (int) apply_filters( 'absensi_publik_miss_max', self::MISS_MAX );
+
+        if ( $max > 0 ) {
+            $miss = (int) get_transient( 'absensi_pub_miss_' . $ip ) + 1;
+            if ( $miss >= $max ) {
+                set_transient( 'absensi_pub_lock_' . $ip, 1, (int) apply_filters( 'absensi_publik_lock_detik', self::MISS_LOCK ) );
+                delete_transient( 'absensi_pub_miss_' . $ip );
+                return $this->error( 'terlalu_banyak_percobaan', 'Terlalu banyak percobaan. Coba lagi beberapa menit lagi.', 429 );
+            }
+            set_transient( 'absensi_pub_miss_' . $ip, $miss, self::MISS_LOCK );
+        }
+        return $this->error( 'nomor_tidak_terdaftar', 'Nomor induk tidak terdaftar.', 404 );
+    }
+
+    /** Nomor benar → hitungan tebakan beruntun IP ini dinolkan (kiosk asli tak pernah kena kunci). */
+    private function reset_nomor_asing(): void {
+        delete_transient( 'absensi_pub_miss_' . $this->client_ip() );
     }
 
     private function error( string $code, string $message, int $status = 400, array $extra = [] ): \WP_REST_Response {

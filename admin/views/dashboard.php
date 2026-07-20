@@ -132,8 +132,8 @@ $kiosk_url     = $absensi_guru ? get_permalink( $absensi_guru ) : home_url( '/ab
             <path class="trend-line trend-line--hadir" :d="line('hadir')" x-show="hasTrend"></path>
             <path class="trend-line trend-line--telat" :d="line('telat')" x-show="hasTrend"></path>
 
-            <!-- Titik tiap seri + label hari (Sen–Jum) -->
-            <?php for ( $d = 0; $d < 5; $d++ ) : $i = (int) $d; ?>
+            <!-- Titik tiap seri + label hari (Sen–Min, seminggu penuh) -->
+            <?php for ( $d = 0; $d < 7; $d++ ) : $i = (int) $d; ?>
               <text class="trend-axis trend-axis--x" y="188"
                     :x="pt('hadir', <?php echo $i; ?>).x" x-text="pt('hadir', <?php echo $i; ?>).label"></text>
               <circle class="trend-dot trend-dot--hadir" r="3.5" x-show="hasTrend"
