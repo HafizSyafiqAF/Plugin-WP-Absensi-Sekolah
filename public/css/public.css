@@ -627,55 +627,6 @@ html:has(.absensi-kiosk) .entry-content { margin-block: 0 !important; padding-bl
   box-shadow: 0 30px 60px -30px rgba(30, 41, 99, .35), 0 2px 6px rgba(16, 24, 40, .04);
 }
 
-/* Identitas guru login + Keluar (chip di bawah top bar) + popup konfirmasi */
-.kiosk-guru2 .kgv-user {
-  display: inline-flex; align-items: center; gap: 10px; align-self: center;
-  margin-top: 14px; padding: 6px 6px 6px 12px;
-  border: 1px solid var(--c-border); border-radius: 12px; background: var(--c-bg);
-}
-.kiosk-guru2 .kgv-user__ico { display: inline-flex; color: var(--c-text-muted); }
-.kiosk-guru2 .kgv-user__name {
-  display: flex; flex-direction: column; line-height: 1.2; text-align: left; max-width: 220px;
-  font-size: 13px; font-weight: 700; color: #0F172A;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.kiosk-guru2 .kgv-user__label {
-  font-size: 10px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--c-text-muted);
-}
-.kiosk-guru2 .kgv-user__out {
-  display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0;
-  padding: 6px 11px; border-radius: 8px; font-size: 12px; font-weight: 700;
-  color: var(--c-text-muted); background: #fff; border: 1px solid var(--c-border); text-decoration: none; cursor: pointer;
-}
-.kiosk-guru2 .kgv-user__out:hover { background: var(--c-danger-soft); color: var(--c-danger-text); border-color: rgba(239, 68, 68, .3); }
-
-/* Popup konfirmasi keluar (overlay fullscreen, kartu terang) */
-.kiosk-guru2 .kgv-confirm {
-  position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center;
-  padding: 20px; background: rgba(15, 23, 42, .5);
-}
-.kiosk-guru2 .kgv-confirm__box {
-  width: 100%; max-width: 380px; padding: 28px 26px 22px; text-align: center;
-  background: #fff; border-radius: 18px; box-shadow: var(--shadow-lg);
-}
-.kiosk-guru2 .kgv-confirm__ico {
-  display: inline-flex; align-items: center; justify-content: center; width: 52px; height: 52px; margin-bottom: 14px;
-  border-radius: 14px; background: var(--c-danger-soft); color: var(--c-danger-text);
-}
-.kiosk-guru2 .kgv-confirm__title { margin: 0 0 6px; font-size: 19px; font-weight: 800; color: #0F172A; }
-.kiosk-guru2 .kgv-confirm__sub { margin: 0 0 22px; font-size: 13px; line-height: 1.5; color: var(--c-text-muted); }
-.kiosk-guru2 .kgv-confirm__sub strong { color: #0F172A; font-weight: 700; }
-.kiosk-guru2 .kgv-confirm__act { display: flex; gap: 10px; }
-.kiosk-guru2 .kgv-confirm__batal,
-.kiosk-guru2 .kgv-confirm__ya {
-  flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 7px;
-  padding: 11px 14px; border-radius: 11px; font-size: 14px; font-weight: 700; cursor: pointer;
-  text-decoration: none; border: 1px solid transparent;
-}
-.kiosk-guru2 .kgv-confirm__batal { background: #fff; color: var(--c-text); border-color: var(--c-border); }
-.kiosk-guru2 .kgv-confirm__batal:hover { background: var(--c-bg); }
-.kiosk-guru2 .kgv-confirm__ya { background: var(--c-danger); color: #fff; }
-.kiosk-guru2 .kgv-confirm__ya:hover { background: var(--c-danger-text); }
 
 /* Top bar: brand (kiri) + bisukan & jam (kanan) */
 .kiosk-guru2 .kgv-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
