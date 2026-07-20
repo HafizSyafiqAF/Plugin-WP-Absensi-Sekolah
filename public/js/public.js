@@ -487,6 +487,8 @@ document.addEventListener('alpine:init', function () {
     'user-check':       '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><polyline points="16 11 18 13 22 9"/>',
     'scan-line':        '<path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 12h10"/>',
     'id-card':          '<path d="M16 10h2"/><path d="M16 14h2"/><path d="M6.17 15a3 3 0 0 1 5.66 0"/><circle cx="9" cy="11" r="2"/><rect width="20" height="14" x="2" y="5" rx="2"/>',
+    'delete':           '<path d="M20 5H9l-7 7 7 7h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2Z"/><path d="m18 9-6 6"/><path d="m12 9 6 6"/>',
+    'fingerprint':      '<path d="M12 10a2 2 0 0 0-2 2c0 1.02-.1 2.51-.26 4"/><path d="M14 13.12c0 2.38 0 6.38-1 8.88"/><path d="M17.29 21.02c.12-.6.43-2.3.5-3.02"/><path d="M2 12a10 10 0 0 1 18-6"/><path d="M2 16h.01"/><path d="M21.8 16c.2-2 .131-5.354 0-6"/><path d="M5 19.5C5.5 18 6 15 6 12a6 6 0 0 1 .34-2"/><path d="M8.65 22c.21-.66.45-1.32.57-2"/><path d="M9 6.8a6 6 0 0 1 9 5.2v2"/>',
     'camera':           '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/>',
     'map-pin':          '<path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/>',
     'rotate-ccw':       '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>',
@@ -623,16 +625,48 @@ document.addEventListener('alpine:init', function () {
       this.startGps();
       this.tickJam();
       var self = this;
-      this._jamTimer = setInterval(function () { self.tickJam(); }, 30000);
+      // Detik ikut berjalan (header "14.23.17 WIB") → tick tiap 1 dtk.
+      this._jamTimer = setInterval(function () { self.tickJam(); }, 1000);
     },
 
-    /* Jam & tanggal di header kiosk (zona waktu perangkat kiosk). */
+    /* Jam (HH.MM.SS) & tanggal di header kiosk (zona waktu perangkat kiosk). */
     tickJam: function () {
       var d = new Date();
-      this.jam = d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }).replace(':', '.');
+      this.jam = d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' }).replace(/[:.]/g, '.');
       try {
         this.tanggal = d.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
       } catch (e) { this.tanggal = ''; }
+    },
+
+    // ── Numpad on-screen (kiosk satu layar): tulis ke nomorInduk + cek nama ──
+    maxNis: 20,                    // batas panjang wajar nomor induk
+    _lookupTimer: null,
+
+    /* Tambah satu digit dari numpad. */
+    tekan: function (d) {
+      if (this.nomorInduk.length >= this.maxNis) return;
+      this.nomorInduk += String(d);
+      this._scheduleLookup();
+    },
+    /* Hapus satu digit terakhir (⌫). */
+    hapus: function () {
+      if (!this.nomorInduk) return;
+      this.nomorInduk = this.nomorInduk.slice(0, -1);
+      this._scheduleLookup();
+    },
+    /* Bersihkan seluruh nomor (untuk siswa berikutnya). */
+    bersihkan: function () {
+      this.nomorInduk  = '';
+      this.siswaNama   = '';
+      this.sudahAbsen  = false;
+      this.lookupError = null;
+      if (this._lookupTimer) { clearTimeout(this._lookupTimer); this._lookupTimer = null; }
+    },
+    /* Debounce lookup nama (numpad tak memicu event @input). */
+    _scheduleLookup: function () {
+      var self = this;
+      if (this._lookupTimer) clearTimeout(this._lookupTimer);
+      this._lookupTimer = setTimeout(function () { self.cekNis(); }, 350);
     },
 
     // ── Langkah 1: NIS → cek nama siswa (GET /absen/status, publik) ──
@@ -943,6 +977,7 @@ document.addEventListener('alpine:init', function () {
     _audioCtx: null,
 
     tanggal:  '',              // "Minggu, 12 Juli 2026"
+    tanggalRingkas: '',        // "Jumat, 17 Juli" (jam pojok kiosk — tanpa tahun)
     sisaDetik: 0,              // hitung mundur "Kembali otomatis dalam N detik"
     _cdTimer: null,
 
@@ -959,7 +994,8 @@ document.addEventListener('alpine:init', function () {
       this.jam = d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' }).replace(/:/g, '.');
       try {
         this.tanggal = d.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-      } catch (e) { this.tanggal = ''; }
+        this.tanggalRingkas = d.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long' });
+      } catch (e) { this.tanggal = ''; this.tanggalRingkas = ''; }
     },
 
     /* Inisial nama untuk avatar panggung hasil (di JS, bukan atribut view —

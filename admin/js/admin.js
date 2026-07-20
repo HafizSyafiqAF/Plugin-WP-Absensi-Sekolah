@@ -1888,7 +1888,10 @@ tr:nth-child(even) td{background:#f9f9f9}
     filter: { dari: '', sampai: '', preset: '', group_id: '', tipe: '' },
     groups:  [],          // opsi Select Group (GET /group)
     page:    1,           // halaman tabel (pagination item Tabel)
-    perPage: 50,          // per_page ke /laporan
+    // Halaman pendek → daftar tak memanjang, tombol Next dipakai. Export TIDAK ikut
+    // per_page (doExport pakai _filterQuery saja) → file tetap memuat semua baris
+    // sesuai filter, lintas halaman.
+    perPage: 15,          // per_page ke /laporan
 
     // ── Summary (GET /laporan/summary) ──
     summary:        { hadir: 0, telat: 0, izin: 0, sakit: 0, alpha: 0, total: 0 },
