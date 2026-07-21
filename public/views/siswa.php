@@ -27,9 +27,8 @@ defined( 'ABSPATH' ) || exit;
 			<div class="ksv-brand">
 				<span class="ksv-brand__ico" x-html="$icon( 'id-card', 20 )" aria-hidden="true"></span>
 				<span class="ksv-brand__txt">
-					<span class="ksv-brand__name"><?php esc_html_e( 'Absensi Siswa', 'absensi-sekolah' ); ?></span>
-					<span class="ksv-brand__sub"><?php esc_html_e( 'Kiosk Mandiri', 'absensi-sekolah' ); ?></span>
-				</span>
+					<span class="ksv-brand__name"><?php esc_html_e( 'Absensi', 'absensi-sekolah' ); ?></span>
+									</span>
 			</div>
 			<div class="ksv-clock" role="timer">
 				<span class="ksv-clock__dot" aria-hidden="true"></span>
@@ -110,8 +109,8 @@ defined( 'ABSPATH' ) || exit;
 				        :disabled="! siswaNama || cam === 'preview' || camDenied">
 					<span x-html="$icon( 'camera', 16 )" aria-hidden="true"></span>
 					<span x-text="cam === 'live'
-						? '<?php echo esc_js( __( 'Jepret', 'absensi-sekolah' ) ); ?>'
-						: '<?php echo esc_js( __( 'Ambil Foto', 'absensi-sekolah' ) ); ?>'"></span>
+						? '<?php echo esc_js( __( 'Ambil Foto', 'absensi-sekolah' ) ); ?>'
+						: '<?php echo esc_js( __( 'Buka Kamera', 'absensi-sekolah' ) ); ?>'"></span>
 				</button>
 			</div>
 
