@@ -25,7 +25,7 @@ defined( 'ABSPATH' ) || exit;
 			<div class="kgv-brand">
 				<span class="kgv-brand__ico" x-html="$icon( 'scan-line', 20 )" aria-hidden="true"></span>
 				<span class="kgv-brand__txt">
-					<span class="kgv-brand__name"><?php esc_html_e( 'Absensi Guru', 'absensi-sekolah' ); ?></span>
+					<span class="kgv-brand__name"><?php esc_html_e( 'Absensi', 'absensi-sekolah' ); ?></span>
 					<span class="kgv-brand__sub"><?php esc_html_e( 'Terminal RFID', 'absensi-sekolah' ); ?></span>
 				</span>
 			</div>
@@ -45,8 +45,10 @@ defined( 'ABSPATH' ) || exit;
 			</div>
 		</div>
 
-		<!-- ── IDLE: ikon scan berdenyut + ajakan tempel kartu ── -->
-		<div class="kgv-idle" x-show="! fb" x-cloak>
+		<!-- ── IDLE: ikon scan berdenyut + ajakan tempel kartu ──
+		     Disembunyikan saat hasil via .u-sr (BUKAN x-show/display:none) agar input UID di
+		     dalamnya TETAP fokus & menerima tap → guru tap kartu berikutnya tanpa klik. -->
+		<div class="kgv-idle" :class="fb ? 'u-sr' : ''" x-cloak>
 			<div class="kgv-scan">
 				<span class="kgv-scan__ico" x-html="$icon( 'scan-line', 34 )" aria-hidden="true"></span>
 			</div>

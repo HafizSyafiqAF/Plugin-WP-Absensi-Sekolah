@@ -1135,6 +1135,7 @@ document.addEventListener('alpine:init', function () {
         self.fb = null;
         self.sisaDetik = 0;
         clearInterval(self._cdTimer);
+        self.focusInput();   // kembali idle → refokus input agar tap berikutnya tanpa klik
       }, 4000);
     },
 
