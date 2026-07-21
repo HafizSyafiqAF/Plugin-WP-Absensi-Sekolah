@@ -428,26 +428,50 @@ html:has(.absensi-kiosk) .entry-content { margin-block: 0 !important; padding-bl
   color: #0F172A;
 }
 
-/* Kartu tunggal (mobile-first, ~380px) */
+/* Kartu tunggal (mobile-first). Border + bayangan halus mengikuti kartu dashboard. */
 .kiosk-siswa .ksv-card {
-  position: relative; width: 100%; max-width: 380px; padding: 22px;
-  background: #fff; border-radius: 22px; border: 1px solid #EDEFF7;
-  box-shadow: 0 30px 60px -30px rgba(30, 41, 99, .35), 0 2px 6px rgba(16, 24, 40, .04);
+  position: relative; width: 100%; max-width: 400px; padding: 22px;
+  background: var(--c-surface); border-radius: 18px; border: 1px solid var(--c-border);
+  box-shadow: 0 1px 2px rgba(16, 24, 40, .04), 0 20px 40px -24px rgba(16, 24, 40, .28);
 }
 
-/* Header */
-.kiosk-siswa .ksv-head  { text-align: center; margin-bottom: 18px; }
-.kiosk-siswa .ksv-title { margin: 0; font-size: 23px; font-weight: 800; letter-spacing: -.01em; color: var(--c-primary-hover); }
-.kiosk-siswa .ksv-time  { margin: 4px 0 0; font-size: 13px; font-weight: 600; color: var(--c-text-muted); font-variant-numeric: tabular-nums; }
-.kiosk-siswa .ksv-time__tz { font-size: 11px; font-weight: 700; letter-spacing: .06em; color: #9AA3B2; }
+/* Command bar (brand kiri + jam kanan) — gaya command bar dashboard. */
+.kiosk-siswa .ksv-top   { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+.kiosk-siswa .ksv-brand { display: flex; align-items: center; gap: 10px; }
+.kiosk-siswa .ksv-brand__ico {
+  display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px;
+  border-radius: 11px; background: var(--c-primary-soft); color: var(--c-primary);
+}
+.kiosk-siswa .ksv-brand__txt  { display: flex; flex-direction: column; text-align: left; }
+.kiosk-siswa .ksv-brand__name { font-size: 15px; line-height: 1.2; font-weight: 800; letter-spacing: -.01em; color: #0F172A; }
+.kiosk-siswa .ksv-brand__sub  { font-size: 11px; font-weight: 600; color: var(--c-text-muted); }
+/* Jam = chip pil + titik "hidup" berdenyut (mirror dash-clock dashboard). */
+.kiosk-siswa .ksv-clock {
+  display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px;
+  background: var(--c-bg); border: 1px solid var(--c-border); border-radius: var(--r-full);
+  font-variant-numeric: tabular-nums;
+}
+.kiosk-siswa .ksv-clock__dot {
+  width: 6px; height: 6px; flex: none; border-radius: 50%; background: var(--c-success);
+  box-shadow: 0 0 0 3px var(--c-success-soft); animation: ksv-pulse 2.4s ease-in-out infinite;
+}
+.kiosk-siswa .ksv-clock__time { font-size: 13px; font-weight: 700; color: #0F172A; letter-spacing: .01em; }
+.kiosk-siswa .ksv-clock__tz   { font-size: 10px; font-weight: 700; letter-spacing: .06em; color: var(--c-text-muted); }
+@keyframes ksv-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
 
-.kiosk-siswa .ksv-body { display: flex; flex-direction: column; gap: 14px; }
+/* Eyebrow label kecil per bagian (gaya section-label dashboard) */
+.kiosk-siswa .ksv-label {
+  display: block; margin: 2px 0 -4px; font-size: 11px; font-weight: 700;
+  letter-spacing: .07em; text-transform: uppercase; color: var(--c-text-muted);
+}
+
+.kiosk-siswa .ksv-body { display: flex; flex-direction: column; gap: 16px; }
 
 /* ── Input NIS ── */
 .kiosk-siswa .ksv-nis {
   display: flex; align-items: center; gap: 10px; height: 52px; padding: 0 14px;
-  background: #F1F3F9; border: 1.5px solid transparent; border-radius: 14px;
-  transition: border-color .15s, background .15s;
+  background: var(--c-bg); border: 1.5px solid var(--c-border); border-radius: 12px;
+  transition: border-color .15s, background .15s, box-shadow .15s;
 }
 .kiosk-siswa .ksv-nis:focus-within { background: #fff; border-color: var(--c-primary); box-shadow: var(--shadow-focus); }
 .kiosk-siswa .ksv-nis--error       { border-color: var(--c-danger); }
@@ -484,21 +508,6 @@ html:has(.absensi-kiosk) .entry-content { margin-block: 0 !important; padding-bl
 .kiosk-siswa .ksv-found__ok   { display: inline-flex; color: var(--c-success); flex: none; }
 .kiosk-siswa .ksv-err { margin: 0; font-size: 12.5px; font-weight: 500; color: var(--c-danger-text); text-align: center; }
 
-/* ── Numpad ── */
-.kiosk-siswa .ksv-pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-.kiosk-siswa .ksv-key {
-  display: inline-flex; align-items: center; justify-content: center; height: 58px;
-  border: 1px solid #E7EAF2; border-radius: 14px; background: #fff;
-  font-family: inherit; font-size: 22px; font-weight: 700; color: #263148; cursor: pointer;
-  transition: background .12s, border-color .12s, transform .06s;
-  -webkit-tap-highlight-color: transparent;
-}
-.kiosk-siswa .ksv-key:hover  { background: #F5F7FC; border-color: #D8DEEC; }
-.kiosk-siswa .ksv-key:active { transform: translateY(1px); background: #EEF2FB; }
-.kiosk-siswa .ksv-key--del   { color: var(--c-danger-text); background: #FEF2F2; border-color: #FBD9D9; }
-.kiosk-siswa .ksv-key--del:hover  { background: var(--c-danger-soft); }
-.kiosk-siswa .ksv-key--clr   { color: #94A0B4; }
-.kiosk-siswa .ksv-key--clr:hover  { color: #64748B; }
 
 /* ── Kamera ── */
 .kiosk-siswa .ksv-cam { width: 100%; }
@@ -524,7 +533,7 @@ html:has(.absensi-kiosk) .entry-content { margin-block: 0 !important; padding-bl
 .kiosk-siswa .ksv-cam-actions { display: grid; grid-template-columns: 1fr 1.4fr; gap: 10px; }
 .kiosk-siswa .ksv-cam-btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 46px;
-  border: 1px solid transparent; border-radius: 13px;
+  border: 1px solid transparent; border-radius: var(--r-md);
   font-family: inherit; font-size: 13.5px; font-weight: 700; cursor: pointer; transition: background .15s, opacity .15s;
 }
 .kiosk-siswa .ksv-cam-btn:disabled { opacity: .45; cursor: not-allowed; }
@@ -556,17 +565,16 @@ html:has(.absensi-kiosk) .entry-content { margin-block: 0 !important; padding-bl
   font-family: inherit; font-size: 12px; font-weight: 700; cursor: pointer; text-decoration: underline;
 }
 
-/* ── Submit ── */
+/* ── Submit ── datar & bersih (gaya tombol primary dashboard, tanpa glow) */
 .kiosk-siswa .ksv-submit {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-  width: 100%; height: 54px; margin-top: 2px; border: 0; border-radius: 15px;
-  background: var(--c-primary); color: #fff; font-family: inherit; font-size: 15.5px; font-weight: 800;
-  cursor: pointer; box-shadow: 0 14px 24px -12px rgba(37, 99, 235, .7);
-  transition: background .15s, opacity .15s, transform .06s;
+  width: 100%; height: 52px; margin-top: 2px; border: 0; border-radius: var(--r-md);
+  background: var(--c-primary); color: #fff; font-family: inherit; font-size: 15px; font-weight: 700;
+  cursor: pointer; transition: background .15s, opacity .15s, transform .06s;
 }
 .kiosk-siswa .ksv-submit:not(:disabled):hover  { background: var(--c-primary-hover); }
 .kiosk-siswa .ksv-submit:not(:disabled):active { transform: translateY(1px); }
-.kiosk-siswa .ksv-submit:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
+.kiosk-siswa .ksv-submit:disabled { opacity: .45; cursor: not-allowed; }
 .kiosk-siswa .ksv-submit__lbl { display: inline-flex; align-items: center; gap: 8px; }
 .kiosk-siswa .ksv-submit__spin {
   width: 18px; height: 18px; border-radius: 50%;
@@ -602,11 +610,6 @@ html:has(.absensi-kiosk) .entry-content { margin-block: 0 !important; padding-bl
   overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
 }
 
-/* Layar lebih tinggi: sedikit lega */
-@media (min-height: 780px) {
-  .kiosk-siswa .ksv-key { height: 62px; }
-}
-
 /* ═════════════════════════════════════════════════════════════════════════════
    KIOSK GURU v2 (RFID) — layar gelap: idle (jam + tempel kartu) & panggung hasil
    Terbaca dari jarak beberapa meter: nama & sesi berukuran besar.
@@ -619,12 +622,13 @@ html:has(.absensi-kiosk) .entry-content { margin-block: 0 !important; padding-bl
   color: #0F172A; text-align: center;
 }
 
-/* Kartu tunggal (lebih lebar dari kiosk siswa — panggung hasil terbaca dari jauh) */
+/* Kartu tunggal (lebih lebar dari kiosk siswa — panggung hasil terbaca dari jauh).
+   Border + bayangan halus DISAMAKAN dengan kartu dashboard & kiosk siswa. */
 .kiosk-guru2 .kgv-card {
   position: relative; width: 100%; max-width: 620px; min-height: 460px; padding: 22px 26px 30px;
   display: flex; flex-direction: column;
-  background: #fff; border-radius: 24px; border: 1px solid #EDEFF7;
-  box-shadow: 0 30px 60px -30px rgba(30, 41, 99, .35), 0 2px 6px rgba(16, 24, 40, .04);
+  background: var(--c-surface); border-radius: 18px; border: 1px solid var(--c-border);
+  box-shadow: 0 1px 2px rgba(16, 24, 40, .04), 0 20px 40px -24px rgba(16, 24, 40, .28);
 }
 
 
@@ -636,7 +640,7 @@ html:has(.absensi-kiosk) .entry-content { margin-block: 0 !important; padding-bl
   border-radius: 11px; background: var(--c-primary-soft); color: var(--c-primary);
 }
 .kiosk-guru2 .kgv-brand__txt  { display: flex; flex-direction: column; text-align: left; }
-.kiosk-guru2 .kgv-brand__name { font-size: 14px; font-weight: 800; color: #0F172A; letter-spacing: -.01em; }
+.kiosk-guru2 .kgv-brand__name { font-size: 15px; line-height: 1.2; font-weight: 800; color: #0F172A; letter-spacing: -.01em; }
 .kiosk-guru2 .kgv-brand__sub  { font-size: 11px; font-weight: 600; color: var(--c-text-muted); }
 .kiosk-guru2 .kgv-top__right  { display: flex; align-items: center; gap: 10px; }
 .kiosk-guru2 .kgv-mute {
@@ -645,14 +649,18 @@ html:has(.absensi-kiosk) .entry-content { margin-block: 0 !important; padding-bl
   cursor: pointer; transition: background .15s, color .15s;
 }
 .kiosk-guru2 .kgv-mute:hover { background: var(--c-bg); color: #0F172A; }
-.kiosk-guru2 .kgv-clock { display: flex; flex-direction: column; align-items: flex-end; }
-.kiosk-guru2 .kgv-clock__time {
-  font-size: 20px; line-height: 1.1; font-weight: 800; color: #0F172A; letter-spacing: .01em;
+/* Jam = chip pil + titik hijau berdenyut, IDENTIK dengan kiosk siswa & dashboard. */
+.kiosk-guru2 .kgv-clock {
+  display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px;
+  background: var(--c-bg); border: 1px solid var(--c-border); border-radius: var(--r-full);
   font-variant-numeric: tabular-nums;
 }
-.kiosk-guru2 .kgv-clock__date {
-  font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--c-text-muted);
+.kiosk-guru2 .kgv-clock__dot {
+  width: 6px; height: 6px; flex: none; border-radius: 50%; background: var(--c-success);
+  box-shadow: 0 0 0 3px var(--c-success-soft); animation: ksv-pulse 2.4s ease-in-out infinite;
 }
+.kiosk-guru2 .kgv-clock__time { font-size: 13px; font-weight: 700; color: #0F172A; letter-spacing: .01em; }
+.kiosk-guru2 .kgv-clock__tz   { font-size: 10px; font-weight: 700; letter-spacing: .06em; color: var(--c-text-muted); }
 
 /* Area tengah (idle & hasil) mengisi sisa kartu, konten di tengah */
 .kiosk-guru2 .kgv-idle,

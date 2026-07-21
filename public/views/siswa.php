@@ -22,22 +22,35 @@ defined( 'ABSPATH' ) || exit;
 <div class="absensi-kiosk kiosk-siswa" x-data="kioskSiswa">
 	<div class="ksv-card">
 
-		<!-- Header: judul + jam berjalan (HH.MM.SS WIB) -->
-		<div class="ksv-head">
-			<h1 class="ksv-title"><?php esc_html_e( 'Absensi Siswa', 'absensi-sekolah' ); ?></h1>
-			<p class="ksv-time"><span x-text="jam"></span> <span class="ksv-time__tz"><?php esc_html_e( 'WIB', 'absensi-sekolah' ); ?></span></p>
+		<!-- Command bar: brand (kiri) + jam berjalan (kanan) — bahasa desain dashboard -->
+		<div class="ksv-top">
+			<div class="ksv-brand">
+				<span class="ksv-brand__ico" x-html="$icon( 'id-card', 20 )" aria-hidden="true"></span>
+				<span class="ksv-brand__txt">
+					<span class="ksv-brand__name"><?php esc_html_e( 'Absensi Siswa', 'absensi-sekolah' ); ?></span>
+					<span class="ksv-brand__sub"><?php esc_html_e( 'Kiosk Mandiri', 'absensi-sekolah' ); ?></span>
+				</span>
+			</div>
+			<div class="ksv-clock" role="timer">
+				<span class="ksv-clock__dot" aria-hidden="true"></span>
+				<span class="ksv-clock__time u-num" x-text="jam"></span>
+				<span class="ksv-clock__tz"><?php esc_html_e( 'WIB', 'absensi-sekolah' ); ?></span>
+			</div>
 		</div>
 
 		<!-- ══ FORM (disembunyikan saat kartu hasil tampil) ══ -->
 		<div class="ksv-body" x-show="! result" x-cloak>
 
-			<!-- Input NIS (didorong numpad; keyboard fisik juga jalan) -->
+			<!-- Input NIS via keyboard: ketik langsung (keyboard fisik) atau tap field
+			     di HP → keyboard angka muncul (inputmode="numeric"). Enter = submit. -->
+			<span class="ksv-label"><?php esc_html_e( 'Nomor Induk', 'absensi-sekolah' ); ?></span>
 			<div class="ksv-nis" :class="lookupError ? 'ksv-nis--error' : ''">
 				<span class="ksv-nis__ico" x-html="$icon( 'id-card', 20 )" aria-hidden="true"></span>
 				<label class="u-sr" for="ks-nis"><?php esc_html_e( 'Nomor induk siswa', 'absensi-sekolah' ); ?></label>
-				<input id="ks-nis" type="text" inputmode="numeric" autocomplete="off"
+				<input id="ks-nis" type="text" inputmode="numeric" autocomplete="off" enterkeyhint="done"
 				       class="ksv-nis__input" x-model.trim="nomorInduk"
 				       @input.debounce.400ms="cekNis()"
+				       @keydown.enter.prevent="canSubmit && submit()"
 				       placeholder="<?php esc_attr_e( 'Masukkan NIS…', 'absensi-sekolah' ); ?>">
 				<span class="ksv-nis__spin" x-show="lookupBusy" x-cloak aria-hidden="true"></span>
 			</div>
@@ -55,28 +68,14 @@ defined( 'ABSPATH' ) || exit;
 			</div>
 			<p class="ksv-err" x-show="lookupError" x-cloak role="alert" x-text="lookupError"></p>
 
-			<!-- Numpad -->
-			<div class="ksv-pad" role="group" aria-label="<?php esc_attr_e( 'Papan angka nomor induk', 'absensi-sekolah' ); ?>">
-				<?php for ( $n = 1; $n <= 9; $n++ ) : ?>
-					<button type="button" class="ksv-key" @click="tekan('<?php echo (int) $n; ?>')"><?php echo (int) $n; ?></button>
-				<?php endfor; ?>
-				<button type="button" class="ksv-key ksv-key--del" @click="hapus()"
-				        aria-label="<?php esc_attr_e( 'Hapus satu angka', 'absensi-sekolah' ); ?>">
-					<span x-html="$icon( 'delete', 22 )" aria-hidden="true"></span>
-				</button>
-				<button type="button" class="ksv-key" @click="tekan('0')">0</button>
-				<button type="button" class="ksv-key ksv-key--clr" @click="bersihkan()"
-				        aria-label="<?php esc_attr_e( 'Bersihkan nomor', 'absensi-sekolah' ); ?>">
-					<span x-html="$icon( 'x', 20 )" aria-hidden="true"></span>
-				</button>
-			</div>
-
 			<!-- Area kamera selfie -->
+			<span class="ksv-label"><?php esc_html_e( 'Foto Selfie', 'absensi-sekolah' ); ?></span>
 			<div class="ksv-cam">
-				<!-- Belum aktif / izin ditolak -->
+				<!-- Belum aktif: pandu isi NIS dulu (kamera dikunci sampai siswa ditemukan) -->
 				<div class="ksv-cam__view" x-show="cam === 'off'">
 					<span class="ksv-cam__face" x-html="$icon( 'user-check', 40 )" aria-hidden="true"></span>
-					<span class="ksv-cam__pill" x-show="! camDenied"><?php esc_html_e( 'Siap ambil foto', 'absensi-sekolah' ); ?></span>
+					<span class="ksv-cam__pill" x-show="! camDenied && ! siswaNama"><?php esc_html_e( 'Masukkan NIS dulu', 'absensi-sekolah' ); ?></span>
+					<span class="ksv-cam__pill" x-show="! camDenied && siswaNama" x-cloak><?php esc_html_e( 'Siap ambil foto', 'absensi-sekolah' ); ?></span>
 					<span class="ksv-cam__pill ksv-cam__pill--warn" x-show="camDenied" x-cloak role="alert">
 						<?php esc_html_e( 'Izin kamera ditolak', 'absensi-sekolah' ); ?>
 					</span>
@@ -105,9 +104,10 @@ defined( 'ABSPATH' ) || exit;
 					<span x-html="$icon( 'rotate-ccw', 16 )" aria-hidden="true"></span>
 					<?php esc_html_e( 'Retake', 'absensi-sekolah' ); ?>
 				</button>
+				<!-- Kamera dikunci sampai NIS valid (siswa ditemukan) → fokus isi NIS dulu -->
 				<button type="button" class="ksv-cam-btn ksv-cam-btn--primary"
 				        @click="cam === 'live' ? capturePhoto() : startCamera()"
-				        :disabled="cam === 'preview' || camDenied">
+				        :disabled="! siswaNama || cam === 'preview' || camDenied">
 					<span x-html="$icon( 'camera', 16 )" aria-hidden="true"></span>
 					<span x-text="cam === 'live'
 						? '<?php echo esc_js( __( 'Jepret', 'absensi-sekolah' ) ); ?>'

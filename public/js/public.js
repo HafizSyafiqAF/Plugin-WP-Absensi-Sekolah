@@ -639,38 +639,8 @@ document.addEventListener('alpine:init', function () {
       } catch (e) { this.tanggal = ''; }
     },
 
-    // ── Numpad on-screen (kiosk satu layar): tulis ke nomorInduk + cek nama ──
-    maxNis: 20,                    // batas panjang wajar nomor induk
-    _lookupTimer: null,
-
-    /* Tambah satu digit dari numpad. */
-    tekan: function (d) {
-      if (this.nomorInduk.length >= this.maxNis) return;
-      this.nomorInduk += String(d);
-      this._scheduleLookup();
-    },
-    /* Hapus satu digit terakhir (⌫). */
-    hapus: function () {
-      if (!this.nomorInduk) return;
-      this.nomorInduk = this.nomorInduk.slice(0, -1);
-      this._scheduleLookup();
-    },
-    /* Bersihkan seluruh nomor (untuk siswa berikutnya). */
-    bersihkan: function () {
-      this.nomorInduk  = '';
-      this.siswaNama   = '';
-      this.sudahAbsen  = false;
-      this.lookupError = null;
-      if (this._lookupTimer) { clearTimeout(this._lookupTimer); this._lookupTimer = null; }
-    },
-    /* Debounce lookup nama (numpad tak memicu event @input). */
-    _scheduleLookup: function () {
-      var self = this;
-      if (this._lookupTimer) clearTimeout(this._lookupTimer);
-      this._lookupTimer = setTimeout(function () { self.cekNis(); }, 350);
-    },
-
-    // ── Langkah 1: NIS → cek nama siswa (GET /absen/status, publik) ──
+    // ── NIS → cek nama siswa (GET /absen/status, publik) ──
+    // Input via keyboard (fisik / keyboard HP). @input.debounce di view yang memicu cekNis.
     get bisaLanjutNis() { return !this.lookupBusy && this.nomorInduk.trim().length > 0; },
 
     /* Cari nama pemilik nomor induk. 404 → nomor tak terdaftar (jangan lanjut). */

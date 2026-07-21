@@ -37,9 +37,10 @@ defined( 'ABSPATH' ) || exit;
 				          : '<?php echo esc_js( __( 'Bisukan bunyi', 'absensi-sekolah' ) ); ?>'">
 					<span x-html="$icon( muted ? 'volume-x' : 'volume-2', 16 )" aria-hidden="true"></span>
 				</button>
-				<div class="kgv-clock">
+				<div class="kgv-clock" role="timer">
+					<span class="kgv-clock__dot" aria-hidden="true"></span>
 					<span class="kgv-clock__time u-num" x-text="jam"></span>
-					<span class="kgv-clock__date" x-text="tanggalRingkas"></span>
+					<span class="kgv-clock__tz"><?php esc_html_e( 'WIB', 'absensi-sekolah' ); ?></span>
 				</div>
 			</div>
 		</div>
