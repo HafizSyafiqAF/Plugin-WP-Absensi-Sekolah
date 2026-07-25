@@ -354,7 +354,10 @@ body.wp-admin { background-color: var(--c-bg); }
 .absensi-app .set-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; align-items: start; }
 @media (max-width: 1024px) { .absensi-app .set-grid { grid-template-columns: 1fr; } }
 .absensi-app .set-card { border-radius: 14px; box-shadow: 0 1px 2px rgba(16,24,40,.04); }
-.absensi-app .set-card--wide { margin-top: 16px; }
+/* Jarak card lebar (Konfigurasi Teknis) dari grid di atasnya. Pakai 2 kelas (spesifisitas 3)
+   karena `.absensi-app .card { margin: 0 }` didefinisikan LEBIH BAWAH di file ini — dengan
+   satu kelas saja margin-nya kalah dan card jadi mepet ke Jadwal Default. */
+.absensi-app .set-card.set-card--wide { margin-top: 16px; }
 .absensi-app .card-chip--dark { --tone-soft: #334155; --tone-text: #fff; }
 
 /* Field di halaman ini: latar abu muda (acuan desain), fokus → putih.
