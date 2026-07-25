@@ -15,6 +15,14 @@
  * Config: AbsensiConfig (restUrl, nonce, rfidDebounce).
  */
 defined( 'ABSPATH' ) || exit;
+
+// Identitas guru yang login (halaman ini login-gated cap `absensi_rfid`, jadi selalu ada).
+// Tap kartu tercatat atas nama SISWA, bukan guru — tapi guru perlu tahu ia login sebagai
+// siapa (device kadang dipinjam/ketuker) + jalan bersih untuk keluar/ganti akun.
+$guru_cur   = wp_get_current_user();
+$guru_nama  = $guru_cur && $guru_cur->exists() ? ( $guru_cur->display_name ?: $guru_cur->user_login ) : '';
+// Logout balik ke kiosk → gate mengalihkan ke wp-login (harus login lagi untuk absen).
+$logout_url = wp_logout_url( get_permalink() ?: home_url( '/' ) );
 ?>
 <div class="absensi-kiosk kiosk-guru kiosk-guru2" x-data="kioskGuru" x-cloak
      @click="focusInput()"><?php // klik di mana pun → rebut fokus ke input UID (target scanner) ?>
@@ -44,6 +52,49 @@ defined( 'ABSPATH' ) || exit;
 				</div>
 			</div>
 		</div>
+
+		<!-- Identitas guru login + Keluar (device kadang ketuker → operator jelas + jalan keluar) -->
+		<?php if ( '' !== $guru_nama ) : ?>
+		<div class="kgv-user" x-data="{ konfirmasi: false }">
+			<span class="kgv-user__ico" x-html="$icon( 'user-check', 15 )" aria-hidden="true"></span>
+			<span class="kgv-user__name">
+				<span class="kgv-user__label"><?php esc_html_e( 'Login sebagai', 'absensi-sekolah' ); ?></span>
+				<?php echo esc_html( $guru_nama ); ?>
+			</span>
+			<!-- mousedown.prevent: input UID selalu direbut balik oleh onBlur; tanpa ini fokus
+			     berpindah saat mousedown, layout bergeser, dan klik batal sebelum mouseup. -->
+			<button type="button" class="kgv-user__out" @mousedown.prevent @click.stop="konfirmasi = true">
+				<span x-html="$icon( 'log-out', 14 )" aria-hidden="true"></span>
+				<?php esc_html_e( 'Keluar', 'absensi-sekolah' ); ?>
+			</button>
+
+			<!-- Popup konfirmasi keluar -->
+			<div class="kgv-confirm" x-show="konfirmasi" x-cloak
+			     @click.self.stop="konfirmasi = false" @keydown.escape.window="konfirmasi = false"
+			     role="dialog" aria-modal="true" aria-labelledby="kg-out-title">
+				<div class="kgv-confirm__box" @click.stop>
+					<span class="kgv-confirm__ico" x-html="$icon( 'log-out', 26 )" aria-hidden="true"></span>
+					<p class="kgv-confirm__title" id="kg-out-title"><?php esc_html_e( 'Keluar dari akun ini?', 'absensi-sekolah' ); ?></p>
+					<p class="kgv-confirm__sub">
+						<?php
+						printf(
+							/* translators: %s = nama guru */
+							esc_html__( 'Anda login sebagai %s. Perlu login lagi untuk absen.', 'absensi-sekolah' ),
+							'<strong>' . esc_html( $guru_nama ) . '</strong>'
+						);
+						?>
+					</p>
+					<div class="kgv-confirm__act">
+						<button type="button" class="kgv-confirm__batal" @click.stop="konfirmasi = false"><?php esc_html_e( 'Batal', 'absensi-sekolah' ); ?></button>
+						<a class="kgv-confirm__ya" href="<?php echo esc_url( $logout_url ); ?>">
+							<span x-html="$icon( 'log-out', 15 )" aria-hidden="true"></span>
+							<?php esc_html_e( 'Keluar', 'absensi-sekolah' ); ?>
+						</a>
+					</div>
+				</div>
+			</div>
+		</div>
+		<?php endif; ?>
 
 		<!-- ── IDLE: ikon scan berdenyut + ajakan tempel kartu ──
 		     Disembunyikan saat hasil via .u-sr (BUKAN x-show/display:none) agar input UID di
