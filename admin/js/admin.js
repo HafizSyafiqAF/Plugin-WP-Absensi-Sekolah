@@ -2559,7 +2559,7 @@ tr:nth-child(even) td{background:#f9f9f9}
       return !this.saving && this.form.nama.trim() !== '' && this.form.tipe.trim() !== '';
     },
 
-    /* Simpan (POST tambah / PUT edit). Tangani 422 nama_wajib / tipe_wajib. */
+    /* Simpan (POST tambah / PUT edit). Tangani 422 nama_wajib/tipe_wajib & 409 group_sudah_ada. */
     async save() {
       if (!this.canSave) return;
       this.saving = true; this.formError = ''; this.fieldErr = {};
@@ -2575,6 +2575,8 @@ tr:nth-child(even) td{background:#f9f9f9}
         if (e.status === 422) {
           if (e.code === 'tipe_wajib')      this.fieldErr = { tipe: true };
           else if (e.code === 'nama_wajib') this.fieldErr = { nama: true };
+        } else if (e.status === 409) {
+          this.fieldErr = { nama: true, tipe: true };   // kombinasi nama+tipe sudah dipakai
         }
         this.formError = e.message;
       } finally {

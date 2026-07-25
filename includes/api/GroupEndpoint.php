@@ -88,6 +88,15 @@ class GroupEndpoint {
         if ( '' === trim( (string) $req->get_param( 'tipe' ) ) ) {
             return $this->error( 'tipe_wajib', 'Tipe group wajib diisi.', 422 );
         }
+
+        // Nama boleh kembar ANTAR tipe ("5B" Siswa vs "5B" Guru — sengaja dibolehkan), tapi
+        // TIDAK dalam tipe yang sama. Tanpa guard ini duplikat lolos: dropdown grup jadi ambigu
+        // dan user bisa tersebar ke dua group bernama sama.
+        $tipe = (string) ( $data['tipe'] ?? '' );
+        if ( $this->nama_tipe_dipakai( $data['nama'], $tipe ) ) {
+            return $this->error( 'group_sudah_ada', "Group \"{$data['nama']}\" dengan tipe \"{$tipe}\" sudah ada.", 409 );
+        }
+
         $wpdb->insert( $wpdb->prefix . 'absensi_group', $data );
         return new \WP_REST_Response( [ 'id' => (int) $wpdb->insert_id ], 201 );
     }
@@ -97,7 +106,8 @@ class GroupEndpoint {
         $id    = (int) $req->get_param( 'id' );
         $table = $wpdb->prefix . 'absensi_group';
 
-        if ( ! $wpdb->get_var( $wpdb->prepare( "SELECT id FROM $table WHERE id = %d", $id ) ) ) {
+        $lama = $wpdb->get_row( $wpdb->prepare( "SELECT nama, tipe FROM $table WHERE id = %d", $id ) );
+        if ( ! $lama ) {
             return $this->error( 'group_tidak_ada', 'Group tidak ditemukan.', 404 );
         }
 
@@ -114,8 +124,30 @@ class GroupEndpoint {
             return $this->error( 'tipe_wajib', 'Tipe group tidak boleh kosong.', 422 );
         }
 
+        // Bentrok (nama+tipe) dengan group LAIN. Update parsial → field yang tak dikirim pakai nilai lama.
+        $nama_baru = array_key_exists( 'nama', $data ) ? (string) $data['nama'] : (string) $lama->nama;
+        $tipe_baru = array_key_exists( 'tipe', $data ) ? (string) $data['tipe'] : (string) $lama->tipe;
+        if ( $this->nama_tipe_dipakai( $nama_baru, $tipe_baru, $id ) ) {
+            return $this->error( 'group_sudah_ada', "Group \"{$nama_baru}\" dengan tipe \"{$tipe_baru}\" sudah ada.", 409 );
+        }
+
         $wpdb->update( $table, $data, [ 'id' => $id ] );
         return new \WP_REST_Response( [ 'updated' => true ] );
+    }
+
+    /**
+     * Sudah ada group lain dengan kombinasi nama+tipe ini?
+     * Perbandingan mengikuti collation tabel (case-insensitive) → "7a" dianggap sama dengan "7A".
+     *
+     * @param int $kecuali_id Abaikan id ini (dipakai saat update agar tak bentrok dgn dirinya sendiri).
+     */
+    private function nama_tipe_dipakai( string $nama, string $tipe, int $kecuali_id = 0 ): bool {
+        global $wpdb;
+        $table = $wpdb->prefix . 'absensi_group';
+        $sql   = $kecuali_id
+            ? $wpdb->prepare( "SELECT id FROM $table WHERE nama = %s AND tipe = %s AND id != %d LIMIT 1", $nama, $tipe, $kecuali_id )
+            : $wpdb->prepare( "SELECT id FROM $table WHERE nama = %s AND tipe = %s LIMIT 1", $nama, $tipe );
+        return (bool) $wpdb->get_var( $sql );
     }
 
     public function delete_group( \WP_REST_Request $req ): \WP_REST_Response {
