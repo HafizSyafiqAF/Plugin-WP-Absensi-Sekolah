@@ -28,14 +28,17 @@ class AbsensiEndpoint {
      * Dua lapis:
      *   1. RL_MAX  — batas kasar hit/menit per IP. Dibuat longgar karena SATU kiosk dipakai
      *      seluruh sekolah (semua siswa keluar dari IP yang sama saat jam masuk) — batas ketat
-     *      justru me-DoS sekolahnya sendiri.
-     *   2. MISS_MAX — nomor asing BERUNTUN per IP. Ini penjaga sesungguhnya: kiosk asli nyaris
-     *      tak pernah salah ketik 5× berturut-turut (dan 1 nomor benar me-reset hitungan),
-     *      sedangkan penyapu rentang hampir selalu 404 → terkunci di awal.
+     *      justru me-DoS sekolahnya sendiri. Patokan: ~0,6 x jumlah siswa per menit, sebab
+     *      kedatangan menumpuk di belasan menit sebelum bel dan tiap absen = cek nama + kirim.
+     *      600 menampung sekolah ~1.000 siswa; sesuaikan lewat filter untuk sekolah lebih besar.
+     *   2. MISS_MAX — nomor asing BERUNTUN per IP. Ini penjaga sesungguhnya: penyapu rentang
+     *      hampir selalu 404 → terkunci di awal, sedangkan kiosk asli tak pernah kena karena
+     *      satu nomor benar me-reset hitungan DAN tebakan yang saling memperpanjang dianggap
+     *      satu orang yang masih mengetik (lihat tandai_nomor_asing()).
      * Semua filterable — deployment padat / tes bisa menyetel.
      */
     const RL_WINDOW   = 60;   // detik, jendela hitung
-    const RL_MAX      = 60;   // hit per jendela per IP
+    const RL_MAX      = 600;  // hit per jendela per IP (~1.000 siswa; lihat catatan di atas)
     const MISS_MAX    = 5;    // nomor asing beruntun sebelum dikunci
     const MISS_LOCK   = 600;  // detik dikunci (10 menit)
 
@@ -119,7 +122,7 @@ class AbsensiEndpoint {
 
         $user = $this->get_user_by_nomor( $nomor );
         if ( ! $user ) {
-            return $this->tandai_nomor_asing();   // 404, atau 429 bila sudah kebanyakan nebak
+            return $this->tandai_nomor_asing( $nomor );   // 404, atau 429 bila sudah kebanyakan nebak
         }
         $this->reset_nomor_asing();
 
@@ -248,6 +251,8 @@ class AbsensiEndpoint {
                 'lat'          => $lat,
                 'lng'          => $lng,
                 'jarak_meter'  => (int) round( $jarak ),
+                'akurasi'      => $akurasi,
+                'flag_lokasi'  => $this->deteksi_lokasi_janggal( (int) $user->id, $lat, $lng, $akurasi ),
                 'foto_path'    => $foto_path,
             ] )
         );
@@ -415,7 +420,7 @@ class AbsensiEndpoint {
 
         $user = $this->get_user_by_nomor( $nomor );
         if ( ! $user ) {
-            return $this->tandai_nomor_asing();   // 404, atau 429 bila sudah kebanyakan nebak
+            return $this->tandai_nomor_asing( $nomor );   // 404, atau 429 bila sudah kebanyakan nebak
         }
         $this->reset_nomor_asing();
 
@@ -510,6 +515,48 @@ class AbsensiEndpoint {
         return $now > $batas ? 'telat' : 'hadir';
     }
 
+    /**
+     * Tandai absen yang koordinatnya patut ditinjau manusia. TIDAK menolak absen.
+     *
+     * Fix satelit sungguhan selalu bergetar beberapa meter, jadi dua pembacaan mustahil sama
+     * persis sampai desimal ke-7 (~1 cm). Kalau tetap identik di hari yang berbeda, kemungkinan
+     * besar koordinatnya diketik (aplikasi fake GPS), bukan dibaca satelit.
+     *
+     * Saringan akurasi WAJIB ada supaya siswa jujur tak tertuduh: di dalam gedung ponsel jatuh
+     * ke penentuan posisi berbasis WiFi, yang mengembalikan koordinat terdaftar router — satu
+     * titik TETAP yang memang identik tiap hari. Pembacaan seperti itu akurasinya lebar
+     * (20-100 m), jadi hanya pembacaan ber-akurasi sempit yang layak dicurigai.
+     *
+     * Sengaja mengembalikan penanda, bukan error: menolak otomatis berarti siswa bersinyal
+     * buruk gagal absen, dan itu kerugian yang lebih besar daripada satu-dua pencurang lolos.
+     * Foto selfie-nya sudah tersimpan, jadi wali kelas tinggal memeriksa baris bertanda.
+     *
+     * @return string|null Kode penanda, atau null bila wajar.
+     */
+    private function deteksi_lokasi_janggal( int $user_id, float $lat, float $lng, float $akurasi ): ?string {
+        global $wpdb;
+
+        // Ambang "ini benar-benar dari satelit". Di atas ini anggap posisi WiFi/menara → lewati.
+        $ambang = (float) apply_filters( 'absensi_akurasi_satelit', 15.0 );
+        if ( $akurasi <= 0 || $akurasi > $ambang ) {
+            return null;   // akurasi tak dikirim, atau terlalu lebar untuk disimpulkan
+        }
+
+        // Cocokkan pada 7 desimal — presisi kolom DECIMAL(10,7), setara ~1 cm.
+        $sama = (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}absensi_rekap
+              WHERE user_id = %d
+                AND tanggal < %s
+                AND lat IS NOT NULL
+                AND akurasi IS NOT NULL AND akurasi <= %f
+                AND ROUND(lat, 7) = ROUND(%f, 7)
+                AND ROUND(lng, 7) = ROUND(%f, 7)",
+            $user_id, current_time( 'Y-m-d' ), $ambang, $lat, $lng
+        ) );
+
+        return $sama > 0 ? 'koordinat_identik' : null;
+    }
+
     // ─── Anti-enumerasi endpoint publik ───────────────────────────────────────
 
     /**
@@ -561,20 +608,47 @@ class AbsensiEndpoint {
 
     /**
      * Catat satu nomor asing (404) dari IP ini. Setelah MISS_MAX beruntun → IP dikunci.
+     *
+     * Kiosk mencari nama sambil orang mengetik, jadi satu orang menghasilkan RENTETAN 404
+     * sebelum nomornya utuh ("2", "20", "202", …). Tanpa penanganan khusus, satu pengetik
+     * lambat bisa menembus MISS_MAX dan mengunci IP — yang berarti SELURUH sekolah (semua
+     * lewat IP yang sama) tak bisa absen selama MISS_LOCK. NIP 12 digit hampir pasti kena.
+     *
+     * Aturannya: tebakan yang MEMPERPANJANG tebakan sebelumnya dianggap orang yang sama masih
+     * mengetik → hitungan tidak naik, hanya tebakan terakhirnya diperbarui. Penyapu rentang tak
+     * terbantu: untuk pindah ke kandidat berikutnya ia harus "mundur" (1000001 → 1000002), dan
+     * begitu mundur tebakannya bukan perpanjangan lagi sehingga tetap dihitung. Satu rantai
+     * perpanjangan hanya bisa berujung pada satu nomor.
+     *
+     * @param string $nomor Nomor yang barusan dicoba ('' = tak diketahui → selalu dihitung).
      * @return \WP_REST_Response  429 bila kena kunci, atau 404 biasa.
      */
-    private function tandai_nomor_asing(): \WP_REST_Response {
+    private function tandai_nomor_asing( string $nomor = '' ): \WP_REST_Response {
         $ip  = $this->client_ip();
         $max = (int) apply_filters( 'absensi_publik_miss_max', self::MISS_MAX );
 
         if ( $max > 0 ) {
-            $miss = (int) get_transient( 'absensi_pub_miss_' . $ip ) + 1;
-            if ( $miss >= $max ) {
+            $key = 'absensi_pub_miss_' . $ip;
+            $box = get_transient( $key );
+            // Transient versi lama menyimpan int telanjang — terima supaya upgrade tak error.
+            if ( ! is_array( $box ) ) {
+                $box = [ 'n' => (int) $box, 'last' => '' ];
+            }
+
+            $lanjutan = ( '' !== $nomor && '' !== $box['last'] && $nomor !== $box['last']
+                && str_starts_with( $nomor, (string) $box['last'] ) );
+
+            if ( ! $lanjutan ) {
+                $box['n']++;
+            }
+            $box['last'] = $nomor;
+
+            if ( $box['n'] >= $max ) {
                 set_transient( 'absensi_pub_lock_' . $ip, 1, (int) apply_filters( 'absensi_publik_lock_detik', self::MISS_LOCK ) );
-                delete_transient( 'absensi_pub_miss_' . $ip );
+                delete_transient( $key );
                 return $this->error( 'terlalu_banyak_percobaan', 'Terlalu banyak percobaan. Coba lagi beberapa menit lagi.', 429 );
             }
-            set_transient( 'absensi_pub_miss_' . $ip, $miss, self::MISS_LOCK );
+            set_transient( $key, $box, self::MISS_LOCK );
         }
         return $this->error( 'nomor_tidak_terdaftar', 'Nomor induk tidak terdaftar.', 404 );
     }

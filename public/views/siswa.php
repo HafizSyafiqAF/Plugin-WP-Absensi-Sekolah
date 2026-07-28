@@ -48,7 +48,7 @@ defined( 'ABSPATH' ) || exit;
 				<label class="u-sr" for="ks-nis"><?php esc_html_e( 'Nomor induk siswa', 'absensi-sekolah' ); ?></label>
 				<input id="ks-nis" type="text" inputmode="numeric" autocomplete="off" enterkeyhint="done"
 				       class="ksv-nis__input" x-model.trim="nomorInduk"
-				       @input.debounce.400ms="cekNis()"
+				       @input.debounce.800ms="cekNis()"
 				       @keydown.enter.prevent="canSubmit && submit()"
 				       placeholder="<?php esc_attr_e( 'Masukkan NIS…', 'absensi-sekolah' ); ?>">
 				<span class="ksv-nis__spin" x-show="lookupBusy" x-cloak aria-hidden="true"></span>

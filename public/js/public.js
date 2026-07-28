@@ -643,11 +643,28 @@ document.addEventListener('alpine:init', function () {
     // Input via keyboard (fisik / keyboard HP). @input.debounce di view yang memicu cekNis.
     get bisaLanjutNis() { return !this.lookupBusy && this.nomorInduk.trim().length > 0; },
 
+    /* Panjang minimum sebelum nomor dicari ke server. Mencegah pencarian pada
+     * potongan nomor ("2", "20", "202") saat orang mengetik pelan — tiap potongan
+     * menghasilkan 404 yang masuk hitungan anti-enumerasi per IP di server. */
+    MIN_NIS: 4,
+
+    /* Jeda sebelum "nomor tidak terdaftar" BOLEH tampil. Panjang nomor induk beda-beda
+     * antar sekolah (NIS 7 digit, NIP 12), jadi tak ada cara memastikan orangnya sudah
+     * selesai mengetik selain menunggu ia berhenti. Tanpa jeda ini, tiap potongan nomor
+     * memunculkan peringatan merah di tengah orang mengetik — persis keluhan saat demo. */
+    ERR_DELAY: 1200,
+    _errTimer: null,
+
     /* Cari nama pemilik nomor induk. 404 → nomor tak terdaftar (jangan lanjut). */
     cekNis: async function () {
       var n = this.nomorInduk.trim();
-      if (!n) { this.siswaNama = ''; this.lookupError = null; return; }
-      this.lookupBusy = true; this.lookupError = null;
+      // Ketikan baru masuk → batalkan peringatan yang masih mengantre dari ketikan lalu.
+      clearTimeout(this._errTimer);
+      this.lookupError = null;
+      if (!n) { this.siswaNama = ''; return; }
+      // Masih terlalu pendek → orangnya jelas belum selesai mengetik, jangan tanya server.
+      if (n.length < this.MIN_NIS) { this.siswaNama = ''; return; }
+      this.lookupBusy = true;
       try {
         var data = await window.api.get('absen/status?nomor_induk=' + encodeURIComponent(n));
         this.siswaNama  = data.nama || '';
@@ -655,7 +672,14 @@ document.addEventListener('alpine:init', function () {
       } catch (err) {
         this.siswaNama  = '';
         this.sudahAbsen = false;
-        this.lookupError = window.absensiApiError(err).message;   // 404 "Nomor induk tidak terdaftar."
+        var pesan = window.absensiApiError(err).message;   // 404 "Nomor induk tidak terdaftar."
+        var self  = this;
+        var dicek = n;
+        // Tampilkan HANYA bila nomornya tak berubah lagi selama ERR_DELAY — kalau berubah,
+        // yang barusan dicek ternyata cuma potongan dan peringatannya batal.
+        this._errTimer = setTimeout(function () {
+          if (self.nomorInduk.trim() === dicek) { self.lookupError = pesan; }
+        }, this.ERR_DELAY);
       } finally {
         this.lookupBusy = false;
       }
@@ -771,7 +795,10 @@ document.addEventListener('alpine:init', function () {
             ? 'Izin lokasi ditolak. Aktifkan lokasi di pengaturan browser.'
             : 'GPS tidak tersedia: ' + err.message;
         },
-        { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
+        // maximumAge 0: JANGAN pakai posisi dari cache. Pembacaan daur-ulang menghasilkan
+        // koordinat yang identik persis, dan itu justru pola yang dipakai server untuk
+        // menandai dugaan fake GPS — jangan bikin sendiri sinyal palsunya.
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
       );
     },
 
