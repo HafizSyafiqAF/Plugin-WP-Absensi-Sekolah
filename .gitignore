@@ -73,3 +73,13 @@ HANDOFF-FE.md
 
 # Playwright MCP output (snapshot/console junk saat test)
 .playwright-mcp/
+
+# ─── Berkas kerja lokal (bukan bagian produk) ────────────────────────────────
+CLAUDE.md
+ARSITEKTUR.local.md
+recovered_laporan.php
+docs/superpowers/
+
+# ─── Dokumen KP / laporan magang (dokumen pribadi, bukan kode) ───────────────
+*.pdf
+Logbook*.docx
