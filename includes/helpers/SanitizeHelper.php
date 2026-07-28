@@ -136,6 +136,10 @@ class SanitizeHelper {
         if ( isset( $data['lat'] ) )          $clean['lat']          = (float) $data['lat'];
         if ( isset( $data['lng'] ) )          $clean['lng']          = (float) $data['lng'];
         if ( isset( $data['jarak_meter'] ) )  $clean['jarak_meter']  = absint( $data['jarak_meter'] );
+        // Akurasi GPS (meter). <= 0 berarti klien tak mengirimkannya → simpan NULL, jangan 0
+        // (0 akan terbaca sebagai "fix sempurna" oleh deteksi lokasi janggal).
+        if ( isset( $data['akurasi'] ) )      $clean['akurasi']      = ( (float) $data['akurasi'] > 0 ) ? round( (float) $data['akurasi'], 2 ) : null;
+        if ( isset( $data['flag_lokasi'] ) )  $clean['flag_lokasi']  = in_array( $data['flag_lokasi'], [ 'koordinat_identik' ], true ) ? $data['flag_lokasi'] : null;
         if ( isset( $data['foto_path'] ) )    $clean['foto_path']    = sanitize_text_field( $data['foto_path'] );
         if ( isset( $data['catatan'] ) )      $clean['catatan']      = sanitize_textarea_field( $data['catatan'] );
         if ( isset( $data['guru_id'] ) )      $clean['guru_id']      = absint( $data['guru_id'] ) ?: null;

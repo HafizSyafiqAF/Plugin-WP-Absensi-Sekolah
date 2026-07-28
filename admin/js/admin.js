@@ -2112,6 +2112,15 @@ tr:nth-child(even) td{background:#f9f9f9}
       return selisih > 0 ? selisih : null;
     },
     jarakTeks(r) { return (r && r.jarak_meter !== null && r.jarak_meter !== undefined) ? (r.jarak_meter + 'm') : '—'; },
+    akurasiTeks(r) { return (r && r.akurasi) ? (Math.round(Number(r.akurasi)) + 'm') : '—'; },
+    /* Penanda kejanggalan lokasi dari server. Absennya tetap sah — teks ini menjelaskan
+     * APA yang janggal supaya admin tahu harus memeriksa apa, bukan menuduh. */
+    flagLokasiTeks(kode) {
+      return ({
+        koordinat_identik: 'Koordinat persis sama dengan absen sebelumnya padahal akurasi GPS-nya sempit. '
+          + 'Fix satelit asli selalu bergeser beberapa meter. Bandingkan dengan foto selfie-nya.'
+      })[kode] || '';
+    },
     inisial(nama) {
       var p = String(nama || '?').trim().split(/\s+/).slice(0, 2).map(function (s) { return s.charAt(0); });
       return (p.join('') || '?').toUpperCase();

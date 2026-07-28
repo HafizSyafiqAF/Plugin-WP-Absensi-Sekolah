@@ -251,6 +251,10 @@ defined( 'ABSPATH' ) || exit;
                   </td>
                   <td data-label="<?php esc_attr_e( 'Jarak', 'absensi-sekolah' ); ?>">
                     <span class="u-num" x-text="jarakTeks(r)"></span>
+                    <!-- Penanda kejanggalan lokasi dari server. Absennya TETAP sah — ini
+                         hanya permintaan tinjau manual (bandingkan dengan foto selfie-nya). -->
+                    <span class="badge badge--telat" x-show="r.flag_lokasi" x-cloak
+                          :title="flagLokasiTeks(r.flag_lokasi)"><?php esc_html_e( 'Cek lokasi', 'absensi-sekolah' ); ?></span>
                   </td>
                   <td class="col-actions" data-label="<?php esc_attr_e( 'Aksi', 'absensi-sekolah' ); ?>">
                     <button type="button" class="link-btn" @click="openDetail(r)"
@@ -341,6 +345,14 @@ defined( 'ABSPATH' ) || exit;
               <div class="detail-row">
                 <dt><?php esc_html_e( 'Jarak dari sekolah', 'absensi-sekolah' ); ?></dt>
                 <dd class="u-num" x-text="jarakTeks(detailRow)"></dd>
+              </div>
+              <div class="detail-row" x-show="detailRow?.akurasi" x-cloak>
+                <dt><?php esc_html_e( 'Akurasi GPS', 'absensi-sekolah' ); ?></dt>
+                <dd class="u-num" x-text="akurasiTeks(detailRow)"></dd>
+              </div>
+              <div class="detail-row" x-show="detailRow?.flag_lokasi" x-cloak>
+                <dt><?php esc_html_e( 'Tinjau lokasi', 'absensi-sekolah' ); ?></dt>
+                <dd x-text="flagLokasiTeks(detailRow?.flag_lokasi)"></dd>
               </div>
               <div class="detail-row" x-show="detailRow?.catatan">
                 <dt><?php esc_html_e( 'Catatan', 'absensi-sekolah' ); ?></dt>

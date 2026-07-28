@@ -10,7 +10,7 @@ defined( 'ABSPATH' ) || exit;
 class Installer {
 
     /** Versi skema DB – naikkan setiap ada perubahan tabel. */
-    const DB_VERSION = '2.4.0';
+    const DB_VERSION = '2.5.0';
 
     /**
      * Capability gerbang akses kiosk RFID (page /absensi/guru + endpoint /absen/rfid).
@@ -173,26 +173,36 @@ class Installer {
         ) $charset;" );
 
         // Tabel rekap absensi (1 baris per user per tanggal)
+        //
+        // ⚠ JANGAN sejajarkan nama kolom dengan spasi berganda di sini. dbDelta membaca tipe
+        // kolom lewat pola "<nama><SATU spasi><tipe>"; dengan spasi berganda ia menganggap tipe
+        // kolom kosong, lalu menerbitkan `ALTER … CHANGE COLUMN x x ` tanpa tipe untuk SETIAP
+        // kolom. MySQL menolak semuanya, dan — ini bagian yang menipu — kolom BARU pada
+        // statement yang sama ikut gagal ditambahkan tanpa pesan apa pun ke pemanggil.
+        // Gejalanya: DB_VERSION naik, `create_tables()` "sukses", tapi kolomnya tak pernah ada.
+        // Satu spasi, satu ruang. Hindari juga tanda kurung di dalam COMMENT.
         dbDelta( "CREATE TABLE {$wpdb->prefix}absensi_rekap (
-            id           BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-            user_id      BIGINT UNSIGNED NOT NULL,
-            group_id     BIGINT UNSIGNED NOT NULL,
-            tanggal      DATE NOT NULL,
-            waktu_masuk  DATETIME DEFAULT NULL,
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            user_id BIGINT UNSIGNED NOT NULL,
+            group_id BIGINT UNSIGNED NOT NULL,
+            tanggal DATE NOT NULL,
+            waktu_masuk DATETIME DEFAULT NULL,
             waktu_keluar DATETIME DEFAULT NULL,
-            status        ENUM('hadir','telat','izin','sakit','alpha') NOT NULL DEFAULT 'hadir',
-            mode          ENUM('selfie','rfid','manual') NOT NULL DEFAULT 'selfie',
-            metode_masuk  ENUM('selfie','rfid','manual') DEFAULT NULL,
+            status ENUM('hadir','telat','izin','sakit','alpha') NOT NULL DEFAULT 'hadir',
+            mode ENUM('selfie','rfid','manual') NOT NULL DEFAULT 'selfie',
+            metode_masuk ENUM('selfie','rfid','manual') DEFAULT NULL,
             metode_keluar ENUM('selfie','rfid','manual') DEFAULT NULL,
-            lat          DECIMAL(10,7) DEFAULT NULL,
-            lng          DECIMAL(10,7) DEFAULT NULL,
-            jarak_meter  INT UNSIGNED DEFAULT NULL COMMENT 'Jarak haversine saat absen (audit)',
-            foto_path    VARCHAR(255) DEFAULT NULL,
-            catatan      TEXT DEFAULT NULL,
-            izin_tipe    ENUM('izin','sakit') DEFAULT NULL COMMENT 'Tipe pengajuan izin/sakit (dormant)',
-            bukti_status ENUM('menunggu','setuju','tolak') DEFAULT NULL COMMENT 'Verifikasi bukti (dormant)',
-            bukti_path   VARCHAR(255) DEFAULT NULL COMMENT 'Path surat bukti izin/sakit (dormant)',
-            created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            lat DECIMAL(10,7) DEFAULT NULL,
+            lng DECIMAL(10,7) DEFAULT NULL,
+            jarak_meter INT UNSIGNED DEFAULT NULL,
+            akurasi DECIMAL(7,2) DEFAULT NULL,
+            flag_lokasi VARCHAR(30) DEFAULT NULL,
+            foto_path VARCHAR(255) DEFAULT NULL,
+            catatan TEXT DEFAULT NULL,
+            izin_tipe ENUM('izin','sakit') DEFAULT NULL,
+            bukti_status ENUM('menunggu','setuju','tolak') DEFAULT NULL,
+            bukti_path VARCHAR(255) DEFAULT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (id),
             UNIQUE KEY unik_user_tanggal (user_id, tanggal),
             KEY tanggal (tanggal),
